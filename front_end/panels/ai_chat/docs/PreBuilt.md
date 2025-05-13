@@ -14,11 +14,13 @@ Please download the latest macOS build from the [releases page](https://github.c
 ### Installation Security Workaround
 Because this build is not yet officially verified by Apple, macOS security settings will initially block the installation. Please follow these steps to allow the installation:
 
-1.  Attempt to open the downloaded Chromium application file. You will likely see a warning message. ![Warning Message](1.png)
-2. Open **System Settings** on your Mac. ![Settings](2.png)
-3. Navigate to **Privacy & Security**.
-4. Look for a message in the **Privacy & Security** settings window (usually near the bottom) mentioning that "Chromium" was blocked. Click the **"Open Anyway"** or **"Allow"** button next to this message. ![Privacy](3.png)
-5. You may need to confirm your intent again. After allowing it, try opening the Chromium application file again to proceed with the installation or first run.
+1.  Attempt to open the downloaded Chromium application file. You will likely see a warning message.
+![Warning Message](1.png)
+2. Open **System Settings** on your Mac and navigate to **Privacy & Security**.
+![Settings](2.png)
+3. Look for a message in the **Privacy & Security** settings window (usually near the bottom) mentioning that "Chromium" was blocked. Click the **"Open Anyway"** or **"Allow"** button next to this message.
+![Privacy](3.png)
+4. You may need to confirm your intent again. After allowing it, try opening the Chromium application file again to proceed with the installation or first run.
 
 ### Using AI Features
 This build contains experimental AI agents. To enable and use these features, you will need an API key from OpenAI. If you do not have one or are unfamiliar with OpenAI API keys, you can learn more and obtain one from the [OpenAI website](https://openai.com/). You will be prompted to enter this key within the browser's AI panel when you first try to use an AI feature.
