@@ -25,7 +25,8 @@ npm run build
 
 3. Update the code to this fork implementation
 ```sh
-git remote add origin git@github.com:tysonthomas9/browser-operator-devtools-frontend.git
+git remote add upstream git@github.com:tysonthomas9/browser-operator-devtools-frontend.git
+git checkout upstream/main
 ```
 
 4. Use this to run the [code](https://github.com/tysonthomas9/browser-operator-devtools-frontend/blob/main/front_end/panels/ai_chat/Readme.md)
