@@ -1,0 +1,72 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Build outputs (will be regenerated)
+out/
+build/
+
+# Large third-party directories that aren't needed for build
+third_party/chrome/
+
+# Node modules (will be installed fresh)
+node_modules/
+**/node_modules/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Log files
+*.log
+logs/
+chrome_logs*.txt
+
+# Test files and artifacts
+test/
+tests/
+test-server.pid
+*.test.js
+*.test.ts
+
+# Documentation (not needed for build)
+docs/
+*.md
+!docker/*.md
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Coverage and test results
+coverage/
+*.coverage
+.coverage.*
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Lock files (will be regenerated)
+package-lock.json
+uv.lock
+
+# Docker files themselves (prevent recursion)
+docker/
+Dockerfile
+docker-compose.yml
+.dockerignore
