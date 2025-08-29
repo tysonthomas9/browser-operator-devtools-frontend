@@ -10,6 +10,7 @@ import { LLMClient } from '../LLM/LLMClient.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
 
 import { DEFAULT_PROVIDER_MODELS } from './AIChatPanel.js';
+import { type OperationMode, type ModeModelConfig, type Provider } from '../core/Constants.js';
 
 const logger = createLogger('SettingsDialog');
 
@@ -186,6 +187,18 @@ const UIStrings = {
    *@description Default nano model option
    */
   defaultNanoOption: 'Use default (mini model or main model)',
+  /**
+   *@description Fast mode tab label
+   */
+  fastModeTab: 'Fast Mode',
+  /**
+   *@description Thinking mode tab label
+   */
+  thinkingModeTab: 'Thinking Mode',
+  /**
+   *@description Mode configuration section title
+   */
+  modeConfigurationTitle: 'Mode Configuration',
   /**
    *@description Browsing history section title
    */
@@ -366,17 +379,44 @@ export class SettingsDialog {
   static #groqNanoModelSelect: HTMLSelectElement | null = null;
   static #openrouterMiniModelSelect: HTMLSelectElement | null = null;
   static #openrouterNanoModelSelect: HTMLSelectElement | null = null;
+
+  // Mode-specific model selectors  
+  static #modeSelectors: {[key: string]: {[key: string]: HTMLSelectElement | null}} = {
+    openai: {
+      thinkingMain: null, fastMain: null,
+      thinkingMini: null, fastMini: null,
+      thinkingNano: null, fastNano: null
+    },
+    litellm: {
+      thinkingMain: null, fastMain: null,
+      thinkingMini: null, fastMini: null,
+      thinkingNano: null, fastNano: null
+    },
+    groq: {
+      thinkingMain: null, fastMain: null,
+      thinkingMini: null, fastMini: null,
+      thinkingNano: null, fastNano: null
+    },
+    openrouter: {
+      thinkingMain: null, fastMain: null,
+      thinkingMini: null, fastMini: null,
+      thinkingNano: null, fastNano: null
+    }
+  };
   
   static async show(
     selectedModel: string,
     miniModel: string,
     nanoModel: string,
+    currentOperationMode: OperationMode,
     onSettingsSaved: () => void,
     fetchLiteLLMModels: (apiKey: string|null, endpoint?: string) => Promise<{models: ModelOption[], hadWildcard: boolean}>,
     updateModelOptions: (litellmModels: ModelOption[], hadWildcard?: boolean) => void,
     getModelOptions: (provider?: 'openai' | 'litellm' | 'groq' | 'openrouter') => ModelOption[],
     addCustomModelOption: (modelName: string, modelType?: 'openai' | 'litellm' | 'groq' | 'openrouter') => ModelOption[],
     removeCustomModelOption: (modelName: string) => ModelOption[],
+    getModeModelsForProvider: (mode: OperationMode, provider: Provider) => ModeModelConfig,
+    setModeModelsForProvider: (mode: OperationMode, provider: Provider, modelConfig: ModeModelConfig) => void,
   ): Promise<void> {
     logger.debug('SettingsDialog.show - Initial parameters:');
     logger.debug('selectedModel:', selectedModel);
@@ -636,40 +676,20 @@ export class SettingsDialog {
       
       const openaiModelSectionTitle = document.createElement('h3');
       openaiModelSectionTitle.className = 'settings-subtitle';
-      openaiModelSectionTitle.textContent = 'Model Size Selection';
+      openaiModelSectionTitle.textContent = i18nString(UIStrings.modeConfigurationTitle);
       openaiModelSection.appendChild(openaiModelSectionTitle);
+
+      // Create mode tabs
+      const modeTabsContainer = createModeTabsContainer(openaiModelSection, 'openai', currentOperationMode);
+      const { thinkingContent, fastContent } = modeTabsContainer;
       
       logger.debug(`Current miniModel: ${miniModel}, nanoModel: ${nanoModel}`);
       
       // No focus handler needed for OpenAI selectors as we don't need to fetch models on focus
       
-      // Create OpenAI Mini Model selection and store reference
-      SettingsDialog.#openaiMiniModelSelect = createModelSelector(
-        openaiModelSection,
-        i18nString(UIStrings.miniModelLabel),
-        i18nString(UIStrings.miniModelDescription),
-        'mini-model-select',
-        openaiModels,
-        validMiniModel,
-        i18nString(UIStrings.defaultMiniOption),
-        undefined // No focus handler for OpenAI
-      );
-      
-      logger.debug('Created OpenAI Mini Model Select:', SettingsDialog.#openaiMiniModelSelect);
-      
-      // Create OpenAI Nano Model selection and store reference
-      SettingsDialog.#openaiNanoModelSelect = createModelSelector(
-        openaiModelSection,
-        i18nString(UIStrings.nanoModelLabel),
-        i18nString(UIStrings.nanoModelDescription),
-        'nano-model-select',
-        openaiModels,
-        validNanoModel,
-        i18nString(UIStrings.defaultNanoOption),
-        undefined // No focus handler for OpenAI
-      );
-      
-      logger.debug('Created OpenAI Nano Model Select:', SettingsDialog.#openaiNanoModelSelect);
+      // Create mode-specific model selectors
+      const openaiSelectors = createModeModelSelectors('openai', openaiModels, thinkingContent, fastContent, getModeModelsForProvider);
+      SettingsDialog.#modeSelectors.openai = openaiSelectors;
     }
     
     // Initialize OpenAI model selectors
@@ -2928,6 +2948,53 @@ export class SettingsDialog {
       .test-button:hover {
         color: var(--color-accent-green);
       }
+
+      /* Mode tabs styling */
+      .mode-tabs-container {
+        margin: 12px 0;
+      }
+
+      .mode-tab-headers {
+        display: flex;
+        border-bottom: 2px solid var(--color-details-hairline);
+        margin-bottom: 16px;
+      }
+
+      .mode-tab {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--color-text-secondary);
+        transition: all 0.2s ease;
+        margin-right: 8px;
+      }
+
+      .mode-tab:hover {
+        color: var(--color-text-primary);
+        background-color: var(--color-background-elevation-1);
+      }
+
+      .mode-tab.active {
+        color: var(--color-primary);
+        border-bottom-color: var(--color-primary);
+        background-color: var(--color-background-elevation-1);
+      }
+
+      .mode-tab-contents {
+        position: relative;
+      }
+
+      .mode-tab-content {
+        display: none;
+      }
+
+      .mode-tab-content.active {
+        display: block;
+      }
       
       .trash-icon, .check-icon {
         display: flex;
@@ -3156,4 +3223,152 @@ function createModelSelector(
   }
   
   return modelSelect;
+}
+
+// Helper function to create mode tabs container
+function createModeTabsContainer(
+  parentContainer: HTMLElement, 
+  provider: string, 
+  currentMode: OperationMode
+): { thinkingContent: HTMLElement, fastContent: HTMLElement } {
+  // Create tabs container
+  const tabsContainer = document.createElement('div');
+  tabsContainer.className = 'mode-tabs-container';
+  parentContainer.appendChild(tabsContainer);
+
+  // Create tab headers
+  const tabHeaders = document.createElement('div');
+  tabHeaders.className = 'mode-tab-headers';
+  tabsContainer.appendChild(tabHeaders);
+
+  const thinkingTab = document.createElement('button');
+  thinkingTab.className = `mode-tab ${currentMode === 'thinking' ? 'active' : ''}`;
+  thinkingTab.textContent = '🧠 ' + i18nString(UIStrings.thinkingModeTab);
+  thinkingTab.type = 'button';
+  tabHeaders.appendChild(thinkingTab);
+
+  const fastTab = document.createElement('button');
+  fastTab.className = `mode-tab ${currentMode === 'fast' ? 'active' : ''}`;
+  fastTab.textContent = '⚡ ' + i18nString(UIStrings.fastModeTab);
+  fastTab.type = 'button';
+  tabHeaders.appendChild(fastTab);
+
+  // Create tab content containers
+  const tabContents = document.createElement('div');
+  tabContents.className = 'mode-tab-contents';
+  tabsContainer.appendChild(tabContents);
+
+  const thinkingContent = document.createElement('div');
+  thinkingContent.className = `mode-tab-content ${currentMode === 'thinking' ? 'active' : ''}`;
+  thinkingContent.setAttribute('data-mode', 'thinking');
+  tabContents.appendChild(thinkingContent);
+
+  const fastContent = document.createElement('div');
+  fastContent.className = `mode-tab-content ${currentMode === 'fast' ? 'active' : ''}`;
+  fastContent.setAttribute('data-mode', 'fast');
+  tabContents.appendChild(fastContent);
+
+  // Add tab switching functionality
+  thinkingTab.addEventListener('click', () => {
+    thinkingTab.classList.add('active');
+    fastTab.classList.remove('active');
+    thinkingContent.classList.add('active');
+    fastContent.classList.remove('active');
+  });
+
+  fastTab.addEventListener('click', () => {
+    fastTab.classList.add('active');
+    thinkingTab.classList.remove('active');
+    fastContent.classList.add('active');
+    thinkingContent.classList.remove('active');
+  });
+
+  return { thinkingContent, fastContent };
+}
+
+// Helper function to create mode-specific model selectors
+function createModeModelSelectors(
+  provider: string,
+  modelOptions: ModelOption[],
+  thinkingContent: HTMLElement,
+  fastContent: HTMLElement,
+  getModeModelsForProvider: (mode: OperationMode, provider: Provider) => ModeModelConfig
+): {[key: string]: HTMLSelectElement} {
+  const providerKey = provider as Provider;
+  
+  // Get current configurations for both modes
+  const thinkingConfig = getModeModelsForProvider('thinking', providerKey);
+  const fastConfig = getModeModelsForProvider('fast', providerKey);
+
+  const selectors: {[key: string]: HTMLSelectElement} = {};
+
+  // Create selectors for thinking mode
+  selectors.thinkingMain = createModelSelector(
+    thinkingContent,
+    'Main Model',
+    'Primary model for complex reasoning tasks',
+    `${provider}-thinking-main-select`,
+    modelOptions,
+    thinkingConfig.main,
+    '',
+    undefined
+  );
+
+  selectors.thinkingMini = createModelSelector(
+    thinkingContent,
+    i18nString(UIStrings.miniModelLabel),
+    i18nString(UIStrings.miniModelDescription),
+    `${provider}-thinking-mini-select`,
+    modelOptions,
+    thinkingConfig.mini,
+    i18nString(UIStrings.defaultMiniOption),
+    undefined
+  );
+
+  selectors.thinkingNano = createModelSelector(
+    thinkingContent,
+    i18nString(UIStrings.nanoModelLabel),
+    i18nString(UIStrings.nanoModelDescription),
+    `${provider}-thinking-nano-select`,
+    modelOptions,
+    thinkingConfig.nano,
+    i18nString(UIStrings.defaultNanoOption),
+    undefined
+  );
+
+  // Create selectors for fast mode
+  selectors.fastMain = createModelSelector(
+    fastContent,
+    'Main Model',
+    'Primary model for quick responses',
+    `${provider}-fast-main-select`,
+    modelOptions,
+    fastConfig.main,
+    '',
+    undefined
+  );
+
+  selectors.fastMini = createModelSelector(
+    fastContent,
+    i18nString(UIStrings.miniModelLabel),
+    i18nString(UIStrings.miniModelDescription),
+    `${provider}-fast-mini-select`,
+    modelOptions,
+    fastConfig.mini,
+    i18nString(UIStrings.defaultMiniOption),
+    undefined
+  );
+
+  selectors.fastNano = createModelSelector(
+    fastContent,
+    i18nString(UIStrings.nanoModelLabel),
+    i18nString(UIStrings.nanoModelDescription),
+    `${provider}-fast-nano-select`,
+    modelOptions,
+    fastConfig.nano,
+    i18nString(UIStrings.defaultNanoOption),
+    undefined
+  );
+
+  return selectors;
 }

@@ -42,6 +42,10 @@ export const STORAGE_KEYS = {
   API_KEY: 'ai_chat_api_key',
   LITELLM_ENDPOINT: 'litellm_endpoint',
   SELECTED_MODEL: 'selected_model',
+  // Operation mode keys
+  OPERATION_MODE: 'ai_chat_operation_mode',
+  FAST_MODE_MODELS: 'ai_chat_fast_mode_models',
+  THINKING_MODE_MODELS: 'ai_chat_thinking_mode_models',
 } as const;
 
 // Dialog dimensions
@@ -79,4 +83,65 @@ export const ERROR_MESSAGES = {
   AI_ASSISTANT_LOAD_FAILED: 'Failed to load AI Assistant. Please try again.',
   NO_PRIMARY_TARGET: 'No primary page target found',
   EMPTY_PROMPT: 'Prompt cannot be empty',
+} as const;
+
+// Operation modes
+export type OperationMode = 'fast' | 'thinking';
+
+// Mode model configuration interface
+export interface ModeModelConfig {
+  main: string;
+  mini: string;
+  nano: string;
+}
+
+// Provider type
+export type Provider = 'openai' | 'litellm' | 'groq' | 'openrouter';
+
+// Default mode configurations
+export const DEFAULT_MODE_MODELS: Record<OperationMode, Record<Provider, ModeModelConfig>> = {
+  fast: {
+    openai: {
+      main: 'gpt-4.1-mini-2025-04-14',
+      mini: 'gpt-4.1-nano-2025-04-14',
+      nano: 'gpt-4.1-nano-2025-04-14'
+    },
+    litellm: {
+      main: '',
+      mini: '',
+      nano: ''
+    },
+    groq: {
+      main: 'llama-3.1-8b-instant',
+      mini: 'llama-3.1-8b-instant',
+      nano: 'llama-3.1-8b-instant'
+    },
+    openrouter: {
+      main: 'google/gemini-2.5-flash',
+      mini: 'google/gemini-2.5-flash-lite-preview-06-17',
+      nano: 'google/gemini-2.5-flash-lite-preview-06-17'
+    }
+  },
+  thinking: {
+    openai: {
+      main: 'gpt-4.1-2025-04-14',
+      mini: 'gpt-4.1-mini-2025-04-14',
+      nano: 'gpt-4.1-nano-2025-04-14'
+    },
+    litellm: {
+      main: '',
+      mini: '',
+      nano: ''
+    },
+    groq: {
+      main: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      mini: 'qwen/qwen3-32b',
+      nano: 'llama-3.1-8b-instant'
+    },
+    openrouter: {
+      main: 'anthropic/claude-sonnet-4',
+      mini: 'google/gemini-2.5-flash',
+      nano: 'google/gemini-2.5-flash-lite-preview-06-17'
+    }
+  }
 } as const;

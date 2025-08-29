@@ -20,6 +20,7 @@ import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
 import { createLogger } from '../core/Logger.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
+import { STORAGE_KEYS, DEFAULT_MODE_MODELS, type OperationMode, type ModeModelConfig, type Provider } from '../core/Constants.js';
 
 const logger = createLogger('AIChatPanel');
 
@@ -321,7 +322,9 @@ export class AIChatPanel extends UI.Panel.Panel {
     // Validate the model selection before returning
     instance.#validateAndFixModelSelections();
     
-    return instance.#miniModel || instance.#selectedModel;
+    // Get mode-specific mini model
+    const modeModels = instance.#getModeModels(instance.#operationMode);
+    return modeModels.mini || instance.#miniModel || instance.#selectedModel;
   }
 
   static getNanoModel(): string {
@@ -330,7 +333,9 @@ export class AIChatPanel extends UI.Panel.Panel {
     // Validate the model selection before returning
     instance.#validateAndFixModelSelections();
     
-    return instance.#nanoModel || instance.#miniModel || instance.#selectedModel;
+    // Get mode-specific nano model
+    const modeModels = instance.#getModeModels(instance.#operationMode);
+    return modeModels.nano || instance.#nanoModel || instance.#miniModel || instance.#selectedModel;
   }
 
   static getNanoModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' } {
@@ -712,6 +717,7 @@ export class AIChatPanel extends UI.Panel.Panel {
   #selectedModel: string = MODEL_OPTIONS.length > 0 ? MODEL_OPTIONS[0].value : ''; // Default to first model if available
   #miniModel = ''; // Mini model selection
   #nanoModel = ''; // Nano model selection
+  #operationMode: OperationMode = 'thinking'; // Default to thinking mode
   #canSendMessages = false; // Add flag to track if we can send messages (has required credentials)
   #settingsButton: HTMLElement | null = null; // Reference to the settings button
   #liteLLMApiKey: string | null = null; // LiteLLM API key
@@ -831,6 +837,13 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Loads model selections from localStorage
    */
   #loadModelSelections(): void {
+    // Check if migration is needed
+    this.#migrateLegacyModelConfigurations();
+    
+    // Load operation mode from storage
+    const storedMode = localStorage.getItem(STORAGE_KEYS.OPERATION_MODE) as OperationMode;
+    this.#operationMode = storedMode || 'thinking'; // Default to thinking mode
+    
     // Get the current provider
     const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     const providerDefaults = DEFAULT_PROVIDER_MODELS[currentProvider] || DEFAULT_PROVIDER_MODELS.openai;
@@ -1041,6 +1054,152 @@ export class AIChatPanel extends UI.Panel.Panel {
 
   getSelectedModel(): string {
     return this.#selectedModel;
+  }
+
+  /**
+   * Get the current operation mode
+   */
+  getOperationMode(): OperationMode {
+    return this.#operationMode;
+  }
+
+  /**
+   * Set the operation mode and save to storage
+   */
+  setOperationMode(mode: OperationMode): void {
+    this.#operationMode = mode;
+    localStorage.setItem(STORAGE_KEYS.OPERATION_MODE, mode);
+    logger.info(`Operation mode set to: ${mode}`);
+    
+    // Update UI to reflect the mode change
+    this.performUpdate();
+  }
+
+  /**
+   * Get mode-specific models for current provider
+   */
+  #getModeModels(mode: OperationMode): ModeModelConfig {
+    const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
+    const modeModels = this.#loadModeModels(mode);
+    const provider = currentProvider as Provider;
+    
+    return modeModels[provider] || DEFAULT_MODE_MODELS[mode][provider];
+  }
+
+  /**
+   * Load mode-specific model configurations from storage
+   */
+  #loadModeModels(mode: OperationMode): Record<Provider, ModeModelConfig> {
+    const storageKey = mode === 'fast' ? STORAGE_KEYS.FAST_MODE_MODELS : STORAGE_KEYS.THINKING_MODE_MODELS;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored ? JSON.parse(stored) : DEFAULT_MODE_MODELS[mode];
+    } catch (error) {
+      logger.warn(`Failed to load ${mode} mode models, using defaults:`, error);
+      return DEFAULT_MODE_MODELS[mode];
+    }
+  }
+
+  /**
+   * Save mode-specific model configurations to storage
+   */
+  #saveModeModels(mode: OperationMode, models: Record<Provider, ModeModelConfig>): void {
+    const storageKey = mode === 'fast' ? STORAGE_KEYS.FAST_MODE_MODELS : STORAGE_KEYS.THINKING_MODE_MODELS;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(models));
+    } catch (error) {
+      logger.error(`Failed to save ${mode} mode models:`, error);
+    }
+  }
+
+  /**
+   * Get mode-specific models for a provider (public method for settings dialog)
+   */
+  getModeModelsForProvider(mode: OperationMode, provider: Provider): ModeModelConfig {
+    const modeModels = this.#loadModeModels(mode);
+    return modeModels[provider] || DEFAULT_MODE_MODELS[mode][provider];
+  }
+
+  /**
+   * Set mode-specific models for a provider (public method for settings dialog)
+   */
+  setModeModelsForProvider(mode: OperationMode, provider: Provider, modelConfig: ModeModelConfig): void {
+    const modeModels = this.#loadModeModels(mode);
+    modeModels[provider] = modelConfig;
+    this.#saveModeModels(mode, modeModels);
+  }
+
+  /**
+   * Migrate legacy model configurations to the new mode-based system
+   */
+  #migrateLegacyModelConfigurations(): void {
+    // Check if migration has already been done
+    const migrationKey = 'ai_chat_mode_migration_v1';
+    if (localStorage.getItem(migrationKey)) {
+      return; // Migration already completed
+    }
+
+    logger.info('Starting legacy model configuration migration...');
+
+    try {
+      // Get existing model selections
+      const existingMainModel = localStorage.getItem(MODEL_SELECTION_KEY);
+      const existingMiniModel = localStorage.getItem(MINI_MODEL_STORAGE_KEY);
+      const existingNanoModel = localStorage.getItem(NANO_MODEL_STORAGE_KEY);
+      const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
+
+      // If we have existing model selections, migrate them to thinking mode
+      if (existingMainModel || existingMiniModel || existingNanoModel) {
+        logger.info('Migrating existing model selections to thinking mode:', {
+          existingMainModel,
+          existingMiniModel,
+          existingNanoModel,
+          currentProvider
+        });
+
+        // Load current mode configurations
+        const thinkingModeModels = this.#loadModeModels('thinking');
+        const fastModeModels = this.#loadModeModels('fast');
+
+        // Migrate existing selections to thinking mode for current provider
+        const provider = currentProvider as Provider;
+        if (thinkingModeModels[provider]) {
+          thinkingModeModels[provider] = {
+            main: existingMainModel || thinkingModeModels[provider].main,
+            mini: existingMiniModel || thinkingModeModels[provider].mini,
+            nano: existingNanoModel || thinkingModeModels[provider].nano
+          };
+
+          // Save the updated thinking mode configuration
+          this.#saveModeModels('thinking', thinkingModeModels);
+        }
+
+        // Ensure fast mode has default configurations
+        this.#saveModeModels('fast', fastModeModels);
+
+        logger.info('Migration completed successfully');
+      } else {
+        logger.info('No existing model selections found, using defaults');
+        
+        // Initialize both modes with defaults
+        this.#saveModeModels('thinking', DEFAULT_MODE_MODELS.thinking);
+        this.#saveModeModels('fast', DEFAULT_MODE_MODELS.fast);
+      }
+
+      // Set default operation mode if not already set
+      if (!localStorage.getItem(STORAGE_KEYS.OPERATION_MODE)) {
+        localStorage.setItem(STORAGE_KEYS.OPERATION_MODE, 'thinking');
+        logger.info('Set default operation mode to thinking');
+      }
+
+      // Mark migration as completed
+      localStorage.setItem(migrationKey, 'completed');
+      logger.info('Migration marked as completed');
+
+    } catch (error) {
+      logger.error('Migration failed:', error);
+      // Don't mark as completed if it failed, so it can be retried
+    }
   }
 
   /**
@@ -1811,6 +1970,9 @@ export class AIChatPanel extends UI.Panel.Panel {
         onModelSelectorFocus: this.#refreshLiteLLMModels.bind(this),
         selectedAgentType: this.#selectedAgentType,
         isModelSelectorDisabled: this.#isProcessing,
+        // Add operation mode properties
+        operationMode: this.#operationMode,
+        onOperationModeChanged: this.setOperationMode.bind(this),
         isInputDisabled: false,
         inputPlaceholder: this.#getInputPlaceholderText(),
         // Add OAuth login state
@@ -1883,6 +2045,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       this.#selectedModel,
       this.#miniModel,
       this.#nanoModel,
+      this.#operationMode,
       async () => {
         await this.#handleSettingsChanged();
       },
@@ -1890,7 +2053,10 @@ export class AIChatPanel extends UI.Panel.Panel {
       AIChatPanel.updateModelOptions,
       AIChatPanel.getModelOptions,
       AIChatPanel.addCustomModelOption,
-      AIChatPanel.removeCustomModelOption
+      AIChatPanel.removeCustomModelOption,
+      // Add mode-specific model management functions
+      this.getModeModelsForProvider.bind(this),
+      this.setModeModelsForProvider.bind(this)
     );
   }
   

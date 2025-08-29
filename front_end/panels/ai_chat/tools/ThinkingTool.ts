@@ -41,6 +41,12 @@ export class ThinkingTool implements Tool<ThinkingArgs, ThinkingResult | { error
 
   async execute(args: ThinkingArgs): Promise<ThinkingResult | { error: string }> {
     try {
+      // Check if thinking tool is available in current operation mode
+      const operationMode = AIChatPanel.instance().getOperationMode();
+      if (operationMode === 'fast') {
+        return { error: 'Thinking tool is not available in Fast mode. Switch to Thinking mode to use this tool.' };
+      }
+
       logger.info('Thinking tool initiated', { userRequest: args.userRequest });
 
       // 1. Check if current model supports vision

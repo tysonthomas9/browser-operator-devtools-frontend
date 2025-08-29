@@ -235,6 +235,9 @@ export interface Props {
   onModelSelectorFocus?: () => void;
   selectedAgentType?: string | null;
   isModelSelectorDisabled?: boolean;
+  // Add operation mode properties
+  operationMode?: 'fast' | 'thinking';
+  onOperationModeChanged?: (mode: 'fast' | 'thinking') => void;
   // Add API key related properties
   isInputDisabled?: boolean;
   inputPlaceholder?: string;
@@ -269,6 +272,9 @@ export class ChatView extends HTMLElement {
   #onModelSelectorFocus?: () => void;
   #selectedAgentType?: string | null;
   #isModelSelectorDisabled = false;
+  // Add operation mode properties
+  #operationMode?: 'fast' | 'thinking';
+  #onOperationModeChanged?: (mode: 'fast' | 'thinking') => void;
 
   // Add scroll-related properties
   #messagesContainerElement?: HTMLElement;
@@ -630,6 +636,9 @@ export class ChatView extends HTMLElement {
     this.#onModelSelectorFocus = data.onModelSelectorFocus;
     this.#selectedAgentType = data.selectedAgentType;
     this.#isModelSelectorDisabled = data.isModelSelectorDisabled || false;
+    // Add operation mode properties
+    this.#operationMode = data.operationMode;
+    this.#onOperationModeChanged = data.onOperationModeChanged;
 
     // Store input disabled state and placeholder
     this.#isInputDisabled = data.isInputDisabled || false;
@@ -1123,6 +1132,7 @@ export class ChatView extends HTMLElement {
                   ${BaseOrchestratorAgent.renderAgentTypeButtons(this.#selectedPromptType, this.#handlePromptButtonClickBound, true)}
 
                   <div class="actions-container">
+                    ${this.#renderModeToggle()}
                     ${this.#renderModelSelector()}
                     <button
                       class="send-button ${this.#isTextInputEmpty || this.#isInputDisabled ? 'disabled' : ''}"
@@ -1254,6 +1264,7 @@ export class ChatView extends HTMLElement {
               <div class="prompt-buttons-row">
                 ${BaseOrchestratorAgent.renderAgentTypeButtons(this.#selectedPromptType, this.#handlePromptButtonClickBound)}
                 <div class="actions-container">
+                  ${this.#renderModeToggle()}
                   ${this.#renderModelSelector()}
                   <button
                     class="send-button ${this.#isTextInputEmpty || this.#isInputDisabled ? 'disabled' : ''}"
@@ -1326,6 +1337,38 @@ export class ChatView extends HTMLElement {
     } catch (e) {
       // If JSON parsing fails, return original text
       return html`${jsonString}`;
+    }
+  }
+
+  // Add helper to render operation mode toggle
+  #renderModeToggle() {
+    if (!this.#operationMode || !this.#onOperationModeChanged) {
+      return '';
+    }
+
+    return html`
+      <div class="mode-toggle">
+        <button 
+          class="mode-button ${this.#operationMode === 'fast' ? 'active' : ''}"
+          @click=${() => this.#handleModeChange('fast')}
+          title="Fast Mode - Quick responses with optimized models"
+        >
+          ⚡ Fast
+        </button>
+        <button 
+          class="mode-button ${this.#operationMode === 'thinking' ? 'active' : ''}"
+          @click=${() => this.#handleModeChange('thinking')}
+          title="Thinking Mode - Detailed responses with thinking capabilities"
+        >
+          🧠 Thinking
+        </button>
+      </div>
+    `;
+  }
+
+  #handleModeChange(mode: 'fast' | 'thinking'): void {
+    if (this.#onOperationModeChanged) {
+      this.#onOperationModeChanged(mode);
     }
   }
 
