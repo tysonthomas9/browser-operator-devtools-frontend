@@ -352,7 +352,7 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
      */
     private convertChatMessagesToLLMMessages(messages: ChatMessage[]): LLMMessage[] {
       const llmMessages: LLMMessage[] = [];
-      
+      logger.info('Converting ChatMessages to LLMMessages. Messages:', messages);
       for (const msg of messages) {
         if (msg.entity === ChatMessageEntity.USER) {
           // User message
@@ -387,27 +387,16 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
         } else if (msg.entity === ChatMessageEntity.TOOL_RESULT) {
           // Tool result message
           if ('toolCallId' in msg && 'resultText' in msg) {
-            let content = msg.resultText;
-            
-            // Try to parse and sanitize if it's JSON (structured tool result)
-            if (typeof msg.resultText === 'string') {
-              try {
-                const parsed = JSON.parse(msg.resultText);
-                const sanitized = this.sanitizeToolResultForText(parsed);
-                content = JSON.stringify(sanitized);
-              } catch {
-                // Not JSON, use as-is (simple string tool result)
-                content = msg.resultText;
-              }
-            } else if (typeof msg.resultText === 'object' && msg.resultText !== null) {
-              // Already an object, sanitize directly
-              const sanitized = this.sanitizeToolResultForText(msg.resultText);
-              content = JSON.stringify(sanitized);
-            }
-            
+            const toolResultData = msg.resultText || null; // Use resultText if available
+            // Sanitize object payloads to avoid leaking session data and large fields
+            const sanitized = typeof toolResultData === 'object' && toolResultData !== null
+              ? this.sanitizeToolResultForText(toolResultData)
+              : toolResultData;
+
             llmMessages.push({
               role: 'tool',
-              content: String(content),
+              // Ensure objects are serialized as JSON instead of "[object Object]"
+              content: typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized),
               tool_call_id: msg.toolCallId,
             });
           }
@@ -605,8 +594,9 @@ export function createToolExecutorNode(state: AgentState): Runnable<AgentState, 
         }
 
         // Special handling for ConfigurableAgentTool results
-        if (selectedTool instanceof ConfigurableAgentTool && result && typeof result === 'object' && 'output' in result) {
-          // For ConfigurableAgentTool, only send the output field to the LLM
+        if (selectedTool instanceof ConfigurableAgentTool && result && typeof result === 'object' && 
+            ('output' in result || 'error' in result || 'success' in result)) {
+          // For ConfigurableAgentTool, only send the output/error fields to the LLM, never intermediateSteps
           const agentResult = result as any; // Cast to any to access ConfigurableAgentResult properties
           resultText = agentResult.output || (agentResult.error ? `Error: ${agentResult.error}` : 'No output');
           console.log(`[AGENT SESSION] Filtered ConfigurableAgentTool result for LLM:`, {

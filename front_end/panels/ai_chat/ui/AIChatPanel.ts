@@ -20,6 +20,8 @@ import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
 import { createLogger } from '../core/Logger.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
+// Import of LiveAgentSessionComponent is not required here; the element is
+// registered by ChatView where it is used.
 
 const logger = createLogger('AIChatPanel');
 
@@ -719,12 +721,28 @@ export class AIChatPanel extends UI.Panel.Panel {
   #apiKey: string | null = null; // Regular API key
   #evaluationAgent: EvaluationAgent | null = null; // Evaluation agent for this tab
 
+  // Store bound event listeners to properly add/remove without duplications
+  #boundOnMessagesChanged?: (e: Common.EventTarget.EventTargetEvent<ChatMessage[]>) => void;
+  #boundOnAgentSessionStarted?: (e: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>) => void;
+  #boundOnAgentToolStarted?: (e: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolCall: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>) => void;
+  #boundOnAgentToolCompleted?: (e: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolResult: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>) => void;
+  #boundOnAgentSessionUpdated?: (e: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>) => void;
+  #boundOnChildAgentStarted?: (e: Common.EventTarget.EventTargetEvent<{ parentSession: import('../agent_framework/AgentSessionTypes.js').AgentSession, childAgentName: string, childSessionId: string }>) => void;
+
   constructor() {
     super(AIChatPanel.panelName);
 
     // Initialize storage monitoring for debugging
     StorageMonitor.getInstance();
     
+    // Prepare bound handlers once so removeEventListener works correctly
+    this.#boundOnMessagesChanged = this.#handleMessagesChanged.bind(this);
+    this.#boundOnAgentSessionStarted = this.#handleAgentSessionStarted.bind(this);
+    this.#boundOnAgentToolStarted = this.#handleAgentToolStarted.bind(this);
+    this.#boundOnAgentToolCompleted = this.#handleAgentToolCompleted.bind(this);
+    this.#boundOnAgentSessionUpdated = this.#handleAgentSessionUpdated.bind(this);
+    this.#boundOnChildAgentStarted = this.#handleChildAgentStarted.bind(this);
+
     this.#setupUI();
     this.#setupInitialState();
     this.#setupOAuthEventListeners();
@@ -1310,10 +1328,20 @@ export class AIChatPanel extends UI.Panel.Panel {
     logger.info('✅ Credentials valid, proceeding with agent service initialization');
     
     // Remove any existing listeners to prevent duplicates
-    this.#agentService.removeEventListener(AgentEvents.MESSAGES_CHANGED, this.#handleMessagesChanged.bind(this));
+    if (this.#boundOnMessagesChanged) this.#agentService.removeEventListener(AgentEvents.MESSAGES_CHANGED, this.#boundOnMessagesChanged);
+    if (this.#boundOnAgentSessionStarted) this.#agentService.removeEventListener(AgentEvents.AGENT_SESSION_STARTED, this.#boundOnAgentSessionStarted);
+    if (this.#boundOnAgentToolStarted) this.#agentService.removeEventListener(AgentEvents.AGENT_TOOL_STARTED, this.#boundOnAgentToolStarted);
+    if (this.#boundOnAgentToolCompleted) this.#agentService.removeEventListener(AgentEvents.AGENT_TOOL_COMPLETED, this.#boundOnAgentToolCompleted);
+    if (this.#boundOnAgentSessionUpdated) this.#agentService.removeEventListener(AgentEvents.AGENT_SESSION_UPDATED, this.#boundOnAgentSessionUpdated);
+    if (this.#boundOnChildAgentStarted) this.#agentService.removeEventListener(AgentEvents.CHILD_AGENT_STARTED, this.#boundOnChildAgentStarted);
     
     // Register for messages changed events
-    this.#agentService.addEventListener(AgentEvents.MESSAGES_CHANGED, this.#handleMessagesChanged.bind(this));
+    if (this.#boundOnMessagesChanged) this.#agentService.addEventListener(AgentEvents.MESSAGES_CHANGED, this.#boundOnMessagesChanged);
+    if (this.#boundOnAgentSessionStarted) this.#agentService.addEventListener(AgentEvents.AGENT_SESSION_STARTED, this.#boundOnAgentSessionStarted);
+    if (this.#boundOnAgentToolStarted) this.#agentService.addEventListener(AgentEvents.AGENT_TOOL_STARTED, this.#boundOnAgentToolStarted);
+    if (this.#boundOnAgentToolCompleted) this.#agentService.addEventListener(AgentEvents.AGENT_TOOL_COMPLETED, this.#boundOnAgentToolCompleted);
+    if (this.#boundOnAgentSessionUpdated) this.#agentService.addEventListener(AgentEvents.AGENT_SESSION_UPDATED, this.#boundOnAgentSessionUpdated);
+    if (this.#boundOnChildAgentStarted) this.#agentService.addEventListener(AgentEvents.CHILD_AGENT_STARTED, this.#boundOnChildAgentStarted);
     
     // Initialize the agent service
     logger.info('Calling agentService.initialize()...');
@@ -1565,6 +1593,51 @@ export class AIChatPanel extends UI.Panel.Panel {
   }
   
   /**
+   * Handle agent session started event
+   */
+  #handleAgentSessionStarted(event: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>): void {
+    if (this.#chatView) {
+      this.#chatView.handleAgentSessionStarted(event.data);
+    }
+  }
+  
+  /**
+   * Handle agent tool started event
+   */
+  #handleAgentToolStarted(event: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolCall: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>): void {
+    if (this.#chatView) {
+      this.#chatView.handleAgentToolStarted(event.data);
+    }
+  }
+  
+  /**
+   * Handle agent tool completed event
+   */
+  #handleAgentToolCompleted(event: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolResult: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>): void {
+    if (this.#chatView) {
+      this.#chatView.handleAgentToolCompleted(event.data);
+    }
+  }
+  
+  /**
+   * Handle agent session updated event
+   */
+  #handleAgentSessionUpdated(event: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>): void {
+    if (this.#chatView) {
+      this.#chatView.handleAgentSessionUpdated(event.data);
+    }
+  }
+  
+  /**
+   * Handle child agent started event
+   */
+  #handleChildAgentStarted(event: Common.EventTarget.EventTargetEvent<{ parentSession: import('../agent_framework/AgentSessionTypes.js').AgentSession, childAgentName: string, childSessionId: string }>): void {
+    if (this.#chatView) {
+      this.#chatView.handleChildAgentStarted(event.data);
+    }
+  }
+  
+  /**
    * Updates processing state based on the latest messages
    */
   #updateProcessingState(messages: ChatMessage[]): void {
@@ -1757,7 +1830,14 @@ export class AIChatPanel extends UI.Panel.Panel {
    */
   override willHide(): void {
     // Explicitly remove any event listeners to prevent memory leaks
-    this.#agentService.removeEventListener(AgentEvents.MESSAGES_CHANGED, this.#handleMessagesChanged.bind(this));
+    if (this.#boundOnMessagesChanged) {
+      this.#agentService.removeEventListener(AgentEvents.MESSAGES_CHANGED, this.#boundOnMessagesChanged);
+    }
+    if (this.#boundOnAgentSessionStarted) this.#agentService.removeEventListener(AgentEvents.AGENT_SESSION_STARTED, this.#boundOnAgentSessionStarted);
+    if (this.#boundOnAgentToolStarted) this.#agentService.removeEventListener(AgentEvents.AGENT_TOOL_STARTED, this.#boundOnAgentToolStarted);
+    if (this.#boundOnAgentToolCompleted) this.#agentService.removeEventListener(AgentEvents.AGENT_TOOL_COMPLETED, this.#boundOnAgentToolCompleted);
+    if (this.#boundOnAgentSessionUpdated) this.#agentService.removeEventListener(AgentEvents.AGENT_SESSION_UPDATED, this.#boundOnAgentSessionUpdated);
+    if (this.#boundOnChildAgentStarted) this.#agentService.removeEventListener(AgentEvents.CHILD_AGENT_STARTED, this.#boundOnChildAgentStarted);
   }
 
   /**

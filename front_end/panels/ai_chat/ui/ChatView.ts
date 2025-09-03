@@ -16,6 +16,7 @@ import { createLogger } from '../core/Logger.js';
 import type { AgentSession, AgentMessage, ToolCallMessage as AgentToolCallMessage, ToolResultMessage as AgentToolResultMessage } from '../agent_framework/AgentSessionTypes.js';
 import { getAgentUIConfig } from '../agent_framework/AgentSessionTypes.js';
 import { VersionChecker, type VersionInfo } from '../core/VersionChecker.js';
+import { LiveAgentSessionComponent } from './LiveAgentSessionComponent.js';
 
 const logger = createLogger('ChatView');
 
@@ -261,6 +262,9 @@ export class ChatView extends HTMLElement {
   #markdownRenderer = new MarkdownRenderer();
   #isFirstMessageView = true; // Track if we're in the centered first-message view
   #selectedPromptType?: string | null; // Track the currently selected prompt type
+  #liveAgentSessions = new Map<string, {
+    component: LiveAgentSessionComponent;
+  }>();
   #handlePromptButtonClickBound: (event: Event) => void = () => {}; // Initialize with empty function, will be properly set in connectedCallback
   // Add model selection properties
   #modelOptions?: Array<{value: string, label: string}>;
@@ -674,6 +678,107 @@ export class ChatView extends HTMLElement {
     }
   }
 
+  /**
+   * Handle agent session started event
+   */
+  handleAgentSessionStarted(session: AgentSession): void {
+    // Check if we already have a component for this session
+    const existingEntry = this.#liveAgentSessions.get(session.sessionId);
+    if (existingEntry) {
+      // Update the existing component
+      existingEntry.component.setSession(session);
+      
+      // Also update the corresponding message in the array
+      const existingMessageIndex = this.#messages.findIndex(msg => 
+        msg.entity === ChatMessageEntity.AGENT_SESSION && 
+        (msg as AgentSessionMessage).agentSession.sessionId === session.sessionId
+      );
+      if (existingMessageIndex !== -1) {
+        (this.#messages[existingMessageIndex] as AgentSessionMessage).agentSession = session;
+      }
+    } else {
+      // Create a new live agent session component
+      const component = new LiveAgentSessionComponent();
+      component.setSession(session);
+      
+      // Store the component for updates
+      this.#liveAgentSessions.set(session.sessionId, { component });
+      
+      // Create an AGENT_SESSION message to trigger rendering in the messages array
+      const agentSessionMessage: AgentSessionMessage = {
+        entity: ChatMessageEntity.AGENT_SESSION,
+        agentSession: session,
+        summary: `${session.agentName} is executing...`
+      };
+      
+      // Add to messages array so it gets rendered
+      this.#messages.push(agentSessionMessage);
+    }
+    
+    // Trigger a re-render to update the UI
+    void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+  }
+
+  /**
+   * Handle agent tool started event
+   */
+  handleAgentToolStarted(data: { session: AgentSession, toolCall: AgentMessage }): void {
+    const entry = this.#liveAgentSessions.get(data.session.sessionId);
+    if (entry) {
+      // Add the tool call to the component
+      entry.component.addToolCall(data.toolCall);
+      // Also update the session data
+      entry.component.setSession(data.session);
+    }
+  }
+
+  /**
+   * Handle agent tool completed event
+   */
+  handleAgentToolCompleted(data: { session: AgentSession, toolResult: AgentMessage }): void {
+    const entry = this.#liveAgentSessions.get(data.session.sessionId);
+    if (entry) {
+      // Update with the tool result
+      entry.component.updateToolResult(data.toolResult);
+      // Also update the session data
+      entry.component.setSession(data.session);
+    }
+  }
+
+  /**
+   * Handle agent session updated event
+   */
+  handleAgentSessionUpdated(session: AgentSession): void {
+    const entry = this.#liveAgentSessions.get(session.sessionId);
+    if (entry) {
+      // Update the component with the latest session data
+      entry.component.setSession(session);
+      
+      // Also update the corresponding message in the array
+      const existingMessageIndex = this.#messages.findIndex(msg => 
+        msg.entity === ChatMessageEntity.AGENT_SESSION && 
+        (msg as AgentSessionMessage).agentSession.sessionId === session.sessionId
+      );
+      if (existingMessageIndex !== -1) {
+        (this.#messages[existingMessageIndex] as AgentSessionMessage).agentSession = session;
+      }
+      
+      // Trigger a re-render to update the UI
+      void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+    }
+  }
+
+  /**
+   * Handle child agent started event
+   */
+  handleChildAgentStarted(data: { parentSession: AgentSession, childAgentName: string, childSessionId: string }): void {
+    // For child agents, we might want to update the parent session display
+    const parentEntry = this.#liveAgentSessions.get(data.parentSession.sessionId);
+    if (parentEntry) {
+      // Update the parent component to show nested agent activity
+      parentEntry.component.setSession(data.parentSession);
+    }
+  }
 
   #handleSendMessage(): void {
     // Check if textInputElement, onSendMessage callback, or input is disabled
@@ -737,11 +842,24 @@ export class ChatView extends HTMLElement {
             </div>
           `;
         case ChatMessageEntity.AGENT_SESSION:
-          // Render agent session using existing logic
+          // Use LiveAgentSessionComponent for real-time updates
           {
             const agentSessionMessage = message as AgentSessionMessage;
-            console.log('[AGENT SESSION RENDER] Rendering AgentSessionMessage:', agentSessionMessage);
-            return this.#renderTaskCompletion(agentSessionMessage.agentSession);
+            console.log('[AGENT SESSION RENDER] Using LiveAgentSessionComponent for:', agentSessionMessage);
+            
+            // Check if we already have a live component for this session
+            const existingEntry = this.#liveAgentSessions.get(agentSessionMessage.agentSession.sessionId);
+            if (existingEntry) {
+              // Use the live component
+              existingEntry.component.setSession(agentSessionMessage.agentSession);
+              return html`${existingEntry.component}`;
+            } else {
+              // Create new live component
+              const component = new LiveAgentSessionComponent();
+              component.setSession(agentSessionMessage.agentSession);
+              this.#liveAgentSessions.set(agentSessionMessage.agentSession.sessionId, { component });
+              return html`${component}`;
+            }
           }
         case ChatMessageEntity.TOOL_RESULT:
           // Should only render if orphaned
