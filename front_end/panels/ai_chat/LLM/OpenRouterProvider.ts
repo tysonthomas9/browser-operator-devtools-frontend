@@ -7,6 +7,7 @@ import { LLMBaseProvider } from './LLMProvider.js';
 import { LLMRetryManager } from './LLMErrorHandler.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
+import { getEnvironmentConfig } from '../core/EnvironmentConfig.js';
 
 const logger = createLogger('OpenRouterProvider');
 
@@ -59,8 +60,27 @@ export class OpenRouterProvider extends LLMBaseProvider {
   private visionModelsCacheExpiry: number = 0;
   private static readonly CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
+  private readonly envConfig = getEnvironmentConfig();
+
   constructor(private readonly apiKey: string) {
     super();
+  }
+
+  /**
+   * Get the API key with fallback hierarchy:
+   * 1. Constructor parameter (for backward compatibility)
+   * 2. localStorage (user-configured)
+   * 3. Build-time environment config
+   * 4. Empty string
+   */
+  private getApiKey(): string {
+    // Constructor parameter (highest priority for backward compatibility)
+    if (this.apiKey && this.apiKey.trim() !== '') {
+      return this.apiKey.trim();
+    }
+    
+    // Use environment config which handles localStorage -> build-time -> empty fallback
+    return this.envConfig.getApiKey('openrouter');
   }
 
   /**
@@ -144,7 +164,7 @@ export class OpenRouterProvider extends LLMBaseProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
           'HTTP-Referer': 'https://browseroperator.io', // Site URL for rankings on openrouter.ai
           'X-Title': 'Browser Operator', // Site title for rankings on openrouter.ai
         },
@@ -324,7 +344,7 @@ export class OpenRouterProvider extends LLMBaseProvider {
       const response = await fetch(this.getToolSupportingModelsEndpoint(), {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
         },
       });
 
@@ -358,7 +378,7 @@ export class OpenRouterProvider extends LLMBaseProvider {
       const response = await fetch(this.getVisionModelsEndpoint(), {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
         },
       });
 
@@ -621,15 +641,21 @@ export class OpenRouterProvider extends LLMBaseProvider {
     logger.debug('=== VALIDATING OPENROUTER CREDENTIALS ===');
     logger.debug('Timestamp:', new Date().toISOString());
     
-    const storageKeys = this.getCredentialStorageKeys();
-    logger.debug('Storage keys:', storageKeys);
+    // Use the new environment config for validation
+    const validationResult = this.envConfig.validateCredentials('openrouter');
     
-    const apiKey = localStorage.getItem(storageKeys.apiKey!);
+    // Enhanced logging for debugging
+    const apiKey = this.getApiKey();
+    const source = this.envConfig.getApiKeySource('openrouter');
+    const buildInfo = this.envConfig.getBuildInfo();
+    
     logger.debug('API key check:');
-    logger.debug('- Storage key used:', storageKeys.apiKey);
     logger.debug('- API key exists:', !!apiKey);
     logger.debug('- API key length:', apiKey?.length || 0);
     logger.debug('- API key prefix:', apiKey?.substring(0, 8) + '...' || 'none');
+    logger.debug('- API key source:', source);
+    logger.debug('- Build config available:', buildInfo.hasBuildConfig);
+    logger.debug('- Build time:', buildInfo.buildTime);
     
     // Also check OAuth-related storage for debugging
     const authMethod = localStorage.getItem('openrouter_auth_method');
@@ -638,37 +664,22 @@ export class OpenRouterProvider extends LLMBaseProvider {
     logger.debug('- Auth method:', authMethod);
     logger.debug('- OAuth token exists:', !!oauthToken);
     
-    // Check all OpenRouter-related localStorage keys
-    const allKeys = Object.keys(localStorage);
-    const openRouterKeys = allKeys.filter(key => key.includes('openrouter') || key.includes('ai_chat'));
-    logger.debug('All OpenRouter-related storage keys:');
-    openRouterKeys.forEach(key => {
-      const value = localStorage.getItem(key);
-      logger.debug(`- ${key}:`, value?.substring(0, 50) + (value && value.length > 50 ? '...' : '') || 'null');
-    });
-    
-    if (!apiKey) {
+    if (validationResult.isValid) {
+      logger.info('✅ OpenRouter credentials validation passed');
+    } else {
       logger.warn('❌ OpenRouter API key missing');
-      return {
-        isValid: false,
-        message: 'OpenRouter API key is required. Please add your API key in Settings.',
-        missingItems: ['API Key']
-      };
     }
     
-    logger.info('✅ OpenRouter credentials validation passed');
-    return {
-      isValid: true,
-      message: 'OpenRouter credentials are configured correctly.'
-    };
+    return validationResult;
   }
 
   /**
    * Get the storage keys this provider uses for credentials
    */
   getCredentialStorageKeys(): {apiKey: string} {
+    const storageKey = this.envConfig.getStorageKey('openrouter');
     const keys = {
-      apiKey: 'ai_chat_openrouter_api_key'
+      apiKey: storageKey
     };
     logger.debug('OpenRouter credential storage keys:', keys);
     return keys;

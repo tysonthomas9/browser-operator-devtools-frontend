@@ -1,6 +1,18 @@
 # Multi-stage build for Chrome DevTools Frontend
 FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
+# Build arguments for API keys (optional, defaults to empty)
+ARG OPENAI_API_KEY=""
+ARG OPENROUTER_API_KEY=""
+ARG GROQ_API_KEY=""
+ARG LITELLM_API_KEY=""
+
+# Set environment variables for build process
+ENV OPENAI_API_KEY=${OPENAI_API_KEY}
+ENV OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+ENV GROQ_API_KEY=${GROQ_API_KEY}
+ENV LITELLM_API_KEY=${LITELLM_API_KEY}
+
 # Install required packages
 RUN apt-get update && apt-get install -y \
     curl \

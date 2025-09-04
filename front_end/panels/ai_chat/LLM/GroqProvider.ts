@@ -7,6 +7,7 @@ import { LLMBaseProvider } from './LLMProvider.js';
 import { LLMRetryManager } from './LLMErrorHandler.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
+import { getEnvironmentConfig } from '../core/EnvironmentConfig.js';
 
 const logger = createLogger('GroqProvider');
 
@@ -38,8 +39,27 @@ export class GroqProvider extends LLMBaseProvider {
   
   readonly name: LLMProvider = 'groq';
 
+  private readonly envConfig = getEnvironmentConfig();
+
   constructor(private readonly apiKey: string) {
     super();
+  }
+
+  /**
+   * Get the API key with fallback hierarchy:
+   * 1. Constructor parameter (for backward compatibility)
+   * 2. localStorage (user-configured)
+   * 3. Build-time environment config
+   * 4. Empty string
+   */
+  private getApiKey(): string {
+    // Constructor parameter (highest priority for backward compatibility)
+    if (this.getApiKey() && this.getApiKey().trim() !== '') {
+      return this.getApiKey().trim();
+    }
+    
+    // Use environment config which handles localStorage -> build-time -> empty fallback
+    return this.envConfig.getApiKey('groq');
   }
 
   /**
@@ -92,7 +112,7 @@ export class GroqProvider extends LLMBaseProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
         },
         body: JSON.stringify(payloadBody),
       });
@@ -259,7 +279,7 @@ export class GroqProvider extends LLMBaseProvider {
       const response = await fetch(this.getModelsEndpoint(), {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
         },
       });
 
@@ -432,21 +452,7 @@ export class GroqProvider extends LLMBaseProvider {
    * Validate that required credentials are available for Groq
    */
   validateCredentials(): {isValid: boolean, message: string, missingItems?: string[]} {
-    const storageKeys = this.getCredentialStorageKeys();
-    const apiKey = localStorage.getItem(storageKeys.apiKey!);
-    
-    if (!apiKey) {
-      return {
-        isValid: false,
-        message: 'Groq API key is required. Please add your API key in Settings.',
-        missingItems: ['API Key']
-      };
-    }
-    
-    return {
-      isValid: true,
-      message: 'Groq credentials are configured correctly.'
-    };
+    return this.envConfig.validateCredentials('groq');
   }
 
   /**
@@ -454,7 +460,7 @@ export class GroqProvider extends LLMBaseProvider {
    */
   getCredentialStorageKeys(): {apiKey: string} {
     return {
-      apiKey: 'ai_chat_groq_api_key'
+      apiKey: this.envConfig.getStorageKey('groq')
     };
   }
 }

@@ -7,6 +7,7 @@ import { LLMBaseProvider } from './LLMProvider.js';
 import { LLMRetryManager } from './LLMErrorHandler.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
+import { getEnvironmentConfig } from '../core/EnvironmentConfig.js';
 
 const logger = createLogger('OpenAIProvider');
 
@@ -42,8 +43,27 @@ export class OpenAIProvider extends LLMBaseProvider {
   
   readonly name: LLMProvider = 'openai';
 
+  private readonly envConfig = getEnvironmentConfig();
+
   constructor(private readonly apiKey: string) {
     super();
+  }
+
+  /**
+   * Get the API key with fallback hierarchy:
+   * 1. Constructor parameter (for backward compatibility)
+   * 2. localStorage (user-configured)
+   * 3. Build-time environment config
+   * 4. Empty string
+   */
+  private getApiKey(): string {
+    // Constructor parameter (highest priority for backward compatibility)
+    if (this.apiKey && this.apiKey.trim() !== '') {
+      return this.apiKey.trim();
+    }
+    
+    // Use environment config which handles localStorage -> build-time -> empty fallback
+    return this.envConfig.getApiKey('openai');
   }
 
   /**
@@ -280,7 +300,7 @@ export class OpenAIProvider extends LLMBaseProvider {
           metadata: {
             provider: 'openai',
             errorType: 'api_error',
-            hasApiKey: !!this.apiKey
+            hasApiKey: !!this.getApiKey()
           }
         }, context.traceId);
       }
@@ -299,7 +319,7 @@ export class OpenAIProvider extends LLMBaseProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.getApiKey()}`,
         },
         body: JSON.stringify(payloadBody),
       });
