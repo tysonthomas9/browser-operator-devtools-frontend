@@ -6,12 +6,7 @@ import * as Common from '../../../core/common/common.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as SDK from '../../../core/sdk/sdk.js';
 import * as UI from '../../../ui/legacy/legacy.js';
-import {
-  type ChatMessage,
-  ChatMessageEntity,
-  type ImageInputData,
-  type ModelChatMessage
-} from '../ui/ChatView.js';
+import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage } from '../models/ChatTypes.js';
 
 import {createAgentGraph} from './Graph.js';
 import { createLogger } from './Logger.js';

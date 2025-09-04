@@ -5,7 +5,7 @@
 import { AgentService } from '../core/AgentService.js';
 import type { Tool } from '../tools/Tools.js';
 import { AIChatPanel } from '../ui/AIChatPanel.js';
-import { ChatMessageEntity, type ChatMessage } from '../ui/ChatView.js';
+import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
 import { getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import type { AgentSession } from './AgentSessionTypes.js';

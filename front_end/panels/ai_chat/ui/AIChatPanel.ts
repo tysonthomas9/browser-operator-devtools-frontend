@@ -78,14 +78,8 @@ localStorage.removeItem = (key: string) => {
 }
 
 import chatViewStyles from './chatView.css.js';
-import {
-  type ChatMessage,
-  ChatMessageEntity,
-  ChatView,
-  type ImageInputData,
-  type ModelChatMessage,
-  State as ChatViewState,
-} from './ChatView.js';
+import { ChatView } from './ChatView.js';
+import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage, State as ChatViewState } from '../models/ChatTypes.js';
 import { HelpDialog } from './HelpDialog.js';
 import { SettingsDialog, isVectorDBEnabled } from './SettingsDialog.js';
 import { EvaluationDialog } from './EvaluationDialog.js';
@@ -1643,11 +1637,27 @@ export class AIChatPanel extends UI.Panel.Panel {
   #updateProcessingState(messages: ChatMessage[]): void {
     // Only set isProcessing to false if the last message is a final answer from the model
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage &&
-        lastMessage.entity === ChatMessageEntity.MODEL &&
-        lastMessage.action === 'final' &&
-        lastMessage.isFinalAnswer) {
-      this.#isProcessing = false;
+    
+    // DEBUG: Log processing state check
+    logger.info('updateProcessingState: Current isProcessing =', this.#isProcessing);
+    if (lastMessage) {
+      const checks = {
+        hasMessage: !!lastMessage,
+        isModelEntity: lastMessage.entity === ChatMessageEntity.MODEL,
+        isFinalAction: 'action' in lastMessage && lastMessage.action === 'final',
+        isFinalAnswer: 'isFinalAnswer' in lastMessage && lastMessage.isFinalAnswer
+      };
+      logger.info('Processing state checks:', checks);
+      
+      if (lastMessage &&
+          lastMessage.entity === ChatMessageEntity.MODEL &&
+          lastMessage.action === 'final' &&
+          (lastMessage.isFinalAnswer || 'error' in lastMessage)) {
+        logger.info('Setting isProcessing to false');
+        this.#isProcessing = false;
+      } else {
+        logger.info('Not setting isProcessing to false - conditions not met');
+      }
     }
   }
 
@@ -1838,6 +1848,15 @@ export class AIChatPanel extends UI.Panel.Panel {
     if (this.#boundOnAgentToolCompleted) this.#agentService.removeEventListener(AgentEvents.AGENT_TOOL_COMPLETED, this.#boundOnAgentToolCompleted);
     if (this.#boundOnAgentSessionUpdated) this.#agentService.removeEventListener(AgentEvents.AGENT_SESSION_UPDATED, this.#boundOnAgentSessionUpdated);
     if (this.#boundOnChildAgentStarted) this.#agentService.removeEventListener(AgentEvents.CHILD_AGENT_STARTED, this.#boundOnChildAgentStarted);
+  }
+
+  // Test-only helpers
+  getIsProcessingForTesting(): boolean {
+    return this.#isProcessing;
+  }
+
+  setProcessingForTesting(flag: boolean): void {
+    this.#setProcessingState(flag);
   }
 
   /**

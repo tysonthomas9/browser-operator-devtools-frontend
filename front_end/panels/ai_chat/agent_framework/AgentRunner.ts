@@ -7,7 +7,7 @@ import { LLMClient } from '../LLM/LLMClient.js';
 import type { LLMResponse, LLMMessage } from '../LLM/LLMTypes.js';
 import type { Tool } from '../tools/Tools.js';
 import { AIChatPanel } from '../ui/AIChatPanel.js';
-import { ChatMessageEntity, type ChatMessage, type ModelChatMessage, type ToolResultMessage } from '../ui/ChatView.js';
+import { ChatMessageEntity, type ChatMessage, type ModelChatMessage, type ToolResultMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
 import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import type { AgentSession, AgentMessage } from './AgentSessionTypes.js';

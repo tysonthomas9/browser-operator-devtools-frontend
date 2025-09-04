@@ -1,0 +1,106 @@
+// Copyright 2025 The Chromium Authors.
+
+import '../ChatView.js';
+import {raf} from '../../../../testing/DOMHelpers.js';
+
+// Minimal local constants to avoid importing enums in strip mode
+const ChatMessageEntity = {
+  USER: 'user',
+  AGENT_SESSION: 'agent_session',
+} as const;
+
+function makeUser(text: string): any {
+  return { entity: ChatMessageEntity.USER, text } as any;
+}
+
+function makeSession(sessionId: string, opts: Partial<any> = {}): any {
+  return {
+    agentName: opts.agentName || 'test_agent',
+    sessionId,
+    status: opts.status || 'running',
+    startTime: new Date(),
+    messages: opts.messages || [],
+    nestedSessions: opts.nestedSessions || [],
+    agentQuery: opts.agentQuery,
+    agentReasoning: opts.agentReasoning,
+    config: opts.config || {},
+    tools: [],
+  };
+}
+
+function makeAgentSessionMessage(session: any): any {
+  return { entity: ChatMessageEntity.AGENT_SESSION, agentSession: session } as any;
+}
+
+function queryLive(view: HTMLElement): HTMLElement[] {
+  const shadow = view.shadowRoot!;
+  return Array.from(shadow.querySelectorAll('live-agent-session')) as HTMLElement[];
+}
+
+describe('ChatView Agent Sessions: transition from completed to new running session', () => {
+  it('keeps rendering first completed session and shows second running session started via handler before upstream messages include it', async () => {
+    const s1 = makeSession('s1', {
+      agentReasoning: 'First agent session',
+      status: 'completed',
+      messages: [
+        { id: 'tc1', timestamp: new Date(), type: 'tool_call', content: { type: 'tool_call', toolName: 'fetch', toolArgs: { url: 'x' }, toolCallId: 'tc1' } },
+        { id: 'tc1-result', timestamp: new Date(), type: 'tool_result', content: { type: 'tool_result', toolName: 'fetch', toolCallId: 'tc1', success: true, result: { ok: true } } },
+      ],
+    });
+
+    const view = document.createElement('devtools-chat-view') as any;
+    document.body.appendChild(view);
+
+    // Initial data only contains the completed first session
+    view.data = {
+      messages: [
+        makeUser('start'),
+        makeAgentSessionMessage(s1),
+      ],
+      state: 'idle',
+      isTextInputEmpty: true,
+      onSendMessage: () => {},
+      onPromptSelected: () => {},
+    } as any;
+    await raf();
+
+    // Now a new session starts, but upstream has not yet added it to messages
+    const s2 = makeSession('s2', {
+      agentReasoning: 'Second agent session',
+      status: 'running',
+      messages: [
+        { id: 'tc2', timestamp: new Date(), type: 'tool_call', content: { type: 'tool_call', toolName: 'scan', toolArgs: { sel: '#id' }, toolCallId: 'tc2' } },
+      ],
+    });
+    (view as any).handleAgentSessionStarted(s2);
+    await raf();
+
+    // Both sessions should be visible in order
+    let lives = queryLive(view);
+    assert.strictEqual(lives.length, 2);
+    const firstReason = lives[0].shadowRoot!.querySelector('.message')?.textContent || '';
+    const secondReason = lives[1].shadowRoot!.querySelector('.message')?.textContent || '';
+    assert.include(firstReason, 'First agent session');
+    assert.include(secondReason, 'Second agent session');
+
+    // Upstream later sends messages including s2; view should remain consistent
+    view.data = {
+      messages: [
+        makeUser('start'),
+        makeAgentSessionMessage(s1),
+        makeAgentSessionMessage(s2),
+      ],
+      state: 'idle',
+      isTextInputEmpty: true,
+      onSendMessage: () => {},
+      onPromptSelected: () => {},
+    } as any;
+    await raf();
+
+    lives = queryLive(view);
+    assert.strictEqual(lives.length, 2);
+
+    document.body.removeChild(view);
+  });
+});
+

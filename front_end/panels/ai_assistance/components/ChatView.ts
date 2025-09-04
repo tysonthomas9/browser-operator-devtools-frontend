@@ -15,6 +15,7 @@ import * as Marked from '../../../third_party/marked/marked.js';
 import * as Buttons from '../../../ui/components/buttons/buttons.js';
 import type * as MarkdownView from '../../../ui/components/markdown_view/markdown_view.js';
 import * as UI from '../../../ui/legacy/legacy.js';
+import { ScrollPinHelper } from './ScrollPinHelper.js';
 import * as Lit from '../../../ui/lit/lit.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 import {PatchWidget} from '../PatchWidget.js';
@@ -303,29 +304,13 @@ export interface Props {
 export class ChatView extends HTMLElement {
   readonly #shadow = this.attachShadow({mode: 'open'});
   #markdownRenderer = new MarkdownRendererWithCodeBlock();
-  #scrollTop?: number;
+  // Scroll management helper replaces ad-hoc state/logic
+  #scrollHelper = new ScrollPinHelper();
   #props: Props;
   #messagesContainerElement?: Element;
   #mainElementRef?: Lit.Directives.Ref<Element> = Lit.Directives.createRef();
   #messagesContainerResizeObserver = new ResizeObserver(() => this.#handleMessagesContainerResize());
   #popoverHelper: UI.PopoverHelper.PopoverHelper|null = null;
-  /**
-   * Indicates whether the chat scroll position should be pinned to the bottom.
-   *
-   * This is true when:
-   *   - The scroll is at the very bottom, allowing new messages to push the scroll down automatically.
-   *   - The panel is initially rendered and the user hasn't scrolled yet.
-   *
-   * It is set to false when the user scrolls up to view previous messages.
-   */
-  #pinScrollToBottom = true;
-  /**
-   * Indicates whether the scroll event originated from code
-   * or a user action. When set to `true`, `handleScroll` will ignore the event,
-   * allowing it to only handle user-driven scrolls and correctly decide
-   * whether to pin the content to the bottom.
-   */
-  #isProgrammaticScroll = false;
 
   constructor(props: Props) {
     super();
@@ -350,8 +335,13 @@ export class ChatView extends HTMLElement {
     this.#messagesContainerResizeObserver.disconnect();
   }
 
+  // Centralize access to the textarea to avoid repeated querySelector casts
+  #getTextArea(): HTMLTextAreaElement|null {
+    return this.#shadow.querySelector('.chat-input') as HTMLTextAreaElement | null;
+  }
+
   clearTextInput(): void {
-    const textArea = this.#shadow.querySelector('.chat-input') as HTMLTextAreaElement;
+    const textArea = this.#getTextArea();
     if (!textArea) {
       return;
     }
@@ -359,7 +349,7 @@ export class ChatView extends HTMLElement {
   }
 
   focusTextInput(): void {
-    const textArea = this.#shadow.querySelector('.chat-input') as HTMLTextAreaElement;
+    const textArea = this.#getTextArea();
     if (!textArea) {
       return;
     }
@@ -368,23 +358,18 @@ export class ChatView extends HTMLElement {
   }
 
   restoreScrollPosition(): void {
-    if (this.#scrollTop === undefined) {
-      return;
+    // Ensure helper has latest element
+    if (this.#mainElementRef?.value) {
+      this.#scrollHelper.setElement(this.#mainElementRef.value as HTMLElement);
     }
-
-    if (!this.#mainElementRef?.value) {
-      return;
-    }
-
-    this.#setMainElementScrollTop(this.#scrollTop);
+    this.#scrollHelper.restoreLastPosition();
   }
 
   scrollToBottom(): void {
-    if (!this.#mainElementRef?.value) {
-      return;
+    if (this.#mainElementRef?.value) {
+      this.#scrollHelper.setElement(this.#mainElementRef.value as HTMLElement);
     }
-
-    this.#setMainElementScrollTop(this.#mainElementRef.value.scrollHeight);
+    this.#scrollHelper.scrollToBottom();
   }
 
   #handleChatUiRef(el: Element|undefined): void {
@@ -445,31 +430,16 @@ export class ChatView extends HTMLElement {
   }
 
   #handleMessagesContainerResize(): void {
-    if (!this.#pinScrollToBottom) {
-      return;
+    if (this.#mainElementRef?.value) {
+      this.#scrollHelper.setElement(this.#mainElementRef.value as HTMLElement);
     }
-
-    if (!this.#mainElementRef?.value) {
-      return;
-    }
-
-    if (this.#pinScrollToBottom) {
-      this.#setMainElementScrollTop(this.#mainElementRef.value.scrollHeight);
-    }
+    this.#scrollHelper.handleResize();
   }
 
-  #setMainElementScrollTop(scrollTop: number): void {
-    if (!this.#mainElementRef?.value) {
-      return;
-    }
-
-    this.#scrollTop = scrollTop;
-    this.#isProgrammaticScroll = true;
-    this.#mainElementRef.value.scrollTop = scrollTop;
-  }
+  // Removed ad-hoc scroll setter in favor of ScrollPinHelper
 
   #setInputText(text: string): void {
-    const textArea = this.#shadow.querySelector('.chat-input') as HTMLTextAreaElement;
+    const textArea = this.#getTextArea();
     if (!textArea) {
       return;
     }
@@ -484,7 +454,6 @@ export class ChatView extends HTMLElement {
     if (el) {
       this.#messagesContainerResizeObserver.observe(el);
     } else {
-      this.#pinScrollToBottom = true;
       this.#messagesContainerResizeObserver.disconnect();
     }
   }
@@ -493,18 +462,10 @@ export class ChatView extends HTMLElement {
     if (!ev.target || !(ev.target instanceof HTMLElement)) {
       return;
     }
-
-    // Do not handle scroll events caused by programmatically
-    // updating the scroll position. We want to know whether user
-    // did scroll the container from the user interface.
-    if (this.#isProgrammaticScroll) {
-      this.#isProgrammaticScroll = false;
-      return;
+    if (this.#mainElementRef?.value) {
+      this.#scrollHelper.setElement(this.#mainElementRef.value as HTMLElement);
     }
-
-    this.#scrollTop = ev.target.scrollTop;
-    this.#pinScrollToBottom =
-        ev.target.scrollTop + ev.target.clientHeight + SCROLL_ROUNDING_OFFSET > ev.target.scrollHeight;
+    this.#scrollHelper.handleScroll(ev.target);
   };
 
   #handleSubmit = (ev: SubmitEvent): void => {
@@ -513,7 +474,7 @@ export class ChatView extends HTMLElement {
       return;
     }
 
-    const textArea = this.#shadow.querySelector('.chat-input') as HTMLTextAreaElement;
+    const textArea = this.#getTextArea();
     if (!textArea?.value) {
       return;
     }
@@ -567,42 +528,44 @@ export class ChatView extends HTMLElement {
     Host.userMetrics.actionTaken(Host.UserMetrics.Action.AiAssistanceDynamicSuggestionClicked);
   };
 
+  #renderFooter(): Lit.LitTemplate {
+    const classes = Lit.Directives.classMap({
+      'chat-view-footer': true,
+      'has-conversation': !!this.#props.conversationType,
+      'is-read-only': this.#props.isReadOnly,
+    });
+
+    // clang-format off
+    const footerContents = this.#props.conversationType
+      ? renderRelevantDataDisclaimer({
+          isLoading: this.#props.isLoading,
+          blockedByCrossOrigin: this.#props.blockedByCrossOrigin,
+        })
+      : html`<p>
+          ${lockedString(UIStringsNotTranslate.inputDisclaimerForEmptyState)}
+          <button
+            class="link"
+            role="link"
+            jslog=${VisualLogging.link('open-ai-settings').track({
+              click: true,
+            })}
+            @click=${() => {
+              void UI.ViewManager.ViewManager.instance().showView(
+                'chrome-ai',
+              );
+            }}
+          >${i18nString(UIStrings.learnAbout)}</button>
+        </p>`;
+
+    return html`
+      <footer class=${classes} jslog=${VisualLogging.section('footer')}>
+        ${footerContents}
+      </footer>
+    `;
+    // clang-format on
+  }
+
   #render(): void {
-    const renderFooter = (): Lit.LitTemplate => {
-      const classes = Lit.Directives.classMap({
-        'chat-view-footer': true,
-        'has-conversation': !!this.#props.conversationType,
-        'is-read-only': this.#props.isReadOnly,
-      });
-
-      // clang-format off
-      const footerContents = this.#props.conversationType
-        ? renderRelevantDataDisclaimer({
-            isLoading: this.#props.isLoading,
-            blockedByCrossOrigin: this.#props.blockedByCrossOrigin,
-          })
-        : html`<p>
-            ${lockedString(UIStringsNotTranslate.inputDisclaimerForEmptyState)}
-            <button
-              class="link"
-              role="link"
-              jslog=${VisualLogging.link('open-ai-settings').track({
-                click: true,
-              })}
-              @click=${() => {
-                void UI.ViewManager.ViewManager.instance().showView(
-                  'chrome-ai',
-                );
-              }}
-            >${i18nString(UIStrings.learnAbout)}</button>
-          </p>`;
-
-      return html`
-        <footer class=${classes} jslog=${VisualLogging.section('footer')}>
-          ${footerContents}
-        </footer>
-      `;
-    };
     // clang-format off
     Lit.render(html`
       <style>${chatViewStyles}</style>
@@ -658,7 +621,7 @@ export class ChatView extends HTMLElement {
               })
           }
         </main>
-       ${renderFooter()}
+       ${this.#renderFooter()}
       </div>
     `, this.#shadow, {host: this});
     // clang-format on

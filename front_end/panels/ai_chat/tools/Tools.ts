@@ -21,7 +21,7 @@ import { AgentService } from '../core/AgentService.js';
 import type { DevToolsContext } from '../core/State.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { AIChatPanel } from '../ui/AIChatPanel.js';
-import { ChatMessageEntity } from '../ui/ChatView.js';
+import { ChatMessageEntity } from '../models/ChatTypes.js';
 
 // Type imports
 
