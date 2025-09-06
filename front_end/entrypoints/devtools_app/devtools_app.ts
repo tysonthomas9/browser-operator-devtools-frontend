@@ -32,6 +32,9 @@ import '../../panels/ai_chat/ai_chat-meta.js';
 import * as Root from '../../core/root/root.js';
 import * as Main from '../main/main.js';
 
+// Runtime config is loaded via HTML script injection (docker-entrypoint.sh)
+// No need for dynamic loading since it's already in the HTML head
+
 // @ts-expect-error Exposed for legacy layout tests
 self.runtime = Root.Runtime.Runtime.instance({forceNew: true});
 new Main.MainImpl.MainImpl();

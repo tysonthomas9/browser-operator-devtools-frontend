@@ -8,6 +8,7 @@ import { getEvaluationConfig, setEvaluationConfig, isEvaluationEnabled, connectT
 import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
+import { getEnvironmentConfig } from '../core/EnvironmentConfig.js';
 
 import { DEFAULT_PROVIDER_MODELS } from './AIChatPanel.js';
 
@@ -525,7 +526,7 @@ export class SettingsDialog {
         }
       } else if (selectedProvider === 'groq') {
         // If switching to Groq, fetch models if API key is configured
-        const groqApiKey = groqApiKeyInput.value.trim() || localStorage.getItem('ai_chat_groq_api_key') || '';
+        const groqApiKey = groqApiKeyInput.value.trim() || envConfig.getApiKey('groq');
         
         if (groqApiKey) {
           try {
@@ -544,7 +545,7 @@ export class SettingsDialog {
         }
       } else if (selectedProvider === 'openrouter') {
         // If switching to OpenRouter, fetch models if API key is configured
-        const openrouterApiKey = openrouterApiKeyInput.value.trim() || localStorage.getItem('ai_chat_openrouter_api_key') || '';
+        const openrouterApiKey = openrouterApiKeyInput.value.trim() || envConfig.getApiKey('openrouter');
         
         if (openrouterApiKey) {
           try {
@@ -600,7 +601,8 @@ export class SettingsDialog {
     apiKeyHint.textContent = i18nString(UIStrings.apiKeyHint);
     openaiSettingsSection.appendChild(apiKeyHint);
     
-    const settingsSavedApiKey = localStorage.getItem('ai_chat_api_key') || '';
+    const envConfig = getEnvironmentConfig();
+    const settingsSavedApiKey = envConfig.getApiKey('openai');
     const settingsApiKeyInput = document.createElement('input');
     settingsApiKeyInput.className = 'settings-input';
     settingsApiKeyInput.type = 'password';
@@ -710,7 +712,7 @@ export class SettingsDialog {
     litellmAPIKeyHint.textContent = i18nString(UIStrings.liteLLMApiKeyHint);
     litellmSettingsSection.appendChild(litellmAPIKeyHint);
     
-    const settingsSavedLiteLLMApiKey = localStorage.getItem(LITELLM_API_KEY_STORAGE_KEY) || '';
+    const settingsSavedLiteLLMApiKey = envConfig.getApiKey('litellm');
     const litellmApiKeyInput = document.createElement('input');
     litellmApiKeyInput.className = 'settings-input litellm-api-key-input';
     litellmApiKeyInput.type = 'password';
@@ -1266,7 +1268,7 @@ export class SettingsDialog {
     groqApiKeyHint.textContent = i18nString(UIStrings.groqApiKeyHint);
     groqSettingsSection.appendChild(groqApiKeyHint);
     
-    const settingsSavedGroqApiKey = localStorage.getItem(GROQ_API_KEY_STORAGE_KEY) || '';
+    const settingsSavedGroqApiKey = envConfig.getApiKey('groq');
     const groqApiKeyInput = document.createElement('input');
     groqApiKeyInput.className = 'settings-input groq-api-key-input';
     groqApiKeyInput.type = 'password';
@@ -1452,7 +1454,7 @@ export class SettingsDialog {
     openrouterApiKeyHint.textContent = i18nString(UIStrings.openrouterApiKeyHint);
     openrouterSettingsSection.appendChild(openrouterApiKeyHint);
     
-    const settingsSavedOpenRouterApiKey = localStorage.getItem(OPENROUTER_API_KEY_STORAGE_KEY) || '';
+    const settingsSavedOpenRouterApiKey = envConfig.getApiKey('openrouter');
     const openrouterApiKeyInput = document.createElement('input');
     openrouterApiKeyInput.className = 'settings-input openrouter-api-key-input';
     openrouterApiKeyInput.type = 'password';

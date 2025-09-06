@@ -1,17 +1,9 @@
 # Multi-stage build for Chrome DevTools Frontend
 FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
-# Build arguments for API keys (optional, defaults to empty)
-ARG OPENAI_API_KEY=""
-ARG OPENROUTER_API_KEY=""
-ARG GROQ_API_KEY=""
-ARG LITELLM_API_KEY=""
-
-# Set environment variables for build process
-ENV OPENAI_API_KEY=${OPENAI_API_KEY}
-ENV OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-ENV GROQ_API_KEY=${GROQ_API_KEY}
-ENV LITELLM_API_KEY=${LITELLM_API_KEY}
+# BuildKit is required for secret mounting
+# Secrets are mounted at build time but not stored in layers
+# Usage: DOCKER_BUILDKIT=1 docker-compose build
 
 # Install required packages
 RUN apt-get update && apt-get install -y \
@@ -59,7 +51,12 @@ RUN git remote add upstream https://github.com/BrowserOperator/browser-operator-
 RUN git fetch upstream
 RUN git checkout upstream/main
 
-# Build Browser Operator version
+# Copy our local modifications into the container
+COPY front_end/panels/ai_chat/core/EnvironmentConfig.ts /workspace/devtools/devtools-frontend/front_end/panels/ai_chat/core/EnvironmentConfig.ts
+COPY front_end/panels/ai_chat/ui/SettingsDialog.ts /workspace/devtools/devtools-frontend/front_end/panels/ai_chat/ui/SettingsDialog.ts  
+COPY front_end/entrypoints/devtools_app/devtools_app.ts /workspace/devtools/devtools-frontend/front_end/entrypoints/devtools_app/devtools_app.ts
+
+# Build Browser Operator version with our modifications
 RUN npm run build
 
 # Production stage
@@ -71,4 +68,11 @@ COPY --from=builder /workspace/devtools/devtools-frontend/out/Default/gen/front_
 # Copy nginx config
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
+# Copy and setup entrypoint script for runtime configuration
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 8000
+
+# Use entrypoint to generate runtime config and start nginx
+ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -7,12 +7,16 @@
  * 
  * This module provides unified access to API keys from multiple sources:
  * 1. localStorage (user-configured, highest priority)
- * 2. Build-time environment variables (Docker build args, fallback)
- * 3. Empty string (no configuration available)
+ * 2. Runtime environment variables (Docker runtime injection)
+ * 3. Build-time environment variables (Docker build args, fallback) 
+ * 4. Empty string (no configuration available)
  * 
- * The build-time configuration is generated during Docker build from
- * environment variables and provides a secure way to inject API keys
- * into the DevTools without requiring runtime configuration.
+ * SECURITY NOTICE:
+ * - NEVER commit real API keys to source control
+ * - Runtime injection happens at container start (not in image)
+ * - Build-time injection is for LOCAL/DEV environments only
+ * - Production deployments should use server-side proxy/OAuth
+ * - The getBuildConfig() function returns safe defaults (no keys)
  */
 
 import { createLogger } from './Logger.js';
@@ -36,26 +40,50 @@ const DEFAULT_BUILD_CONFIG: BuildTimeConfig = {
   hasKeys: false
 };
 
-// Get build configuration - this will be replaced with actual config during Docker build
-// The generate-env-config.js script will replace this entire function during build
+// Get build configuration - replaced at Docker build for local/dev only.
+// IMPORTANT: Do not commit real keys. The default returns no keys.
 function getBuildConfig(): BuildTimeConfig {
-  // Build-time configuration generated from environment variables
-  // Generated at: 2025-09-04T17:26:32.688Z
-  return {
-    "apiKeys": {
-        "openai": "sk-demo-openai",
-        "openrouter": "sk-or-demo-openrouter",
-        "groq": "gsk_demo-groq",
-        "litellm": "demo-litellm"
-    },
-    "buildTime": "2025-09-04T17:26:32.688Z",
-    "hasKeys": true
-};
+  return DEFAULT_BUILD_CONFIG;
 }
 
 const BUILD_CONFIG = getBuildConfig();
 
 const logger = createLogger('EnvironmentConfig');
+
+// Runtime configuration interface (injected by Docker at container start)
+interface RuntimeConfig {
+  OPENAI_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
+  GROQ_API_KEY?: string;
+  LITELLM_API_KEY?: string;
+  timestamp?: string;
+  source?: string;
+}
+
+// Get runtime configuration if available (from Docker runtime injection)
+function getRuntimeConfig(): RuntimeConfig | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  
+  // @ts-ignore - __RUNTIME_CONFIG__ is injected by Docker entrypoint
+  if (window.__RUNTIME_CONFIG__) {
+    // @ts-ignore
+    const config = window.__RUNTIME_CONFIG__ as RuntimeConfig;
+    console.log('Runtime config found:', {
+      hasOpenAI: Boolean(config.OPENAI_API_KEY),
+      hasOpenRouter: Boolean(config.OPENROUTER_API_KEY),
+      hasGroq: Boolean(config.GROQ_API_KEY),
+      hasLiteLLM: Boolean(config.LITELLM_API_KEY),
+      timestamp: config.timestamp,
+      source: config.source
+    });
+    return config;
+  }
+  
+  console.log('Runtime config not found on window object');
+  return null;
+}
 
 /**
  * API key providers supported by the environment configuration
@@ -81,17 +109,76 @@ const STORAGE_KEYS: Record<APIKeyProvider, string> = {
 export class EnvironmentConfig {
   private static instance: EnvironmentConfig | null = null;
   private debugLogged = false;
+  private runtimeConfig: RuntimeConfig | null = null;
 
   private constructor() {
+    // Get runtime configuration if available
+    this.runtimeConfig = getRuntimeConfig();
+    
+    // Auto-save runtime config to localStorage if not already present
+    this.initializeFromRuntime();
+    
     // Log configuration availability once for debugging
     if (!this.debugLogged) {
       logger.debug('Environment configuration initialized:', {
+        hasRuntimeConfig: Boolean(this.runtimeConfig),
         hasBuildConfig: BUILD_CONFIG?.hasKeys || false,
         buildTime: BUILD_CONFIG?.buildTime || 'unknown',
         availableProviders: BUILD_CONFIG ? Object.keys(BUILD_CONFIG.apiKeys) : []
       });
       this.debugLogged = true;
     }
+  }
+
+  /**
+   * Initialize API keys from runtime config if available
+   * Saves runtime-injected keys to localStorage if not already present
+   */
+  private initializeFromRuntime(): void {
+    if (!this.runtimeConfig) {
+      return;
+    }
+
+    const providers: APIKeyProvider[] = ['openai', 'openrouter', 'groq', 'litellm'];
+    let savedCount = 0;
+
+    for (const provider of providers) {
+      const storageKey = STORAGE_KEYS[provider];
+      const existingKey = localStorage.getItem(storageKey);
+      
+      // Only save if not already in localStorage
+      if (!existingKey || existingKey.trim() === '') {
+        const runtimeKey = this.getRuntimeKey(provider);
+        if (runtimeKey) {
+          localStorage.setItem(storageKey, runtimeKey);
+          savedCount++;
+          logger.debug(`Saved runtime API key to localStorage for ${provider}`);
+        }
+      }
+    }
+
+    if (savedCount > 0) {
+      logger.info(`Initialized ${savedCount} API keys from Docker runtime configuration`);
+    }
+  }
+
+  /**
+   * Get API key from runtime config
+   */
+  private getRuntimeKey(provider: APIKeyProvider): string {
+    if (!this.runtimeConfig) {
+      return '';
+    }
+    
+    const keyMap: Record<APIKeyProvider, keyof RuntimeConfig> = {
+      openai: 'OPENAI_API_KEY',
+      openrouter: 'OPENROUTER_API_KEY',
+      groq: 'GROQ_API_KEY',
+      litellm: 'LITELLM_API_KEY'
+    };
+    
+    const key = this.runtimeConfig[keyMap[provider]];
+    return (key && key.trim() !== '') ? key.trim() : '';
   }
 
   /**
@@ -109,8 +196,9 @@ export class EnvironmentConfig {
    * 
    * Priority order:
    * 1. localStorage (user-configured)
-   * 2. Build-time environment config (Docker build args)
-   * 3. Empty string (no configuration)
+   * 2. Runtime configuration (Docker runtime injection)
+   * 3. Build-time environment config (Docker build args)
+   * 4. Empty string (no configuration)
    * 
    * @param provider The API key provider
    * @returns The API key or empty string if not available
@@ -123,6 +211,15 @@ export class EnvironmentConfig {
     if (localStorageKey && localStorageKey.trim() !== '') {
       logger.debug(`Using localStorage API key for ${provider}`);
       return localStorageKey.trim();
+    }
+
+    // Check runtime configuration (Docker runtime injection)
+    const runtimeKey = this.getRuntimeKey(provider);
+    if (runtimeKey) {
+      logger.debug(`Using runtime API key for ${provider}`);
+      // Also save to localStorage for future use
+      localStorage.setItem(storageKey, runtimeKey);
+      return runtimeKey;
     }
 
     // Fallback to build-time configuration
@@ -150,14 +247,18 @@ export class EnvironmentConfig {
    * Get the source of an API key for debugging
    * 
    * @param provider The API key provider
-   * @returns The source of the API key ('localStorage', 'build-time', or 'none')
+   * @returns The source of the API key ('localStorage', 'runtime', 'build-time', or 'none')
    */
-  getApiKeySource(provider: APIKeyProvider): 'localStorage' | 'build-time' | 'none' {
+  getApiKeySource(provider: APIKeyProvider): 'localStorage' | 'runtime' | 'build-time' | 'none' {
     const storageKey = STORAGE_KEYS[provider];
     const localStorageKey = localStorage.getItem(storageKey);
     
     if (localStorageKey && localStorageKey.trim() !== '') {
       return 'localStorage';
+    }
+    
+    if (this.getRuntimeKey(provider)) {
+      return 'runtime';
     }
     
     if (BUILD_CONFIG?.apiKeys?.[provider]) {
