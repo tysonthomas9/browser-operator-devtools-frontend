@@ -182,7 +182,7 @@ export class ToolRegistry {
     try {
         const instance = factory();
         this.registeredTools.set(name, instance);
-        logger.info('Registered and instantiated tool: ${name}');
+        logger.info(`Registered and instantiated tool: ${name}`);
     } catch (error) {
         logger.error(`Failed to instantiate tool '${name}' during registration:`, error);
         // Remove the factory entry if instantiation fails

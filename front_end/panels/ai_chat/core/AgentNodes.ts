@@ -4,12 +4,13 @@
 
 import type { getTools } from '../tools/Tools.js';
 import { ChatMessageEntity, type ModelChatMessage, type ToolResultMessage, type ChatMessage, type AgentSessionMessage } from '../ui/ChatView.js';
-import { ConfigurableAgentTool } from '../agent_framework/ConfigurableAgentTool.js';
+import { ConfigurableAgentTool, ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 
 import { LLMClient } from '../LLM/LLMClient.js';
 import type { LLMMessage } from '../LLM/LLMTypes.js';
 import { AIChatPanel } from '../ui/AIChatPanel.js';
 import { createSystemPromptAsync, getAgentToolsFromState } from './GraphHelpers.js';
+import { ToolSurfaceProvider } from './ToolSurfaceProvider.js';
 import { createLogger } from './Logger.js';
 import type { AgentState } from './State.js';
 import type { Runnable } from './Types.js';
@@ -142,12 +143,17 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
 
       try {
         const llm = LLMClient.getInstance();
-        
+
         // Get provider for the specific model
         const provider = AIChatPanel.getProviderForModel(this.modelName);
-        
-        // Get tools for the current agent type
-        const tools = getAgentToolsFromState(state);
+
+        // Select tools based on MCP mode (all/router/meta)
+        const baseTools = getAgentToolsFromState(state);
+        const selection = await ToolSurfaceProvider.select(state, baseTools, { maxToolsPerTurn: 20, maxMcpPerTurn: 8 });
+        // Persist selection in context so ToolExecutorNode can resolve the same set
+        if (!state.context) { (state as any).context = {}; }
+        (state.context as any).selectedToolNames = selection.selectedNames;
+        const tools = selection.tools;
         
         // Convert ChatMessage[] to LLMMessage[]
         const llmMessages = this.convertChatMessagesToLLMMessages(state.messages);
@@ -421,9 +427,21 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
 }
 
 export function createToolExecutorNode(state: AgentState): Runnable<AgentState, AgentState> {
-  const tools = getAgentToolsFromState(state); // Adjusted to use getAgentToolsFromState
+  // If AgentNode has pre-selected tool names, honor that set to ensure consistency
+  const selectedNames: string[] | undefined = (state.context as any)?.selectedToolNames;
+  let tools: ReturnType<typeof getTools>;
+  if (selectedNames && selectedNames.length > 0) {
+    const resolved: any[] = [];
+    for (const name of selectedNames) {
+      const inst = ToolRegistry.getRegisteredTool(name as any);
+      if (inst) { resolved.push(inst as any); }
+    }
+    tools = resolved as any;
+  } else {
+    tools = getAgentToolsFromState(state) as any;
+  }
   const toolMap = new Map<string, ReturnType<typeof getTools>[number]>();
-  tools.forEach((tool: ReturnType<typeof getTools>[number]) => toolMap.set(tool.name, tool));
+  (tools as any[]).forEach((tool: any) => toolMap.set(tool.name, tool));
 
   const toolExecutorNode = new class ToolExecutorNode implements Runnable<AgentState, AgentState> {
     private toolMap: Map<string, ReturnType<typeof getTools>[number]>;

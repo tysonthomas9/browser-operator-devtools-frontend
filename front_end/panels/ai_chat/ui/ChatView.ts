@@ -1784,7 +1784,7 @@ export class ChatView extends HTMLElement {
                 class="view-document-btn"
                 @click=${() => this.#openInAIAssistantViewer(structuredResponse.markdownReport)}
                 title="Open full report in document viewer">
-                📄 View Full Report
+                📄 View Full Screen
               </button>
             </div>
           ` : html`
@@ -1802,7 +1802,7 @@ export class ChatView extends HTMLElement {
                 class="view-document-btn"
                 @click=${() => this.#openInAIAssistantViewer(structuredResponse.markdownReport)}
                 title="Open full report in document viewer">
-                📄 ${isLastMessage ? '' : 'View Full Report'}
+                📄 ${isLastMessage ? '' : 'View Full Screen'}
               </button>
             </div>
           `}

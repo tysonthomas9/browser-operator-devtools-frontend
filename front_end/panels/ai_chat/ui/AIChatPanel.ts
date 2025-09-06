@@ -88,6 +88,10 @@ import { HelpDialog } from './HelpDialog.js';
 import { SettingsDialog, isVectorDBEnabled } from './SettingsDialog.js';
 import { EvaluationDialog } from './EvaluationDialog.js';
 import * as Snackbars from '../../../ui/components/snackbars/snackbars.js';
+// MCP integration
+import { MCPRegistry } from '../mcp/MCPRegistry.js';
+import { getMCPConfig } from '../mcp/MCPConfig.js';
+import { onMCPConfigChange } from '../mcp/MCPConfig.js';
 
 const {html} = Lit;
 
@@ -718,6 +722,7 @@ export class AIChatPanel extends UI.Panel.Panel {
   #liteLLMEndpoint: string | null = null; // LiteLLM endpoint
   #apiKey: string | null = null; // Regular API key
   #evaluationAgent: EvaluationAgent | null = null; // Evaluation agent for this tab
+  #mcpUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super(AIChatPanel.panelName);
@@ -732,6 +737,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#createEvaluationAgentIfNeeded();
     this.performUpdate();
     this.#fetchLiteLLMModelsOnLoad();
+    // Initialize MCP integration (connect + discover tools if enabled)
+    this.#setupMCPIntegration();
   }
 
   /**
@@ -764,6 +771,31 @@ export class AIChatPanel extends UI.Panel.Panel {
     
     // Add event listener for manual setup requests from ChatView
     this.#chatView.addEventListener('manual-setup-requested', this.#handleManualSetupRequest.bind(this));
+  }
+
+  /**
+   * Initialize MCP integration: connect and discover tools if enabled,
+   * and react to MCP config changes from Settings.
+   */
+  #setupMCPIntegration(): void {
+    const initAndRefresh = async () => {
+      try {
+        const mcpConfig = getMCPConfig();
+        // Only auto-connect if both enabled and autostart are true
+        if (mcpConfig.enabled && mcpConfig.autostart) {
+          await MCPRegistry.init();
+          await MCPRegistry.refresh();
+          const status = MCPRegistry.getStatus();
+          logger.info('MCP autostart completed', status);
+        }
+      } catch (err) {
+        logger.error('Failed to initialize MCP', err);
+      }
+    };
+
+    void initAndRefresh();
+    // Subscribe to config changes
+    this.#mcpUnsubscribe = onMCPConfigChange(() => { void initAndRefresh(); });
   }
 
   /**
@@ -2113,6 +2145,13 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#validateAndFixModelSelections();
     
     this.#initializeAgentService();
+    // Re-initialize MCP based on latest settings
+    try {
+      await MCPRegistry.init();
+      await MCPRegistry.refresh();
+    } catch (err) {
+      logger.error('Failed to reinitialize MCP after settings change', err);
+    }
     // Update toolbar to reflect vector DB enabled state
     this.#updateToolbar();
   }
