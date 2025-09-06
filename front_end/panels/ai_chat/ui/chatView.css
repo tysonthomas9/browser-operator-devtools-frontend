@@ -439,7 +439,7 @@ ai-input-bar {
 
 /* Ensure last message has enough space below it when scrolled into view */
 .message:last-child {
-  margin-bottom: 90px; /* Increased space for input container */
+  margin-bottom: 16px; /* Avoid excess gap now that input is not sticky */
 }
 
 @keyframes fadeIn {
@@ -633,9 +633,6 @@ ai-input-bar {
   padding: 10px 16px;
   background-color: var(--color-background);
   backdrop-filter: blur(10px);
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
   box-shadow: 0 -4px 16px var(--color-shadow-subtle);
   border-radius: 28px;
   border: 1.5px solid var(--color-background-elevation-1);
