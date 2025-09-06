@@ -41,6 +41,32 @@ export class InputBar extends HTMLElement {
 
   connectedCallback(): void { this.#render(); }
 
+  #emitSendAndClear(detail: any): void {
+    // Re-emit send upward
+    this.dispatchEvent(new CustomEvent('send', { bubbles: true, detail }));
+    // Proactively clear the child input to avoid any stale content
+    const inputEl = this.querySelector('ai-chat-input') as (HTMLElement & { clear?: () => void }) | null;
+    if (inputEl) {
+      // Prefer component clear() if available
+      if (typeof (inputEl as any).clear === 'function') {
+        (inputEl as any).clear();
+      } else if ('value' in (inputEl as any)) {
+        // Fall back to resetting value via setter
+        (inputEl as any).value = '';
+      }
+    }
+  }
+
+  // Public API for parent to explicitly clear the input field
+  clearInput(): void {
+    const inputEl = this.querySelector('ai-chat-input') as (HTMLElement & { clear?: () => void, value?: string }) | null;
+    if (typeof inputEl?.clear === 'function') {
+      inputEl.clear();
+    } else if (inputEl && 'value' in inputEl) {
+      (inputEl as any).value = '';
+    }
+  }
+
   #sendFromInput(): void {
     const inputEl = this.querySelector('ai-chat-input') as (HTMLElement & { value?: string, clear?: () => void }) | null;
     const text = (inputEl?.value ?? '').trim();
@@ -87,7 +113,7 @@ export class InputBar extends HTMLElement {
           <ai-chat-input
             .placeholder=${this.#placeholder}
             .disabled=${this.#disabled}
-            @send=${(e: Event) => this.dispatchEvent(new CustomEvent('send', { bubbles: true, detail: (e as CustomEvent).detail }))}
+            @send=${(e: Event) => this.#emitSendAndClear((e as CustomEvent).detail)}
             @inputchange=${(e: Event) => this.dispatchEvent(new CustomEvent('inputchange', { bubbles: true, detail: (e as CustomEvent).detail }))}
           ></ai-chat-input>
         </div>

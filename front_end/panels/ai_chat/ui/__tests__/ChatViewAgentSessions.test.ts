@@ -55,7 +55,7 @@ function queryLive(view: HTMLElement): HTMLElement[] {
 }
 
 describe('ChatView Agent Sessions: nesting & handoffs', () => {
-  it('renders handoff indicator for nested child', async () => {
+  it('renders nested child session inside parent timeline', async () => {
     const parent = makeSession('p1', {nestedSessions: [makeSession('c1')]});
     const view = document.createElement('devtools-chat-view') as any;
     document.body.appendChild(view);
@@ -65,8 +65,9 @@ describe('ChatView Agent Sessions: nesting & handoffs', () => {
     const lives = queryLive(view);
     assert.strictEqual(lives.length, 1);
     const shadow = lives[0].shadowRoot!;
-    const handoff = shadow.querySelector('.handoff-indicator');
-    assert.isNotNull(handoff);
+    const nestedContainer = shadow.querySelector('.nested-sessions');
+    assert.isNotNull(nestedContainer);
+    assert.isAtLeast((nestedContainer as HTMLElement).querySelectorAll('live-agent-session').length, 1);
     document.body.removeChild(view);
   });
 
@@ -81,15 +82,17 @@ describe('ChatView Agent Sessions: nesting & handoffs', () => {
     await raf();
 
     const shadow = queryLive(view)[0].shadowRoot!;
-    const banners = shadow.querySelectorAll('.handoff-indicator');
-    // Parent includes its own handoff to child, and child's handoff to grandchild inline
-    assert.strictEqual(banners.length, 2);
-    // grandchild markup is nested inside the child template HTML
-    assert.include(shadow.innerHTML, 'Handoff to');
+    const nestedContainer = shadow.querySelector('.nested-sessions') as HTMLElement;
+    // There should be a nested live-agent-session for child; and inside it, another for grandchild
+    const firstLevel = nestedContainer.querySelector('live-agent-session') as HTMLElement;
+    assert.isNotNull(firstLevel);
+    const secondShadow = firstLevel.shadowRoot!;
+    const secondLevel = secondShadow.querySelector('.nested-sessions') as HTMLElement;
+    assert.isNotNull(secondLevel);
     document.body.removeChild(view);
   });
 
-  it('promotes child to top-level; cache keeps both parent and child', async () => {
+  it('promotes child to top-level; top-level child is suppressed (shown inline under parent)', async () => {
     const child = makeSession('c1');
     const parent = makeSession('p1', {nestedSessions: [child]});
     const view = document.createElement('devtools-chat-view') as any;
@@ -101,7 +104,29 @@ describe('ChatView Agent Sessions: nesting & handoffs', () => {
 
     view.data = {messages: [makeUser('start'), makeAgentSessionMessage(parent), makeAgentSessionMessage(child)], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
     await raf();
-    assert.strictEqual(view.getLiveAgentSessionCountForTesting(), 2);
+    // New behavior: suppress duplicate top-level child when also nested
+    assert.strictEqual(view.getLiveAgentSessionCountForTesting(), 1);
+    document.body.removeChild(view);
+  });
+
+  it('suppresses inline nested child when child also appears as top-level session', async () => {
+    const child = makeSession('c-suppress');
+    const parent = makeSession('p-suppress', {nestedSessions: [child]});
+    const view = document.createElement('devtools-chat-view') as any;
+    document.body.appendChild(view);
+
+    // Render both parent and child as top-level messages
+    view.data = {messages: [makeUser('start'), makeAgentSessionMessage(parent), makeAgentSessionMessage(child)], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
+    await raf();
+
+    // The parent component should not render inline child timeline
+    const lives = queryLive(view);
+    assert.strictEqual(lives.length, 2);
+    const parentShadow = lives[0].shadowRoot!;
+    const nestedContainer = parentShadow.querySelector('.nested-sessions') as HTMLElement;
+    if (nestedContainer) {
+      assert.strictEqual(nestedContainer.querySelectorAll('live-agent-session').length, 0);
+    }
     document.body.removeChild(view);
   });
 
@@ -118,6 +143,99 @@ describe('ChatView Agent Sessions: nesting & handoffs', () => {
     view.data = {messages: [makeUser('start'), makeAgentSessionMessage(child)], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
     await raf();
     assert.strictEqual(view.getLiveAgentSessionCountForTesting(), 1);
+    document.body.removeChild(view);
+  });
+
+  it('suppresses top-level child when handoff anchor is pending for the target agent', async () => {
+    // Create a parent session with a pending handoff anchor to child agent by name
+    const childAgentName = 'child_agent';
+    const parent = makeSession('parent-pending', { agentName: 'parent_agent', messages: [
+      {
+        id: 'handoff-1',
+        timestamp: new Date(),
+        type: 'handoff',
+        content: {
+          type: 'handoff',
+          targetAgent: childAgentName,
+          reason: 'Handing off to child temporarily',
+          context: { note: 'pending handoff anchor' },
+          nestedSessionId: 'pending-abc',
+        }
+      }
+    ]});
+    const child = makeSession('child-real', { agentName: childAgentName });
+
+    const view = document.createElement('devtools-chat-view') as any;
+    document.body.appendChild(view);
+    // Render both parent and child as top-level messages
+    view.data = {messages: [makeUser('start'), makeAgentSessionMessage(parent), makeAgentSessionMessage(child)], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
+    await raf();
+
+    // The top-level child should be suppressed due to the pending handoff anchor
+    const lives = queryLive(view);
+    assert.strictEqual(lives.length, 1, 'only parent session should render as top-level');
+    document.body.removeChild(view);
+  });
+
+  it('inlines child agent timeline at handoff and updates in real time', async () => {
+    // Create child session with stable id and no messages yet
+    const childId = 'child-stable-1';
+    const child = makeSession(childId, { agentName: 'child_agent', messages: [] });
+    // Parent session includes a handoff anchor pointing to the child id
+    const parent = makeSession('parent-rt', {
+      agentName: 'parent_agent',
+      messages: [
+        {
+          id: 'handoff-rt',
+          timestamp: new Date(),
+          type: 'handoff',
+          content: {
+            type: 'handoff',
+            targetAgent: 'child_agent',
+            reason: 'Handing off to child',
+            context: { note: 'rt' },
+            nestedSessionId: childId,
+          }
+        }
+      ],
+      nestedSessions: [child],
+    });
+
+    const view = document.createElement('devtools-chat-view') as any;
+    document.body.appendChild(view);
+    view.data = {messages: [makeUser('start'), makeAgentSessionMessage(parent)], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
+    await raf();
+
+    // Verify nested child is inlined inside the parent's timeline (headerless nested component)
+    const parentEl = queryLive(view)[0];
+    const parentShadow = parentEl.shadowRoot!;
+    // The nested child live-agent-session should be present via the inlined anchor replacement
+    const nestedChildEl = parentShadow.querySelector('live-agent-session') as HTMLElement;
+    assert.isNotNull(nestedChildEl, 'expected nested child session element inlined at anchor');
+
+    // Now simulate real-time update: append a tool_call to the child session and re-render parent
+    const updatedChild = makeSession(childId, {
+      agentName: 'child_agent',
+      messages: [
+        { id: 'tc1', timestamp: new Date(), type: 'tool_call', content: { type: 'tool_call', toolName: 'fetch', toolArgs: { url: 'https://example.com' }, toolCallId: 'tc1' } },
+      ],
+    });
+    const updatedParent = makeSession('parent-rt', {
+      agentName: 'parent_agent',
+      messages: parent.messages,
+      nestedSessions: [updatedChild],
+    });
+
+    view.data = {messages: [makeUser('start'), makeAgentSessionMessage(updatedParent)], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
+    await raf();
+
+    // Check the nested child timeline shows the new tool call inline without waiting for completion
+    const parentShadow2 = queryLive(view)[0].shadowRoot!;
+    const nestedChild2 = parentShadow2.querySelector('live-agent-session') as HTMLElement;
+    assert.isNotNull(nestedChild2, 'nested child should remain present after update');
+    const childShadow = (nestedChild2.shadowRoot!) as ShadowRoot;
+    assert.include((childShadow.innerHTML || '').toLowerCase(), 'fetch', 'child timeline shows running tool call');
+
     document.body.removeChild(view);
   });
 
@@ -139,8 +257,6 @@ describe('ChatView Agent Sessions: nesting & handoffs', () => {
     assert.isAtLeast(parentItems.length, 1);
     // Nested child timeline HTML is inlined; ensure child tool name appears
     assert.include(sroot.innerHTML, 'fetch');
-    // Handoff indicator present
-    assert.strictEqual(sroot.querySelectorAll('.handoff-indicator').length, 1);
     document.body.removeChild(view);
   });
 

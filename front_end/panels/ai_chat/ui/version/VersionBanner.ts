@@ -32,7 +32,8 @@ export class VersionBanner extends HTMLElement {
     const info = this.#info;
     Lit.render(html`
       <style>
-        .banner { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; background: var(--sys-color-surface-variant); color: var(--sys-color-on-surface); margin: 8px 0; }
+        :host { position: relative; z-index: 9999; }
+        .banner { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; background: var(--sys-color-surface-variant); color: var(--sys-color-on-surface); margin: 8px 0; position: relative; z-index: 9999; }
         .link { color: var(--sys-color-primary); text-decoration: none; margin-left: 8px; }
         button.dismiss { border: none; background: transparent; color: var(--sys-color-on-surface); cursor: pointer; font-size: 14px; }
       </style>

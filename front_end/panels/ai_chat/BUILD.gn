@@ -69,6 +69,7 @@ devtools_module("ai_chat") {
     "LLM/LiteLLMProvider.ts",
     "LLM/GroqProvider.ts",
     "LLM/OpenRouterProvider.ts",
+    "LLM/MessageSanitizer.ts",
     "LLM/LLMClient.ts",
     "tools/Tools.ts",
     "tools/LLMTracingWrapper.ts",
@@ -196,6 +197,7 @@ _ai_chat_sources = [
     "LLM/LiteLLMProvider.ts",
     "LLM/GroqProvider.ts",
     "LLM/OpenRouterProvider.ts",
+    "LLM/MessageSanitizer.ts",
     "LLM/LLMClient.ts",
     "tools/Tools.ts",
     "tools/CritiqueTool.ts",
@@ -334,8 +336,14 @@ ts_library("unittests") {
     "ui/__tests__/ChatViewPrune.test.ts",
     "ui/__tests__/ChatViewAgentSessionsOrder.test.ts",
     "ui/__tests__/ChatViewSequentialSessionsTransition.test.ts",
+    "ui/__tests__/ChatViewInputClear.test.ts",
+    "ui/input/__tests__/InputBarClear.test.ts",
     "ui/message/__tests__/MessageCombiner.test.ts",
     "ui/message/__tests__/StructuredResponseController.test.ts",
+    "LLM/__tests__/MessageSanitizer.test.ts",
+    "agent_framework/__tests__/AgentRunner.sanitizeToolResult.test.ts",
+    "agent_framework/__tests__/AgentRunner.computeToolResultText.test.ts",
+    "agent_framework/__tests__/AgentRunner.run.flows.test.ts",
   ]
 
   deps = [

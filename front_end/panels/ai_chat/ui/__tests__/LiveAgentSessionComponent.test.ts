@@ -125,7 +125,7 @@ describe('LiveAgentSessionComponent UI elements', () => {
     document.body.removeChild(el);
   });
 
-  it('shows handoff indicator for nested session with child display name', async () => {
+  it('renders nested session inside timeline area', async () => {
     const child = makeSession('c1', {config: {ui: {displayName: 'Child Agent'}}});
     const parent = makeSession('p1', {nestedSessions: [child], config: {ui: {displayName: 'Parent Agent'}}});
     const el = document.createElement('live-agent-session') as any;
@@ -134,11 +134,51 @@ describe('LiveAgentSessionComponent UI elements', () => {
     await raf();
 
     const sroot = el.shadowRoot!;
-    const handoff = sroot.querySelector('.handoff-indicator') as HTMLElement;
-    assert.isNotNull(handoff);
-    assert.include(handoff.textContent || '', 'Child Agent');
+    const nestedContainer = sroot.querySelector('.nested-sessions') as HTMLElement;
+    assert.isNotNull(nestedContainer);
+    // A nested live-agent-session element should be present
+    assert.isAtLeast(nestedContainer.querySelectorAll('live-agent-session').length, 1);
+
+    document.body.removeChild(el);
+  });
+
+  it('shows per-tool reasoning inline with the tool call when provided', async () => {
+    const session = makeSession('sR', {messages: [
+      { id: 't1', timestamp: new Date(), type: 'tool_call', content: {type: 'tool_call', toolName: 'fetch', toolArgs: {url: 'x'}, toolCallId: 't1', reasoning: 'Need to fetch the resource first.'}},
+    ]});
+    const el = document.createElement('live-agent-session') as any;
+    document.body.appendChild(el);
+    el.setSession(session as any);
+    await raf();
+
+    const sroot = el.shadowRoot!;
+    const items = Array.from(sroot.querySelectorAll('.timeline-item')) as HTMLElement[];
+    assert.isAtLeast(items.length, 1);
+    const first = items[0];
+    const inline = first.querySelector('.tool-reasoning-inline') as HTMLElement;
+    assert.isNotNull(inline);
+    assert.include(inline.textContent || '', 'Need to fetch the resource first.');
+
+    document.body.removeChild(el);
+  });
+
+  it('uses reasoning from tool args when missing on content (inline) and does not duplicate in args list', async () => {
+    const session = makeSession('sArgs', {messages: [
+      { id: 't2', timestamp: new Date(), type: 'tool_call', content: {type: 'tool_call', toolName: 'scan', toolArgs: {q: 'abc', reasoning: 'Scanning is needed to locate items.'}, toolCallId: 't2'}},
+    ]});
+    const el = document.createElement('live-agent-session') as any;
+    document.body.appendChild(el);
+    el.setSession(session as any);
+    await raf();
+
+    const sroot = el.shadowRoot!;
+    const item = sroot.querySelector('.timeline-item') as HTMLElement;
+    const inline = item.querySelector('.tool-reasoning-inline') as HTMLElement;
+    assert.isNotNull(inline);
+    assert.include(inline.textContent || '', 'Scanning is needed to locate items.');
+    // Ensure we did not also render an arg row for the reasoning key
+    assert.notInclude(item.innerHTML.toLowerCase(), 'reasoning:');
 
     document.body.removeChild(el);
   });
 });
-

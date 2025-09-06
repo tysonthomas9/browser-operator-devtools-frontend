@@ -24,7 +24,13 @@ export class ChatInput extends HTMLElement {
 
   connectedCallback(): void { this.#render(); }
   focusInput(): void { (this.querySelector('textarea') as HTMLTextAreaElement | null)?.focus(); }
-  clear(): void { this.#value = ''; this.#render(); }
+  clear(): void { this.#value = ''; this.#render(); this.#syncDomValue(); }
+
+  // Ensure DOM reflects the internal value immediately
+  #syncDomValue(): void {
+    const ta = this.querySelector('textarea') as HTMLTextAreaElement | null;
+    if (ta) { ta.value = this.#value; this.#autosize(ta); }
+  }
 
   #onInput = (e: Event) => {
     const el = e.target as HTMLTextAreaElement;
@@ -40,6 +46,7 @@ export class ChatInput extends HTMLElement {
       this.dispatchEvent(new CustomEvent('send', {bubbles: true, detail: { text }}));
       this.#value = '';
       this.#render();
+      this.#syncDomValue();
     }
   };
 

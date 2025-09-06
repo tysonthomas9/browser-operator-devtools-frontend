@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import * as Lit from '../../../ui/lit/lit.js';
+import { createLogger } from '../core/Logger.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
 import { getAgentUIConfig } from '../agent_framework/AgentSessionTypes.js';
 import { ToolCallComponent } from './ToolCallComponent.js';
@@ -17,18 +18,49 @@ export class LiveAgentSessionComponent extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`live-agent-session`;
   private readonly shadow = this.attachShadow({mode: 'open'});
   
-  private session: AgentSession | null = null;
+  private _session: AgentSession | null = null;
+  private _variant: 'full'|'nested' = 'full';
   private headerComponent: AgentSessionHeaderComponent | null = null;
   private toolComponents = new Map<string, ToolCallComponent>();
   private childComponents = new Map<string, LiveAgentSessionComponent>();
-  private isExpanded = false;
+  private isExpanded = true;
+  private suppressInlineChildIds: Set<string> = new Set();
+  readonly #log = createLogger('LiveAgentSession');
 
   connectedCallback(): void {
     this.render();
   }
 
+  // Allow declarative property binding from templates
+  set session(session: AgentSession) { this.setSession(session); }
+  get session(): AgentSession | null { return this._session; }
+
+  // Control whether to render with header (full) or compact nested variant
+  setVariant(variant: 'full'|'nested'): void {
+    this._variant = variant;
+    if (variant === 'nested') {
+      this.isExpanded = true; // nested timelines are always expanded
+    }
+    this.render();
+  }
+
+  setSuppressInlineChildIds(ids: Set<string>): void {
+    this.suppressInlineChildIds = ids;
+    try { this.#log.info('setSuppressInlineChildIds', { ids: Array.from(ids) }); } catch {}
+    this.render();
+  }
+
   setSession(session: AgentSession): void {
-    this.session = session;
+    this._session = session;
+    try {
+      this.#log.info('setSession', {
+        sessionId: session.sessionId,
+        agentName: session.agentName,
+        status: session.status,
+        nestedCount: session.nestedSessions?.length || 0,
+        messageCount: session.messages?.length || 0,
+      });
+    } catch {}
     
     // Update header component
     if (!this.headerComponent) {
@@ -45,7 +77,7 @@ export class LiveAgentSessionComponent extends HTMLElement {
   }
 
   addToolCall(toolCall: AgentMessage): void {
-    if (!this.session) return;
+    if (!this._session) return;
     
     // Store the tool call (no longer using separate components)
     this.toolComponents.set(toolCall.id, null as any);
@@ -55,7 +87,7 @@ export class LiveAgentSessionComponent extends HTMLElement {
   }
 
   updateToolResult(toolResult: AgentMessage): void {
-    if (!this.session) return;
+    if (!this._session) return;
     
     // Re-render to show the updated status
     this.render();
@@ -69,19 +101,24 @@ export class LiveAgentSessionComponent extends HTMLElement {
   }
 
   private render(): void {
-    if (!this.session) return;
+    if (!this._session) return;
 
     // Get agent UI configuration for proper display name
-    const uiConfig = getAgentUIConfig(this.session.agentName, this.session.config);
+    const uiConfig = getAgentUIConfig(this._session.agentName, this._session.config);
     
     // Generate timeline items HTML
     const timelineItemsHtml = this.generateTimelineItemsHtml();
-    const nestedSessionsHtml = this.generateNestedSessionsHtml();
     
     // Determine if this is a single tool execution
-    const toolMessages = this.session.messages.filter(msg => msg.type === 'tool_call');
+    const toolMessages = this._session.messages.filter(msg => msg.type === 'tool_call');
     const isSingleTool = toolMessages.length === 1;
     
+    const timelineId = `timeline-${this._session.sessionId}`;
+
+    const isFull = this._variant === 'full';
+    const reasoningHtml = isFull && this._session.agentReasoning ? `<div class="message">${this._session.agentReasoning}</div>` : '';
+    const timelineDisplay = isFull ? (this.isExpanded ? 'block' : 'none') : 'block';
+
     this.shadow.innerHTML = `
       <style>
         /* Import timeline styles from chatView.css */
@@ -94,12 +131,10 @@ export class LiveAgentSessionComponent extends HTMLElement {
           font-size: 13px;
           line-height: 1.4;
           padding: 0;
-          padding-right: 20px;
         }
         
-        .agent-session-container {
-          position: relative;
-        }
+        .agent-session-container { position: relative; }
+        .agent-session-container.nested { margin-left: 16px; }
         
         .agent-header {
           position: relative;
@@ -174,11 +209,7 @@ export class LiveAgentSessionComponent extends HTMLElement {
           bottom: 0;
           width: 1px;
           background-color: var(--sys-color-divider);
-          z-index: 1;
-        }
-        
-        .agent-execution-timeline.single-tool .timeline-items::before {
-          display: none;
+          z-index: 0; /* place behind content */
         }
         
         .agent-execution-timeline.single-tool .timeline-vertical-connector::before {
@@ -201,8 +232,6 @@ export class LiveAgentSessionComponent extends HTMLElement {
           display: block;
           margin: 2px 0;
           border-radius: 4px;
-          background: rgba(var(--sys-color-surface-variant-rgb), 0.2);
-          border: 1px solid transparent;
           transition: background-color 0.2s ease, border-color 0.2s ease;
         }
         
@@ -214,6 +243,8 @@ export class LiveAgentSessionComponent extends HTMLElement {
           line-height: 1.4;
           padding: 2px 4px;
           overflow: visible;
+          position: relative;
+          z-index: 1; /* above the spine */
         }
         
         .timeline-item-line {
@@ -229,13 +260,30 @@ export class LiveAgentSessionComponent extends HTMLElement {
           width: 14px;
         }
         
-        .tool-description-multiline {
+        .tool-left {
           flex: 1;
           color: var(--sys-color-on-surface);
+          display: flex;
+          align-items: baseline;
+          flex-wrap: wrap;
         }
         
         .tool-description-indicator {
           color: var(--sys-color-divider);
+          padding: 0 4px;
+          white-space: nowrap;
+        }
+        
+        .tool-name-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-left: 8px;
+          padding: 1px 6px;
+          border-radius: 999px;
+          font-size: 11px;
+          background: var(--sys-color-surface-variant);
+          color: var(--sys-color-on-surface-variant);
         }
         
         .tool-arg {
@@ -255,6 +303,27 @@ export class LiveAgentSessionComponent extends HTMLElement {
           color: var(--sys-color-on-surface-variant);
           word-break: break-word;
         }
+
+        /* Inline reasoning on the same line as the tool */
+        .tool-reasoning-inline {
+          color: var(--sys-color-on-surface-variant);
+          font-size: 12px;
+          margin-left: 0;
+          padding-left: 4px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          white-space: normal;
+          max-width: 100%;
+        }
+        /* Ensure the indicator sticks to the first character of reasoning */
+        .tool-reasoning-inline::before {
+          content: '─';
+          color: var(--sys-color-divider);
+          margin-right: 4px;
+        }
+        /* No expand/collapse UI for reasoning; keep clamped for scannability */
         
         .tool-status-marker {
           flex-shrink: 0;
@@ -265,15 +334,23 @@ export class LiveAgentSessionComponent extends HTMLElement {
         
         .tool-status-marker.completed { color: var(--sys-color-green-bright); }
         .tool-status-marker.error { color: var(--sys-color-error); }
-        .tool-status-marker.running { color: var(--sys-color-on-surface-variant); }
+        .tool-status-marker.running {
+          color: var(--sys-color-on-surface-variant);
+          animation: dotPulse 1.5s ease-in-out infinite;
+        }
         
         .tool-status-marker:hover {
           transform: scale(1.2);
         }
         
+        
+        
+        @keyframes dotPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+
         .timeline-item:hover {
-          background: rgba(var(--sys-color-surface-variant-rgb), 0.3);
-          border-color: var(--sys-color-outline-variant);
           transform: translateX(2px);
         }
         
@@ -299,6 +376,10 @@ export class LiveAgentSessionComponent extends HTMLElement {
           margin-right: 6px;
           color: var(--sys-color-primary);
         }
+        .handoff-anchor {
+          margin: 4px 0 0 0;
+          padding-left: 16px;
+        }
         
         .message {
           margin-bottom: 8px;
@@ -306,136 +387,137 @@ export class LiveAgentSessionComponent extends HTMLElement {
         }
       </style>
       <div class="agent-execution-timeline${isSingleTool ? ' single-tool' : ''}">
-        ${this.session.agentReasoning ? `<div class="message">${this.session.agentReasoning}</div>` : ''}
-        <div class="agent-session-container">
-          <div class="agent-header">
-            <div class="agent-marker"></div>
-            <div class="agent-title">${uiConfig.displayName}</div>
-            <div class="agent-divider"></div>
-            <button class="tool-toggle">
-              <span class="toggle-icon">${this.isExpanded ? '▲' : '▼'}</span>
-            </button>
-          </div>
-          <div class="timeline-items" style="display: ${this.isExpanded ? 'block' : 'none'};">
+        ${reasoningHtml}
+        <div class="agent-session-container${isFull ? '' : ' nested'}">
+          ${isFull ? `
+          <div class=\"agent-header\">
+            <div class=\"agent-marker\"></div>
+            <div class=\"agent-title\">${uiConfig.displayName}</div>
+            <div class=\"agent-divider\"></div>
+            <button class=\"tool-toggle\" aria-expanded=\"${this.isExpanded}\" aria-controls=\"${timelineId}\" title=\"${this.isExpanded ? 'Collapse' : 'Expand'}\">\n              <span class=\"toggle-icon\">${this.isExpanded ? '▲' : '▼'}</span>\n            </button>
+          </div>` : ''}
+          <div class="timeline-items" id="${timelineId}" role="list" aria-live="polite" style="display: ${timelineDisplay};">
             ${timelineItemsHtml}
-          </div>
-          <div class="nested-sessions" style="display: ${this.isExpanded ? 'block' : 'none'};">
-            ${nestedSessionsHtml}
+            <div class="nested-sessions" style="display: ${timelineDisplay};"></div>
           </div>
         </div>
       </div>
     `;
     
-    // Add event listener for the toggle button
-    const toggleButton = this.shadow.querySelector('.tool-toggle');
+    // Add event listener for the toggle button (full variant only)
+    const toggleButton = isFull ? this.shadow.querySelector('.tool-toggle') : null;
     if (toggleButton) {
       toggleButton.addEventListener('click', () => {
         this.isExpanded = !this.isExpanded;
-        this.render(); // Re-render with new state
+        this.render();
       });
+    }
+
+    // No expand/collapse listeners for reasoning (simplified)
+
+    // Render nested sessions as real elements with live interactivity
+    const nestedContainer = this.shadow.querySelector('.nested-sessions');
+    const nestedSessions = this._session?.nestedSessions || [];
+    if (nestedSessions.length) {
+      // First, try to inline children at handoff anchors
+      const anchors = Array.from(this.shadow.querySelectorAll<HTMLElement>('.handoff-anchor'));
+      const inlined = new Set<string>();
+      for (const anchor of anchors) {
+        const nid = anchor.getAttribute('data-nested-id');
+        if (!nid) continue;
+        const nested = nestedSessions.find(s => s.sessionId === nid);
+        if (!nested) continue;
+        const nestedEl = new LiveAgentSessionComponent();
+        try { this.#log.info('inlining nested session at anchor', { childSessionId: nested.sessionId, agentName: nested.agentName }); } catch {}
+        nestedEl.setVariant('nested');
+        nestedEl.setSession(nested);
+        nestedEl.setSuppressInlineChildIds(this.suppressInlineChildIds);
+        anchor.replaceWith(nestedEl);
+        inlined.add(nid);
+      }
+      // Fallback: append any remaining nested sessions (without anchors) at the bottom container
+      if (nestedContainer) {
+        (nestedContainer as HTMLElement).innerHTML = '';
+        for (const nested of nestedSessions) {
+          if (inlined.has(nested.sessionId)) continue;
+          // Always show fallback nested sessions; ChatView suppresses top-level duplicates
+          const nestedEl = new LiveAgentSessionComponent();
+          try { this.#log.info('appending nested session (fallback)', { childSessionId: nested.sessionId, agentName: nested.agentName }); } catch {}
+          nestedEl.setVariant('nested');
+          nestedEl.setSession(nested);
+          nestedEl.setSuppressInlineChildIds(this.suppressInlineChildIds);
+          nestedContainer.appendChild(nestedEl);
+        }
+      }
     }
   }
 
   private generateTimelineItemsHtml(): string {
     if (!this.session) return '';
     
-    const toolMessages = this.session.messages.filter(msg => msg.type === 'tool_call');
-    const toolResults = this.session.messages.filter(msg => msg.type === 'tool_result');
+    const toolMessages = this._session?.messages.filter(msg => msg.type === 'tool_call') || [];
+    const toolResults = this._session?.messages.filter(msg => msg.type === 'tool_result') || [];
     
     let html = '';
     
     // Add agent query if present (matching ChatView)
-    if (this.session.agentQuery) {
+    if (this._session && this._session.agentQuery) {
       html += `
-        <div class="timeline-item">
+        <div class="timeline-item" role="listitem">
           <div class="tool-line">
-            <div class="tool-description-multiline">
-              <span class="tool-description-indicator">─</span>
-              <span style="margin-left: 4px;">${this.session.agentQuery}</span>
+            <div class="tool-left">
+              <span class="tool-reasoning-inline">${this.session.agentQuery}</span>
             </div>
           </div>
         </div>
       `;
     }
     
-    // Add tool execution items
-    html += toolMessages.map(toolMsg => {
-      const toolContent = toolMsg.content as any;
-      const toolName = toolContent.toolName;
-      const toolArgs = toolContent.toolArgs || {};
-      
-      // Find matching tool result
-      const toolResult = toolResults.find(result => {
-        const resultContent = result.content as any;
-        return resultContent.toolCallId === toolContent.toolCallId;
-      });
-      
-      const resultContent = toolResult?.content as any;
-      const status = toolResult && resultContent ? (resultContent.success ? 'completed' : 'error') : 'running';
-      
-      const icon = ToolDescriptionFormatter.getToolIcon(toolName);
-      const toolNameDisplay = ToolDescriptionFormatter.formatToolName(toolName);
-      const descriptionData = ToolDescriptionFormatter.getToolDescription(toolName, toolArgs);
-      
-      if (descriptionData.isMultiLine && Array.isArray(descriptionData.content)) {
-        // Multi-line format matching the expected HTML
-        const argsHtml = descriptionData.content.map(arg => 
-          `<div class="tool-arg">
-            <span class="tool-arg-key">${arg.key}:</span>
-            <span class="tool-arg-value">${arg.value}</span>
-          </div>`
-        ).join('');
-        
-        return `
-          <div class="timeline-item">
+    // Build result map for quick lookup
+    const resultMap = new Map<string, any>();
+    for (const r of toolResults) {
+      const rc = (r.content as any);
+      if (rc?.toolCallId) resultMap.set(rc.toolCallId, rc);
+    }
+
+    // Walk messages in order and render tool calls and inline handoff anchors
+    for (const m of (this._session?.messages || [])) {
+      if (m.type === 'tool_call') {
+        const toolContent = m.content as any;
+        const toolName = toolContent.toolName;
+        const toolArgs = toolContent.toolArgs || {};
+        const reasonFromArgs = toolArgs?.reasoning ?? toolArgs?.reason ?? toolArgs?.why;
+        const toolReasoning: string | undefined = (toolContent.reasoning ?? (reasonFromArgs !== undefined ? String(reasonFromArgs) : undefined));
+        const toolId: string = toolContent.toolCallId || m.id;
+        const resultContent = resultMap.get(toolContent.toolCallId);
+        const status = resultContent ? (resultContent.success ? 'completed' : 'error') : 'running';
+        const statusText = status === 'running' ? 'Running' : (status === 'completed' ? 'Success' : 'Error');
+        const icon = ToolDescriptionFormatter.getToolIcon(toolName);
+        const toolNameDisplay = ToolDescriptionFormatter.formatToolName(toolName);
+        const aria = toolReasoning ? `${toolReasoning} — ${toolNameDisplay} — ${statusText}` : `${toolNameDisplay} — ${statusText}`;
+        html += `
+          <div class="timeline-item" role="listitem" data-tool-id="${toolId}" aria-label="${aria}">
             <div class="tool-line">
-              <div class="tool-description-multiline" style="display: block;">
-                <span class="tool-description-indicator">─</span>
-                <span style="margin-left: 4px;">${icon}  ${toolNameDisplay}:</span>
-                ${argsHtml}
+              <div class="tool-left">
+                ${toolReasoning ? `<span class=\"tool-reasoning-inline\">${toolReasoning}</span>` : `<span class=\"tool-description-indicator\">─</span>`}
+                <span class="tool-name-badge">${icon} ${toolNameDisplay}</span>
               </div>
               <span class="tool-status-marker ${status}" title="${status === 'running' ? 'Running' : status === 'completed' ? 'Completed' : 'Error'}">●</span>
             </div>
           </div>
         `;
-      } else {
-        // Single-line format
-        const content = typeof descriptionData.content === 'string' ? descriptionData.content : String(descriptionData.content);
-        return `
-          <div class="timeline-item">
-            <div class="tool-line">
-              <div class="tool-description-multiline">
-                <span class="tool-description-indicator">─</span>
-                <span style="margin-left: 4px;">${icon}  ${content}</span>
-              </div>
-              <span class="tool-status-marker ${status}" title="${status === 'running' ? 'Running' : status === 'completed' ? 'Completed' : 'Error'}">●</span>
-            </div>
-          </div>
-        `;
+      } else if (m.type === 'handoff') {
+        const c = (m.content as any) || {};
+        const nestedId = c.nestedSessionId as string | undefined;
+        if (nestedId && !nestedId.startsWith('pending-')) {
+          html += `
+            <div class="handoff-anchor" role="listitem" data-nested-id="${nestedId}"></div>
+          `;
+        }
       }
-    }).join('');
+    }
     
     return html;
   }
-
-
-  private generateNestedSessionsHtml(): string {
-    if (!this.session?.nestedSessions || this.session.nestedSessions.length === 0) return '';
-    
-    return this.session.nestedSessions.map(nested => {
-      const nestedUiConfig = getAgentUIConfig(nested.agentName, nested.config);
-      
-      // Create a new LiveAgentSessionComponent for the nested session
-      const nestedComponent = new LiveAgentSessionComponent();
-      nestedComponent.setSession(nested);
-      
-      return `
-        <div class="handoff-indicator">
-          <span class="handoff-arrow">↓</span>
-          <span class="handoff-text">Handoff to ${nestedUiConfig.displayName}</span>
-        </div>
-        ${nestedComponent.shadow.innerHTML || ''}
-      `;
-    }).join('');
-  }
+  // No additional helpers needed for the simplified view
 }

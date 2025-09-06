@@ -38,7 +38,7 @@ function queryLive(view: HTMLElement): HTMLElement[] {
 }
 
 describe('ChatView Agent Sessions: transition from completed to new running session', () => {
-  it('keeps rendering first completed session and shows second running session started via handler before upstream messages include it', async () => {
+  it('renders first completed session then second running session when added to messages', async () => {
     const s1 = makeSession('s1', {
       agentReasoning: 'First agent session',
       status: 'completed',
@@ -64,7 +64,7 @@ describe('ChatView Agent Sessions: transition from completed to new running sess
     } as any;
     await raf();
 
-    // Now a new session starts, but upstream has not yet added it to messages
+    // Now a new session starts; upstream adds it to messages
     const s2 = makeSession('s2', {
       agentReasoning: 'Second agent session',
       status: 'running',
@@ -72,18 +72,6 @@ describe('ChatView Agent Sessions: transition from completed to new running sess
         { id: 'tc2', timestamp: new Date(), type: 'tool_call', content: { type: 'tool_call', toolName: 'scan', toolArgs: { sel: '#id' }, toolCallId: 'tc2' } },
       ],
     });
-    (view as any).handleAgentSessionStarted(s2);
-    await raf();
-
-    // Both sessions should be visible in order
-    let lives = queryLive(view);
-    assert.strictEqual(lives.length, 2);
-    const firstReason = lives[0].shadowRoot!.querySelector('.message')?.textContent || '';
-    const secondReason = lives[1].shadowRoot!.querySelector('.message')?.textContent || '';
-    assert.include(firstReason, 'First agent session');
-    assert.include(secondReason, 'Second agent session');
-
-    // Upstream later sends messages including s2; view should remain consistent
     view.data = {
       messages: [
         makeUser('start'),
@@ -97,10 +85,18 @@ describe('ChatView Agent Sessions: transition from completed to new running sess
     } as any;
     await raf();
 
+    // Both sessions should be visible in order
+    let lives = queryLive(view);
+    assert.strictEqual(lives.length, 2);
+    const firstReason = lives[0].shadowRoot!.querySelector('.message')?.textContent || '';
+    const secondReason = lives[1].shadowRoot!.querySelector('.message')?.textContent || '';
+    assert.include(firstReason, 'First agent session');
+    assert.include(secondReason, 'Second agent session');
+
+    // Still 2 sessions visible
     lives = queryLive(view);
     assert.strictEqual(lives.length, 2);
 
     document.body.removeChild(view);
   });
 });
-

@@ -9,7 +9,7 @@ import { TIMING_CONSTANTS } from '../core/Constants.js';
 import { PromptEditDialog } from './PromptEditDialog.js';
 import { MarkdownViewerUtil } from '../common/MarkdownViewerUtil.js';
 import { createLogger } from '../core/Logger.js';
-import type { AgentSession, AgentMessage, ToolCallMessage as AgentToolCallMessage, ToolResultMessage as AgentToolResultMessage } from '../agent_framework/AgentSessionTypes.js';
+import type { AgentSession, ToolCallMessage as AgentToolCallMessage, ToolResultMessage as AgentToolResultMessage } from '../agent_framework/AgentSessionTypes.js';
 import { getAgentUIConfig } from '../agent_framework/AgentSessionTypes.js';
 import { VersionChecker, type VersionInfo } from '../core/VersionChecker.js';
 import { LiveAgentSessionComponent } from './LiveAgentSessionComponent.js';
@@ -85,9 +85,8 @@ export class ChatView extends HTMLElement {
   #markdownRenderer = new MarkdownRenderer();
   #isFirstMessageView = true; // Track if we're in the centered first-message view
   #selectedPromptType?: string | null; // Track the currently selected prompt type
-  #liveAgentSessions = new Map<string, {
-    component: LiveAgentSessionComponent;
-  }>();
+  // Lightweight instance cache to preserve per-session element state across renders
+  #liveSessionComponents = new Map<string, LiveAgentSessionComponent>();
   #handlePromptButtonClickBound: (event: Event) => void = () => {}; // Initialize with empty function, will be properly set in connectedCallback
   // Add model selection properties
   #modelOptions?: Array<{value: string, label: string}>;
@@ -113,6 +112,10 @@ export class ChatView extends HTMLElement {
   });
   // Combined messages cache for this render pass
   #combinedMessagesCache: CombinedMessage[] = [];
+  // Track agent session IDs that are nested inside other sessions to avoid duplicate top-level rendering
+  #nestedChildSessionIds: Set<string> = new Set();
+  // Track pending handoff target agent names to suppress interim top-level renders
+  #pendingHandoffTargets: Set<string> = new Set();
   // Model selector is rendered via <ai-model-selector>
   
   // Add version info state
@@ -140,7 +143,8 @@ export class ChatView extends HTMLElement {
   // Test-only helper to introspect cached live agent sessions
   // This is used by unit tests to verify pruning behavior and is not used in production code.
   getLiveAgentSessionCountForTesting(): number {
-    return this.#liveAgentSessions.size;
+    // Count AGENT_SESSION messages present; used as a proxy for visible sessions
+    return this.#messages.filter(m => m.entity === ChatMessageEntity.AGENT_SESSION).length;
   }
 
 
@@ -319,15 +323,10 @@ export class ChatView extends HTMLElement {
       data.messages.some(msg => msg && msg.entity === ChatMessageEntity.USER) : false;
     this.#isFirstMessageView = !hasUserMessages;
 
-    // Ensure any live sessions are reflected as messages even if upstream
-    // state has not appended them yet (prevents flicker/absence on transition)
-    this.#syncLiveSessionsIntoMessages();
+    // Controller owns session message upserts; no UI sync required
 
     // Update the prompt button handler with new props
     this.#updatePromptButtonClickHandler();
-
-    // Prune stale live agent session components that are no longer in messages
-    this.#pruneLiveAgentSessions();
 
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
 
@@ -338,179 +337,25 @@ export class ChatView extends HTMLElement {
   // AgentSessionMessage in the messages list. This protects against timing
   // gaps where a session has started but upstream state has not yet emitted
   // the AgentSessionMessage, which would otherwise prevent rendering.
-  #syncLiveSessionsIntoMessages(): void {
-    if (!this.#liveAgentSessions.size) {
-      return;
-    }
-    // Respect upstream intent: if there are no AGENT_SESSION messages at all
-    // and we are not actively loading, do not resurrect sessions.
-    const hasAnyAgentSessionsInIncoming = this.#messages.some(m => m.entity === ChatMessageEntity.AGENT_SESSION);
-    // Only perform sync when upstream has not yet provided any agent session messages.
-    // If upstream provided a subset (e.g., removed a parent), do NOT resurrect others.
-    if (hasAnyAgentSessionsInIncoming === true) {
-      return;
-    }
-    // If there are no incoming sessions and we aren't loading, do nothing.
-    if (this.#state !== State.LOADING) {
-      return;
-    }
-    const existingIds = new Set(
-      this.#messages
-        .filter(m => m.entity === ChatMessageEntity.AGENT_SESSION)
-        .map(m => (m as AgentSessionMessage).agentSession.sessionId)
-    );
-    for (const [sessionId, entry] of this.#liveAgentSessions.entries()) {
-      if (!existingIds.has(sessionId)) {
-        // Create a lightweight AgentSessionMessage so the session renders
-        const comp = entry.component;
-        const session = (comp as any)["session"] as AgentSession | undefined;
-        if (session && session.status === 'running') {
-          const agentSessionMessage: AgentSessionMessage = {
-            entity: ChatMessageEntity.AGENT_SESSION,
-            agentSession: session,
-            summary: `${session.agentName} is executing...`
-          };
-          this.#messages.push(agentSessionMessage);
-          existingIds.add(sessionId);
-          logger.info(`Synced live agent session into messages: ${sessionId}`);
-        }
-      }
-    }
-  }
+  // (Removed) #syncLiveSessionsIntoMessages
 
-  // Remove cached LiveAgentSessionComponent entries that no longer appear in messages
-  #pruneLiveAgentSessions(): void {
-    if (!this.#liveAgentSessions.size) {
-      return;
-    }
-    const activeSessionIds = new Set(
-      this.#messages
-        .filter(m => m.entity === ChatMessageEntity.AGENT_SESSION)
-        .map(m => (m as AgentSessionMessage).agentSession.sessionId)
-    );
-    for (const sessionId of this.#liveAgentSessions.keys()) {
-      if (!activeSessionIds.has(sessionId)) {
-        // Only prune sessions that truly disappeared from messages.
-        // Running sessions should normally be synced into messages already.
-        this.#liveAgentSessions.delete(sessionId);
-        logger.info(`Pruned live agent session from cache: ${sessionId}`);
-      }
-    }
-  }
-
-  /**
-   * Handle agent session started event
-   */
-  handleAgentSessionStarted(session: AgentSession): void {
-    logger.info(`Agent session started: ${session.sessionId} (${session.agentName})`);
-    // Check if we already have a component for this session
-    const existingEntry = this.#liveAgentSessions.get(session.sessionId);
-    if (existingEntry) {
-      // Update the existing component
-      existingEntry.component.setSession(session);
-      
-      // Also update the corresponding message in the array
-      const existingMessageIndex = this.#messages.findIndex(msg => 
-        msg.entity === ChatMessageEntity.AGENT_SESSION && 
-        (msg as AgentSessionMessage).agentSession.sessionId === session.sessionId
-      );
-      if (existingMessageIndex !== -1) {
-        (this.#messages[existingMessageIndex] as AgentSessionMessage).agentSession = session;
-      }
+  // Upsert an AGENT_SESSION message by sessionId
+  #upsertAgentSessionMessage(session: AgentSession): void {
+    const idx = this.#messages.findIndex(m => m.entity === ChatMessageEntity.AGENT_SESSION &&
+      (m as AgentSessionMessage).agentSession.sessionId === session.sessionId);
+    if (idx >= 0) {
+      (this.#messages[idx] as AgentSessionMessage).agentSession = session;
     } else {
-      // Create a new live agent session component
-      const component = new LiveAgentSessionComponent();
-      component.setSession(session);
-      
-      // Store the component for updates
-      this.#liveAgentSessions.set(session.sessionId, { component });
-      
-      // Create an AGENT_SESSION message to trigger rendering in the messages array
       const agentSessionMessage: AgentSessionMessage = {
         entity: ChatMessageEntity.AGENT_SESSION,
         agentSession: session,
         summary: `${session.agentName} is executing...`
       };
-      
-      // Add to messages array so it gets rendered immediately.
-      // This protects against timing gaps until upstream state emits it.
       this.#messages.push(agentSessionMessage);
     }
-    
-    // Trigger a re-render to update the UI
-    void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
   }
 
-  /**
-   * Handle agent tool started event
-   */
-  handleAgentToolStarted(data: { session: AgentSession, toolCall: AgentMessage }): void {
-    const entry = this.#liveAgentSessions.get(data.session.sessionId);
-    if (entry) {
-      // Add the tool call to the component
-      entry.component.addToolCall(data.toolCall);
-      // Also update the session data
-      entry.component.setSession(data.session);
-    }
-  }
-
-  /**
-   * Handle agent tool completed event
-   */
-  handleAgentToolCompleted(data: { session: AgentSession, toolResult: AgentMessage }): void {
-    const entry = this.#liveAgentSessions.get(data.session.sessionId);
-    if (entry) {
-      // Update with the tool result
-      entry.component.updateToolResult(data.toolResult);
-      // Also update the session data
-      entry.component.setSession(data.session);
-    }
-  }
-
-  /**
-   * Handle agent session updated event
-   */
-  handleAgentSessionUpdated(session: AgentSession): void {
-    logger.info(`Agent session updated: ${session.sessionId} status=${session.status}`);
-    const entry = this.#liveAgentSessions.get(session.sessionId);
-    if (entry) {
-      // Update the component with the latest session data
-      entry.component.setSession(session);
-      
-      // Also update the corresponding message in the array
-      const existingMessageIndex = this.#messages.findIndex(msg => 
-        msg.entity === ChatMessageEntity.AGENT_SESSION && 
-        (msg as AgentSessionMessage).agentSession.sessionId === session.sessionId
-      );
-      if (existingMessageIndex !== -1) {
-        (this.#messages[existingMessageIndex] as AgentSessionMessage).agentSession = session;
-      } else {
-        // If we missed inserting the session message earlier, ensure it's present now.
-        const agentSessionMessage: AgentSessionMessage = {
-          entity: ChatMessageEntity.AGENT_SESSION,
-          agentSession: session,
-          summary: `${session.agentName} is executing...`
-        };
-        this.#messages.push(agentSessionMessage);
-        logger.info(`Inserted missing agent session message on update: ${session.sessionId}`);
-      }
-      
-      // Trigger a re-render to update the UI
-      void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
-    }
-  }
-
-  /**
-   * Handle child agent started event
-   */
-  handleChildAgentStarted(data: { parentSession: AgentSession, childAgentName: string, childSessionId: string }): void {
-    // For child agents, we might want to update the parent session display
-    const parentEntry = this.#liveAgentSessions.get(data.parentSession.sessionId);
-    if (parentEntry) {
-      // Update the parent component to show nested agent activity
-      parentEntry.component.setSession(data.parentSession);
-    }
-  }
+  // Event handlers removed: controller owns session updates
 
   #handleSendMessage(text?: string): void {
     if (!this.#onSendMessage || this.#isInputDisabled) {
@@ -531,6 +376,11 @@ export class ChatView extends HTMLElement {
   #handleChatInputSend(event: Event): void {
     const e = event as CustomEvent<{text: string}>;
     this.#handleSendMessage(e.detail?.text);
+    // Proactively clear the input bar's field to avoid any stale content
+    const bar = this.#shadow.querySelector('ai-input-bar') as any;
+    if (bar && typeof bar.clearInput === 'function') {
+      bar.clearInput();
+    }
   }
 
   #handleChatInputChange(event: Event): void {
@@ -554,23 +404,37 @@ export class ChatView extends HTMLElement {
           // Render User Message via dedicated renderer
           return renderUserMessage(message as any, this.#markdownRenderer);
         case ChatMessageEntity.AGENT_SESSION:
-          // Use LiveAgentSessionComponent for real-time updates
+          // Render live session declaratively; Lit preserves element instance by key
           {
             const agentSessionMessage = message as AgentSessionMessage;
-            
-            // Check if we already have a live component for this session
-            const existingEntry = this.#liveAgentSessions.get(agentSessionMessage.agentSession.sessionId);
-            if (existingEntry) {
-              // Use the live component
-              existingEntry.component.setSession(agentSessionMessage.agentSession);
-              return html`${existingEntry.component}`;
-            } else {
-              // Create new live component
-              const component = new LiveAgentSessionComponent();
-              component.setSession(agentSessionMessage.agentSession);
-              this.#liveAgentSessions.set(agentSessionMessage.agentSession.sessionId, { component });
-              return html`${component}`;
+            const sid = agentSessionMessage.agentSession.sessionId;
+            // If this session is a nested child of another visible session, or a pending handoff target, hide the top-level duplicate
+            if (this.#nestedChildSessionIds.has(sid) || this.#pendingHandoffTargets.has(agentSessionMessage.agentSession.agentName)) {
+              logger.info('ChatView: suppressing top-level nested agent session', { sid });
+              return html``;
             }
+            let comp = this.#liveSessionComponents.get(sid);
+            if (!comp) {
+              comp = new LiveAgentSessionComponent();
+              this.#liveSessionComponents.set(sid, comp);
+            }
+            // Update data on the persistent element instance
+            (comp as any).session = agentSessionMessage.agentSession;
+            // Ensure top-level sessions render in full variant
+            (comp as any).setVariant?.('full');
+            // Provide top-level session IDs to suppress inline duplication of nested children
+            const topLevelIds = new Set(
+              this.#messages
+                .filter(m => (m as any).entity === ChatMessageEntity.AGENT_SESSION)
+                .map(m => (m as AgentSessionMessage).agentSession.sessionId)
+            );
+            (comp as any).setSuppressInlineChildIds?.(topLevelIds);
+            logger.info('ChatView: rendering top-level agent session', {
+              sid,
+              topLevelCount: topLevelIds.size,
+              nestedChildCount: this.#nestedChildSessionIds.size,
+            });
+            return html`${comp}`;
           }
         case ChatMessageEntity.TOOL_RESULT:
           {
@@ -728,26 +592,76 @@ export class ChatView extends HTMLElement {
     // Check if the last message is a MODEL message indicating a tool is running
     const lastMessage = this.#messages[this.#messages.length - 1];
     const isModelRunningTool = lastMessage?.entity === ChatMessageEntity.MODEL && !lastMessage.isFinalAnswer && lastMessage.toolName;
-    // hasTerminalMessage: whether the most recent message represents a terminal state
-    // for the current exchange. A terminal message means we should stop showing the
-    // generic loader because the model produced a final response (success or error),
-    // or a standalone tool_result was emitted. Note: we only consider the last message
-    // because rendering is driven by the most recent step in the conversation.
-    const hasTerminalMessage = Boolean(lastMessage && (
-      (lastMessage.entity === ChatMessageEntity.MODEL && (lastMessage as any).action === 'final') ||
-      lastMessage.entity === ChatMessageEntity.TOOL_RESULT
-    ));
+    const lastIsFinal = lastMessage?.entity === ChatMessageEntity.MODEL && (lastMessage as any).action === 'final';
+    // Session-aware loading: keep spinner while any agent session is running,
+    // or (for non-agent flows) until we see a final model message.
+    const anyAgentRunning = this.#messages.some(m =>
+      (m as any).entity === ChatMessageEntity.AGENT_SESSION &&
+      ((m as any as AgentSessionMessage).agentSession?.status === 'running')
+    );
 
     // All messages are rendered directly now, including AgentSessionMessage
     let messagesToRender = this.#messages;
+
+    // Build a set of nested child session IDs present in the current message set.
+    // Include both nestedSessions[].sessionId and any handoff anchors in messages that
+    // have a concrete nestedSessionId (ignore pending-* placeholders). Also build
+    // a set of pending handoff target agent names to suppress interim top-level renders.
+    this.#nestedChildSessionIds = new Set();
+    this.#pendingHandoffTargets = new Set();
+    const collectNested = (s: AgentSession | any) => {
+      if (!s) return;
+      // Record child sessions from nestedSessions
+      if (Array.isArray(s.nestedSessions)) {
+        for (const child of s.nestedSessions) {
+          if (child?.sessionId) {
+            this.#nestedChildSessionIds.add(child.sessionId);
+          }
+          collectNested(child);
+        }
+      }
+      // Record concrete anchors from handoff messages in the timeline (if available)
+      if (Array.isArray(s.messages)) {
+        for (const msg of s.messages) {
+          if (msg?.type === 'handoff') {
+            const nestedId = (msg.content as any)?.nestedSessionId;
+            if (typeof nestedId === 'string' && !nestedId.startsWith('pending-')) {
+              this.#nestedChildSessionIds.add(nestedId);
+            } else if (typeof nestedId === 'string' && nestedId.startsWith('pending-')) {
+              const targetAgent = (msg.content as any)?.targetAgent as string | undefined;
+              if (targetAgent) {
+                this.#pendingHandoffTargets.add(targetAgent);
+              }
+            }
+          }
+        }
+      }
+    };
+    for (const m of this.#messages) {
+      if ((m as any).entity === ChatMessageEntity.AGENT_SESSION) {
+        const sess = (m as any as AgentSessionMessage).agentSession;
+        collectNested(sess);
+      }
+    }
+    try {
+      const topLevelIds = this.#messages
+        .filter(m => (m as any).entity === ChatMessageEntity.AGENT_SESSION)
+        .map(m => (m as any as AgentSessionMessage).agentSession.sessionId);
+      logger.info('ChatView: agent sessions overview', {
+        topLevelSessionIds: topLevelIds,
+        nestedChildSessionIds: Array.from(this.#nestedChildSessionIds),
+        pendingHandoffTargets: Array.from(this.#pendingHandoffTargets),
+      });
+    } catch {}
 
     // Combine tool calls and results using helper
     const combinedMessages = combineMessages(messagesToRender) as CombinedMessage[];
     this.#combinedMessagesCache = combinedMessages;
 
 
-    // General loading state (before any model response or after tool result)
-    const showGeneralLoading = this.#state === State.LOADING && !isModelRunningTool && !hasTerminalMessage;
+    // General loading state: show while processing unless we have a final model message
+    // or (for agent flows) no sessions are running anymore.
+    const showGeneralLoading = this.#state === State.LOADING && (anyAgentRunning || !lastIsFinal);
 
     // Find the last model message with an answer to use for the copy action
     let lastModelAnswer: string | null = null;

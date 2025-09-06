@@ -383,7 +383,7 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
   /**
    * Execute the agent
    */
-  async execute(args: ConfigurableAgentArgs): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
+  async execute(args: ConfigurableAgentArgs, _ctx?: unknown): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     logger.info(`Executing ${this.name} via AgentRunner with args:`, args);
 
     // Get current tracing context for debugging
@@ -431,6 +431,8 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       tools,
       maxIterations,
       temperature,
+      provider: AIChatPanel.getProviderForModel(modelName),
+      getVisionCapability: (m: string) => AIChatPanel.isVisionCapable(m),
     };
 
     const runnerHooks: AgentRunnerHooks = {
@@ -444,12 +446,19 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     };
 
     // Run the agent
+    const ctx: any = _ctx || {};
     const result = await AgentRunner.run(
       internalMessages,
       args,
       runnerConfig,
       runnerHooks,
-      this // Pass the current agent instance as executingAgent
+      this, // executingAgent
+      undefined,
+      {
+        sessionId: ctx.overrideSessionId,
+        parentSessionId: ctx.overrideParentSessionId,
+        traceId: ctx.overrideTraceId,
+      }
     );
 
     // Return the direct result from the runner (including agentSession)

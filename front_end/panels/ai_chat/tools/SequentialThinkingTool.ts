@@ -3,14 +3,13 @@
 // found in the LICENSE file.
 
 import * as SDK from '../../../core/sdk/sdk.js';
-import type { Tool } from './Tools.js';
+import type { Tool, LLMContext } from './Tools.js';
 import { TakeScreenshotTool } from './Tools.js';
 import { GetAccessibilityTreeTool } from './Tools.js';
 import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
 import { LLMRetryManager } from '../LLM/LLMErrorHandler.js';
-import { AIChatPanel } from '../ui/AIChatPanel.js';
 
 const logger = createLogger('SequentialThinkingTool');
 
@@ -73,13 +72,13 @@ export class SequentialThinkingTool implements Tool<SequentialThinkingArgs, Sequ
   private screenshotTool = new TakeScreenshotTool();
   private accessibilityTool = new GetAccessibilityTreeTool();
 
-  async execute(args: SequentialThinkingArgs): Promise<SequentialThinkingResult | { error: string }> {
+  async execute(args: SequentialThinkingArgs, ctx?: LLMContext): Promise<SequentialThinkingResult | { error: string }> {
     try {
       logger.info('Sequential thinking initiated', { userRequest: args.userRequest });
 
       // Check if current model supports vision
-      const currentModel = AIChatPanel.instance().getSelectedModel();
-      const isVisionCapable = await AIChatPanel.isVisionCapable(currentModel);
+      const currentModel = ctx?.model || '';
+      const isVisionCapable = ctx?.getVisionCapability ? await ctx.getVisionCapability(currentModel) : false;
       
       logger.info(`Model ${currentModel} vision capable: ${isVisionCapable}`);
 
@@ -98,7 +97,7 @@ export class SequentialThinkingTool implements Tool<SequentialThinkingArgs, Sequ
       );
 
       // 3. Get LLM analysis with visual grounding (or text-only)
-      const analysis = await this.getGroundedAnalysis(prompt);
+      const analysis = await this.getGroundedAnalysis(prompt, ctx);
       if ('error' in analysis) {
         return { error: `Failed to analyze: ${analysis.error}` };
       }
@@ -230,7 +229,7 @@ Based on the screenshot and current state, create a grounded sequential plan for
     };
   }
 
-  private async getGroundedAnalysis(prompt: { systemPrompt: string; userPrompt: string; images: Array<{ type: string; data: string }> }): Promise<SequentialThinkingResult | { error: string }> {
+  private async getGroundedAnalysis(prompt: { systemPrompt: string; userPrompt: string; images: Array<{ type: string; data: string }> }, ctx?: LLMContext): Promise<SequentialThinkingResult | { error: string }> {
     const retryManager = new LLMRetryManager({
       enableLogging: true,
       defaultConfig: {
@@ -245,8 +244,11 @@ Based on the screenshot and current state, create a grounded sequential plan for
     try {
       const result = await retryManager.executeWithRetry(async () => {
         // Get the selected model and its provider
-        const model = AIChatPanel.instance().getSelectedModel();
-        const provider = AIChatPanel.getProviderForModel(model);
+        if (!ctx?.provider || !ctx.model) {
+          throw new Error('Missing LLM context (provider/model) for SequentialThinkingTool');
+        }
+        const provider = ctx.provider;
+        const model = ctx.model;
         const llm = LLMClient.getInstance();
 
         // Prepare multimodal message

@@ -18,6 +18,7 @@ import type { TracingProvider, TracingContext } from '../tracing/TracingProvider
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
 import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
+import type { LLMProvider } from '../LLM/LLMTypes.js';
 
 const logger = createLogger('AgentService');
 
@@ -192,8 +193,11 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         throw new Error(`${providerName} API key is required for this configuration`);
       }
 
-      // Will throw error if OpenAI model is used without API key
-      this.#graph = createAgentGraph(apiKey, modelName);
+      // Determine selected provider for primary graph execution
+      const selectedProvider = (localStorage.getItem('ai_chat_provider') || 'openai') as LLMProvider;
+
+      // Will throw error if model/provider configuration is invalid
+      this.#graph = createAgentGraph(apiKey, modelName, selectedProvider);
 
       this.#isInitialized = true;
     } catch (error) {
@@ -623,9 +627,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       case 'session_started':
         this.#activeAgentSessions.set(progressEvent.sessionId, progressEvent.data.session);
         this.dispatchEventToListeners(Events.AGENT_SESSION_STARTED, progressEvent.data.session);
+        // Upsert AGENT_SESSION message for real-time rendering
+        this.#upsertAgentSessionInMessages(progressEvent.data.session);
         break;
       case 'tool_started':
         this.dispatchEventToListeners(Events.AGENT_TOOL_STARTED, progressEvent.data);
+        // Stream session update into chat messages (parent or child)
+        this.#upsertAgentSessionInMessages(progressEvent.data.session);
         break;
       case 'tool_completed':
         this.dispatchEventToListeners(Events.AGENT_TOOL_COMPLETED, progressEvent.data);
@@ -633,12 +641,64 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         const session = this.#activeAgentSessions.get(progressEvent.sessionId);
         if (session) {
           this.dispatchEventToListeners(Events.AGENT_SESSION_UPDATED, session);
+          // Stream session update into chat messages
+          this.#upsertAgentSessionInMessages(session);
         }
         break;
       case 'child_agent_started':
         this.dispatchEventToListeners(Events.CHILD_AGENT_STARTED, progressEvent.data);
+        // Also reflect child placeholder in the parent's message if present
+        {
+          const parent = progressEvent.data.parentSession as AgentSession | undefined;
+          if (parent) {
+            this.#upsertAgentSessionInMessages(parent);
+          }
+        }
         break;
     }
+  }
+
+  // Upsert helper: ensures the chat transcript reflects the latest AgentSession state in real-time
+  #upsertAgentSessionInMessages(session: AgentSession): void {
+    // If this is a child session, update the parent container too
+    if (session.parentSessionId) {
+      // Find parent message and update nestedSessions
+      const parentIdx = this.#state.messages.findIndex(m =>
+        (m as any).entity === ChatMessageEntity.AGENT_SESSION &&
+        ((m as any).agentSession?.sessionId === session.parentSessionId)
+      );
+      if (parentIdx !== -1) {
+        const parentMsg = this.#state.messages[parentIdx] as any;
+        const parentSession = parentMsg.agentSession as AgentSession;
+        const nested = Array.isArray(parentSession.nestedSessions) ? [...parentSession.nestedSessions] : [];
+        const nIdx = nested.findIndex(s => s.sessionId === session.sessionId);
+        if (nIdx !== -1) {
+          nested[nIdx] = session;
+        } else {
+          nested.push(session);
+        }
+        const updatedParent = { ...parentSession, nestedSessions: nested } as AgentSession;
+        this.#state.messages[parentIdx] = { ...parentMsg, agentSession: updatedParent };
+        this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+        return;
+      }
+    }
+
+    // Otherwise, upsert the session as a top-level AGENT_SESSION message
+    const idx = this.#state.messages.findIndex(m =>
+      (m as any).entity === ChatMessageEntity.AGENT_SESSION &&
+      ((m as any).agentSession?.sessionId === session.sessionId)
+    );
+    if (idx !== -1) {
+      const existing = this.#state.messages[idx] as any;
+      this.#state.messages[idx] = { ...existing, agentSession: session };
+    } else {
+      // Only add as top-level if it has no parent
+      if (!session.parentSessionId) {
+        this.#state.messages.push({ entity: ChatMessageEntity.AGENT_SESSION, agentSession: session } as any);
+      }
+    }
+    this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
   }
   
   /**

@@ -2881,7 +2881,8 @@ devtools-snackbar.bookmark-notification .container {
   flex-shrink: 0; /* Prevent banner from shrinking */
   width: 100%;
   box-sizing: border-box;
-  z-index: 1000;
+  z-index: 9999; /* Ensure always on top */
+  position: relative;
 }
 
 @keyframes slideDown {

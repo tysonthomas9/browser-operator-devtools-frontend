@@ -1590,44 +1590,65 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Handle agent session started event
    */
   #handleAgentSessionStarted(event: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>): void {
-    if (this.#chatView) {
-      this.#chatView.handleAgentSessionStarted(event.data);
-    }
+    const session = event.data;
+    this.#upsertAgentSessionMessage(session);
+    this.performUpdate();
   }
   
   /**
    * Handle agent tool started event
    */
   #handleAgentToolStarted(event: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolCall: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>): void {
-    if (this.#chatView) {
-      this.#chatView.handleAgentToolStarted(event.data);
-    }
+    const { session } = event.data;
+    this.#upsertAgentSessionMessage(session);
+    this.performUpdate();
   }
   
   /**
    * Handle agent tool completed event
    */
   #handleAgentToolCompleted(event: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolResult: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>): void {
-    if (this.#chatView) {
-      this.#chatView.handleAgentToolCompleted(event.data);
-    }
+    const { session } = event.data;
+    this.#upsertAgentSessionMessage(session);
+    this.performUpdate();
   }
   
   /**
    * Handle agent session updated event
    */
   #handleAgentSessionUpdated(event: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>): void {
-    if (this.#chatView) {
-      this.#chatView.handleAgentSessionUpdated(event.data);
-    }
+    const session = event.data;
+    this.#upsertAgentSessionMessage(session);
+    this.performUpdate();
   }
   
   /**
    * Handle child agent started event
    */
   #handleChildAgentStarted(event: Common.EventTarget.EventTargetEvent<{ parentSession: import('../agent_framework/AgentSessionTypes.js').AgentSession, childAgentName: string, childSessionId: string }>): void {
-    if (this.#chatView) {
-      this.#chatView.handleChildAgentStarted(event.data);
+    const { parentSession } = event.data;
+    this.#upsertAgentSessionMessage(parentSession);
+    this.performUpdate();
+  }
+
+  /**
+   * Upsert an AGENT_SESSION message into the messages array by sessionId
+   */
+  #upsertAgentSessionMessage(session: import('../agent_framework/AgentSessionTypes.js').AgentSession): void {
+    const idx = this.#messages.findIndex(m => m.entity === ChatMessageEntity.AGENT_SESSION &&
+      (m as any).agentSession?.sessionId === session.sessionId);
+    if (idx >= 0) {
+      const updated = { ...(this.#messages[idx] as any), agentSession: session };
+      const next = [...this.#messages];
+      next[idx] = updated;
+      this.#messages = next;
+    } else {
+      const agentSessionMessage: ChatMessage = {
+        entity: ChatMessageEntity.AGENT_SESSION,
+        agentSession: session,
+        summary: `${session.agentName} is executing...`
+      } as any;
+      this.#messages = [...this.#messages, agentSessionMessage];
     }
   }
   
