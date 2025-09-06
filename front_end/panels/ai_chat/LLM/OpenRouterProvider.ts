@@ -651,8 +651,7 @@ export class OpenRouterProvider extends LLMBaseProvider {
     
     logger.debug('API key check:');
     logger.debug('- API key exists:', !!apiKey);
-    logger.debug('- API key length:', apiKey?.length || 0);
-    logger.debug('- API key prefix:', apiKey?.substring(0, 8) + '...' || 'none');
+    logger.debug('- API key presence:', apiKey ? '<redacted>' : 'none');
     logger.debug('- API key source:', source);
     logger.debug('- Build config available:', buildInfo.hasBuildConfig);
     logger.debug('- Build time:', buildInfo.buildTime);

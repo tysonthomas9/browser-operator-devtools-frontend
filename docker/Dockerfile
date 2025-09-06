@@ -51,12 +51,8 @@ RUN git remote add upstream https://github.com/BrowserOperator/browser-operator-
 RUN git fetch upstream
 RUN git checkout upstream/main
 
-# Copy our local modifications into the container
-COPY front_end/panels/ai_chat/core/EnvironmentConfig.ts /workspace/devtools/devtools-frontend/front_end/panels/ai_chat/core/EnvironmentConfig.ts
-COPY front_end/panels/ai_chat/ui/SettingsDialog.ts /workspace/devtools/devtools-frontend/front_end/panels/ai_chat/ui/SettingsDialog.ts  
-COPY front_end/entrypoints/devtools_app/devtools_app.ts /workspace/devtools/devtools-frontend/front_end/entrypoints/devtools_app/devtools_app.ts
-
-# Build Browser Operator version with our modifications
+# Build Browser Operator version (using upstream code to avoid TypeScript compilation issues)
+# Runtime API key injection will be handled by the entrypoint script
 RUN npm run build
 
 # Production stage

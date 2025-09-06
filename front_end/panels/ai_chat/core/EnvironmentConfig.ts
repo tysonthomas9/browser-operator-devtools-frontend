@@ -261,7 +261,8 @@ export class EnvironmentConfig {
       return 'runtime';
     }
     
-    if (BUILD_CONFIG?.apiKeys?.[provider]) {
+    if (typeof BUILD_CONFIG?.apiKeys?.[provider] === 'string' && 
+        BUILD_CONFIG.apiKeys[provider].trim() !== '') {
       return 'build-time';
     }
     

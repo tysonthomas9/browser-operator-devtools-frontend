@@ -54,8 +54,8 @@ export class GroqProvider extends LLMBaseProvider {
    */
   private getApiKey(): string {
     // Constructor parameter (highest priority for backward compatibility)
-    if (this.getApiKey() && this.getApiKey().trim() !== '') {
-      return this.getApiKey().trim();
+    if (this.apiKey && this.apiKey.trim() !== '') {
+      return this.apiKey.trim();
     }
     
     // Use environment config which handles localStorage -> build-time -> empty fallback
