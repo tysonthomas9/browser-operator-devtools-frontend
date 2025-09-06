@@ -35,6 +35,12 @@
   color-scheme: light dark;
 }
 
+/* Ensure custom input bar expands with container width */
+ai-input-bar {
+  display: block;
+  width: 100%;
+}
+
 .chat-view-container {
   display: flex;
   flex-direction: column;
@@ -89,7 +95,7 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  max-width: 600px;
+  max-width: none;
   margin: 0 auto;
   padding: 5px;
   padding-top: 0;
@@ -648,6 +654,20 @@
   box-sizing: border-box;
 }
 
+/* Ensure custom input element fills available width inside the row */
+.input-row ai-chat-input {
+  flex: 1 1 auto;
+  display: block;
+  width: 100%;
+}
+
+/* Ensure inner textarea fills its host component width */
+.input-row ai-chat-input .text-input {
+  width: 100%;
+  box-sizing: border-box;
+  display: block;
+}
+
 .input-container:focus-within {
   border-color: var(--color-primary-container-border);
   box-shadow: 0 4px 15px var(--color-shadow-subtle);
@@ -668,6 +688,11 @@
   outline: none;
   padding: 10px 0;
   letter-spacing: 0.01em;
+}
+
+/* Allow larger autosize range in centered first-message view */
+.centered-view .input-container.centered .input-row ai-chat-input .text-input {
+  max-height: 200px;
 }
 
 .text-input::placeholder {
@@ -2856,7 +2881,8 @@ devtools-snackbar.bookmark-notification .container {
   flex-shrink: 0; /* Prevent banner from shrinking */
   width: 100%;
   box-sizing: border-box;
-  z-index: 1000;
+  z-index: 9999; /* Ensure always on top */
+  position: relative;
 }
 
 @keyframes slideDown {
