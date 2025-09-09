@@ -302,7 +302,7 @@ export class AgentRunner {
         throw new Error(`Mini model not provided for handoff to agent '${targetAgentName}'. Ensure miniModel is passed in context.`);
       }
       resolvedModelName = miniModel;
-    } else if (targetConfig.modelName === 'use-nano') {
+    } else if (targetConfig.modelName === MODEL_SENTINELS.USE_NANO) {
       if (!nanoModel) {
         throw new Error(`Nano model not provided for handoff to agent '${targetAgentName}'. Ensure nanoModel is passed in context.`);
       }

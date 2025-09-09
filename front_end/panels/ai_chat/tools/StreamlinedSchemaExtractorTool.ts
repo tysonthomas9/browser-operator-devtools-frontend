@@ -179,7 +179,7 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
         ctx
       );
       
-      if (retryResult) {
+      if (retryResult && typeof retryResult === 'object') {
         finalData = this.resolveUrlsDirectly(retryResult, context.urlMappings, urlFields);
         extractionResult = retryResult; // Update for next iteration
       } else {
@@ -278,8 +278,11 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
           parsed = LLMResponseParser.parseJSONWithFallbacks(text);
         }
         
-        logger.debug(`JSON extraction successful on attempt ${attempt}`);
-        return parsed;
+        if (parsed && typeof parsed === 'object') {
+          logger.debug(`JSON extraction successful on attempt ${attempt}`);
+          return parsed;
+        }
+        throw new Error('Parsed extraction result is not an object/array');
 
       } catch (error) {
         if (attempt <= maxRetries) {

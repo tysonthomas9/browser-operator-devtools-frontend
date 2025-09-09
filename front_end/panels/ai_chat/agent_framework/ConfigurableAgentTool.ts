@@ -437,7 +437,7 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
         throw new Error(`Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel.`);
       }
       modelName = callCtx.miniModel;
-    } else if (this.config.modelName === 'use-nano') {
+    } else if (this.config.modelName === MODEL_SENTINELS.USE_NANO) {
       if (!callCtx.nanoModel) {
         throw new Error(`Nano model not provided in context for agent '${this.name}'. Ensure context includes nanoModel.`);
       }
