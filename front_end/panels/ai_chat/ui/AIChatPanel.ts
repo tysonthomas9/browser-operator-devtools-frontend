@@ -20,6 +20,7 @@ import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
 import { createLogger } from '../core/Logger.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
+import { BUILD_CONFIG } from '../core/BuildConfig.js';
 // Import of LiveAgentSessionComponent is not required here; the element is
 // registered by ChatView where it is used.
 
@@ -1396,6 +1397,13 @@ export class AIChatPanel extends UI.Panel.Panel {
    */
   #hasAnyProviderCredentials(): boolean {
     logger.info('=== CHECKING ALL PROVIDER CREDENTIALS ===');
+    
+    // Skip auth check in automated mode
+    if (BUILD_CONFIG.AUTOMATED_MODE) {
+      logger.info('Build-time automated mode enabled, bypassing credential check');
+      return true;
+    }
+    
     const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     logger.info('Currently selected provider:', selectedProvider);
     
