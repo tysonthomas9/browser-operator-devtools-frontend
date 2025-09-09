@@ -13,13 +13,19 @@ import type { LLMProviderConfig } from '../../LLM/LLMClient.js';
 import { TIMING_CONSTANTS } from '../../core/Constants.js';
 import { createTracingProvider, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
-import { AIChatPanel } from '../../ui/AIChatPanel.js';
 
 const logger = createLogger('EvaluationRunner');
 
 /**
  * Example runner for the evaluation framework
  */
+export interface EvaluationRunnerOptions {
+  judgeModel: string;
+  mainModel: string;
+  miniModel: string;
+  nanoModel: string;
+}
+
 export class EvaluationRunner {
   private evaluator: GenericToolEvaluator;
   private llmEvaluator: LLMEvaluator;
@@ -27,7 +33,7 @@ export class EvaluationRunner {
   private tracingProvider: TracingProvider;
   private sessionId: string;
 
-  constructor(judgeModel?: string) {
+  constructor(options: EvaluationRunnerOptions) {
     // Get API key from AgentService
     const agentService = AgentService.getInstance();
     const apiKey = agentService.getApiKey();
@@ -36,14 +42,9 @@ export class EvaluationRunner {
       throw new Error('API key not configured. Please configure in AI Chat settings.');
     }
 
-    // Use provided judge model or default
-    const evaluationModel = judgeModel || 'gpt-4.1-mini';
-
-    // Get the actual models configured in the UI for tools and agents
-    // TODO: Use a more robust method to get these settings
-    const mainModel = AIChatPanel.instance().getSelectedModel();
-    const miniModel = AIChatPanel.getMiniModel();
-    const nanoModel = AIChatPanel.getNanoModel();
+    // Require explicit models from caller
+    const { judgeModel, mainModel, miniModel, nanoModel } = options;
+    const evaluationModel = judgeModel;
 
     this.config = {
       extractionModel: evaluationModel,

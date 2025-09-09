@@ -199,13 +199,25 @@ export class EvaluationDialog {
     
     // Initialize evaluation runners
     try {
-      this.#evaluationRunner = new EvaluationRunner(this.#state.judgeModel);
+      // Inject current UI-selected models into the runner to decouple from UI internals
+      this.#evaluationRunner = new EvaluationRunner({
+        judgeModel: this.#state.judgeModel,
+        mainModel: AIChatPanel.instance().getSelectedModel(),
+        miniModel: AIChatPanel.getMiniModel(),
+        nanoModel: AIChatPanel.getNanoModel(),
+      });
     } catch (error) {
       logger.error('Failed to initialize evaluation runner:', error);
     }
     
     try {
-      this.#agentEvaluationRunner = new VisionAgentEvaluationRunner(this.#state.visionEnabled, this.#state.judgeModel);
+      this.#agentEvaluationRunner = new VisionAgentEvaluationRunner({
+        visionEnabled: this.#state.visionEnabled,
+        judgeModel: this.#state.judgeModel,
+        mainModel: AIChatPanel.instance().getSelectedModel(),
+        miniModel: AIChatPanel.getMiniModel(),
+        nanoModel: AIChatPanel.getNanoModel(),
+      });
     } catch (error) {
       logger.error('Failed to initialize agent evaluation runner:', error);
     }
@@ -885,13 +897,24 @@ export class EvaluationDialog {
       
       // Reinitialize evaluation runners with new model
       try {
-        this.#evaluationRunner = new EvaluationRunner(this.#state.judgeModel);
+        this.#evaluationRunner = new EvaluationRunner({
+          judgeModel: this.#state.judgeModel,
+          mainModel: AIChatPanel.instance().getSelectedModel(),
+          miniModel: AIChatPanel.getMiniModel(),
+          nanoModel: AIChatPanel.getNanoModel(),
+        });
       } catch (error) {
         logger.error('Failed to reinitialize evaluation runner:', error);
       }
       
       try {
-        this.#agentEvaluationRunner = new VisionAgentEvaluationRunner(this.#state.visionEnabled, this.#state.judgeModel);
+        this.#agentEvaluationRunner = new VisionAgentEvaluationRunner({
+          visionEnabled: this.#state.visionEnabled,
+          judgeModel: this.#state.judgeModel,
+          mainModel: AIChatPanel.instance().getSelectedModel(),
+          miniModel: AIChatPanel.getMiniModel(),
+          nanoModel: AIChatPanel.getNanoModel(),
+        });
       } catch (error) {
         logger.error('Failed to reinitialize agent evaluation runner:', error);
       }

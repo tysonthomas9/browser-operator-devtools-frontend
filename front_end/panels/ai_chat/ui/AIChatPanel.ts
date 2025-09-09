@@ -1282,7 +1282,10 @@ export class AIChatPanel extends UI.Panel.Panel {
         this.#evaluationAgent = new EvaluationAgent({
           clientId: compositeClientId,
           endpoint: config.endpoint,
-          secretKey: config.secretKey
+          secretKey: config.secretKey,
+          judgeModel: this.#selectedModel,
+          miniModel: this.#miniModel,
+          nanoModel: this.#nanoModel,
         });
 
         await this.#evaluationAgent.connect();
@@ -1351,7 +1354,14 @@ export class AIChatPanel extends UI.Panel.Panel {
     
     // Initialize the agent service
     logger.info('Calling agentService.initialize()...');
-    this.#agentService.initialize(apiKey, this.#selectedModel)
+    const miniForInit = this.#miniModel || this.#selectedModel;
+    const nanoForInit = this.#nanoModel || miniForInit;
+    this.#agentService.initialize(
+        apiKey,
+        this.#selectedModel,
+        miniForInit,
+        nanoForInit,
+      )
       .then(() => {
         logger.info('✅ Agent service initialized successfully');
         this.#setCanSendMessagesState(true, "Agent service initialized successfully");

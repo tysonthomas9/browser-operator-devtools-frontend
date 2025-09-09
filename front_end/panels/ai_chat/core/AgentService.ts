@@ -18,7 +18,6 @@ import type { TracingProvider, TracingContext } from '../tracing/TracingProvider
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
 import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
-import { AIChatPanel } from '../ui/AIChatPanel.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 
 const logger = createLogger('AgentService');
@@ -166,13 +165,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   /**
    * Initializes the agent with the given API key
    */
-  async initialize(apiKey: string | null, modelName?: string): Promise<void> {
+  async initialize(apiKey: string | null, modelName: string, miniModel: string, nanoModel: string): Promise<void> {
     try {
       this.#apiKey = apiKey;
-
-      if (!modelName) {
-        throw new Error('Model name is required for initialization');
-      }
       
       // Initialize LLM client first
       await this.#initializeLLMClient();
@@ -197,9 +192,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       // Determine selected provider for primary graph execution
       const selectedProvider = (localStorage.getItem('ai_chat_provider') || 'openai') as LLMProvider;
 
-      // Get mini and nano models for tool execution
-      const miniModel = AIChatPanel.getMiniModel();
-      const nanoModel = AIChatPanel.getNanoModel();
+      // Mini and nano models are injected by caller (validated upstream)
 
       // Will throw error if model/provider configuration is invalid
       this.#graph = createAgentGraph(apiKey, modelName, selectedProvider, miniModel, nanoModel);
