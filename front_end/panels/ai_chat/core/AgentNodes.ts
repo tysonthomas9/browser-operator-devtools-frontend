@@ -409,7 +409,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
   return agentNode;
 }
 
-export function createToolExecutorNode(state: AgentState, provider: LLMProvider, modelName: string): Runnable<AgentState, AgentState> {
+export function createToolExecutorNode(state: AgentState, provider: LLMProvider, modelName: string, miniModel?: string, nanoModel?: string): Runnable<AgentState, AgentState> {
   const tools = getAgentToolsFromState(state); // Adjusted to use getAgentToolsFromState
   const toolMap = new Map<string, ReturnType<typeof getTools>[number]>();
   (tools as any[]).forEach((tool: any) => toolMap.set(tool.name, tool));
@@ -419,12 +419,16 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
     private tracingProvider: TracingProvider;
     private provider: LLMProvider;
     private modelName: string;
+    private miniModel?: string;
+    private nanoModel?: string;
 
-    constructor(toolMap: Map<string, ReturnType<typeof getTools>[number]>, provider: LLMProvider, modelName: string) {
+    constructor(toolMap: Map<string, ReturnType<typeof getTools>[number]>, provider: LLMProvider, modelName: string, miniModel?: string, nanoModel?: string) {
       this.toolMap = toolMap;
       this.tracingProvider = createTracingProvider();
       this.provider = provider;
       this.modelName = modelName;
+      this.miniModel = miniModel;
+      this.nanoModel = nanoModel;
     }
 
     async invoke(state: AgentState): Promise<AgentState> {
@@ -542,7 +546,12 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
               
         const result = await withTracingContext(executionContext, async () => {
           console.log(`[TOOL EXECUTION PATH 1] Inside withTracingContext for tool: ${toolName}`);
-          return await selectedTool.execute(toolArgs as any, { provider: this.provider, model: this.modelName });
+          return await selectedTool.execute(toolArgs as any, { 
+            provider: this.provider, 
+            model: this.modelName,
+            miniModel: this.miniModel,
+            nanoModel: this.nanoModel
+          });
         });
         console.log(`[TOOL EXECUTION PATH 1] ToolExecutorNode completed tool: ${toolName}`);
 
@@ -735,7 +744,7 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
       
       return newState;
     }
-  }(toolMap, provider, modelName);
+  }(toolMap, provider, modelName, miniModel, nanoModel);
   return toolExecutorNode;
 }
 
