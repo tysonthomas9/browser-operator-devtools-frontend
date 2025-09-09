@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 import type { getTools } from '../tools/Tools.js';
-import { ChatMessageEntity, type ModelChatMessage, type ToolResultMessage, type ChatMessage, type AgentSessionMessage } from '../ui/ChatView.js';
-import { ConfigurableAgentTool, ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import { ChatMessageEntity, type ModelChatMessage, type ToolResultMessage, type ChatMessage, type AgentSessionMessage } from '../models/ChatTypes.js';
+import { ConfigurableAgentTool } from '../agent_framework/ConfigurableAgentTool.js';
 
 import { LLMClient } from '../LLM/LLMClient.js';
 import type { LLMMessage } from '../LLM/LLMTypes.js';
-import { AIChatPanel } from '../ui/AIChatPanel.js';
+import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { createSystemPromptAsync, getAgentToolsFromState } from './GraphHelpers.js';
 import { ToolSurfaceProvider } from './ToolSurfaceProvider.js';
 import { createLogger } from './Logger.js';
@@ -20,19 +20,16 @@ import type { TracingProvider } from '../tracing/TracingProvider.js';
 
 const logger = createLogger('AgentNodes');
 
-export function createAgentNode(modelName: string, temperature: number): Runnable<AgentState, AgentState> {
+export function createAgentNode(modelName: string, provider: LLMProvider, temperature: number): Runnable<AgentState, AgentState> {
   const agentNode = new class AgentNode implements Runnable<AgentState, AgentState> {
-    private modelName: string;
-    private temperature: number;
+    private modelName: string = modelName;
+    private provider: LLMProvider = provider;
+    private temperature: number = temperature;
     private callCount = 0;
     private readonly MAX_CALLS_PER_INTERACTION = 50;
     private tracingProvider: TracingProvider;
 
-    constructor(modelName: string, temperature: number) {
-      this.modelName = modelName;
-      this.temperature = temperature;
-      this.tracingProvider = createTracingProvider();
-    }
+    constructor() { this.tracingProvider = createTracingProvider(); }
 
     async invoke(state: AgentState): Promise<AgentState> {
       console.log('[AGENT NODE DEBUG] AgentNode invoke called, messages count:', state.messages.length);
@@ -124,7 +121,7 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
           model: this.modelName,
           modelParameters: {
             temperature: this.temperature,
-            provider: AIChatPanel.getProviderForModel(this.modelName)
+            provider: this.provider
           },
           input: {
             systemPrompt: systemPrompt.substring(0, 1000) + '...', // Truncate for tracing
@@ -143,16 +140,13 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
 
       try {
         const llm = LLMClient.getInstance();
-
-        // Get provider for the specific model
-        const provider = AIChatPanel.getProviderForModel(this.modelName);
-
-        // Select tools based on MCP mode (all/router/meta)
+        
+        // Use provider passed at graph initialization
+        const provider = this.provider as LLMProvider;
+        
+        // Select tools via ToolSurfaceProvider (router/meta/all)
         const baseTools = getAgentToolsFromState(state);
         const selection = await ToolSurfaceProvider.select(state, baseTools, { maxToolsPerTurn: 20, maxMcpPerTurn: 8 });
-        // Persist selection in context so ToolExecutorNode can resolve the same set
-        if (!state.context) { (state as any).context = {}; }
-        (state.context as any).selectedToolNames = selection.selectedNames;
         const tools = selection.tools;
         
         // Convert ChatMessage[] to LLMMessage[]
@@ -252,7 +246,7 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
                 callCount: this.callCount,
                 toolCallId,
                 phase: 'tool_call_decision',
-                provider: AIChatPanel.getProviderForModel(this.modelName)
+                provider: this.provider
               }
             }, tracingContext.traceId);
             
@@ -358,7 +352,7 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
      */
     private convertChatMessagesToLLMMessages(messages: ChatMessage[]): LLMMessage[] {
       const llmMessages: LLMMessage[] = [];
-      
+      logger.info('Converting ChatMessages to LLMMessages. Messages:', messages);
       for (const msg of messages) {
         if (msg.entity === ChatMessageEntity.USER) {
           // User message
@@ -393,27 +387,16 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
         } else if (msg.entity === ChatMessageEntity.TOOL_RESULT) {
           // Tool result message
           if ('toolCallId' in msg && 'resultText' in msg) {
-            let content = msg.resultText;
-            
-            // Try to parse and sanitize if it's JSON (structured tool result)
-            if (typeof msg.resultText === 'string') {
-              try {
-                const parsed = JSON.parse(msg.resultText);
-                const sanitized = this.sanitizeToolResultForText(parsed);
-                content = JSON.stringify(sanitized);
-              } catch {
-                // Not JSON, use as-is (simple string tool result)
-                content = msg.resultText;
-              }
-            } else if (typeof msg.resultText === 'object' && msg.resultText !== null) {
-              // Already an object, sanitize directly
-              const sanitized = this.sanitizeToolResultForText(msg.resultText);
-              content = JSON.stringify(sanitized);
-            }
-            
+            const toolResultData = msg.resultText || null; // Use resultText if available
+            // Sanitize object payloads to avoid leaking session data and large fields
+            const sanitized = typeof toolResultData === 'object' && toolResultData !== null
+              ? this.sanitizeToolResultForText(toolResultData)
+              : toolResultData;
+
             llmMessages.push({
               role: 'tool',
-              content: String(content),
+              // Ensure objects are serialized as JSON instead of "[object Object]"
+              content: typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized),
               tool_call_id: msg.toolCallId,
             });
           }
@@ -422,34 +405,26 @@ export function createAgentNode(modelName: string, temperature: number): Runnabl
       
       return llmMessages;
     }
-  }(modelName, temperature);
+  }();
   return agentNode;
 }
 
-export function createToolExecutorNode(state: AgentState): Runnable<AgentState, AgentState> {
-  // If AgentNode has pre-selected tool names, honor that set to ensure consistency
-  const selectedNames: string[] | undefined = (state.context as any)?.selectedToolNames;
-  let tools: ReturnType<typeof getTools>;
-  if (selectedNames && selectedNames.length > 0) {
-    const resolved: any[] = [];
-    for (const name of selectedNames) {
-      const inst = ToolRegistry.getRegisteredTool(name as any);
-      if (inst) { resolved.push(inst as any); }
-    }
-    tools = resolved as any;
-  } else {
-    tools = getAgentToolsFromState(state) as any;
-  }
+export function createToolExecutorNode(state: AgentState, provider: LLMProvider, modelName: string): Runnable<AgentState, AgentState> {
+  const tools = getAgentToolsFromState(state); // Adjusted to use getAgentToolsFromState
   const toolMap = new Map<string, ReturnType<typeof getTools>[number]>();
   (tools as any[]).forEach((tool: any) => toolMap.set(tool.name, tool));
 
   const toolExecutorNode = new class ToolExecutorNode implements Runnable<AgentState, AgentState> {
     private toolMap: Map<string, ReturnType<typeof getTools>[number]>;
     private tracingProvider: TracingProvider;
+    private provider: LLMProvider;
+    private modelName: string;
 
-    constructor(toolMap: Map<string, ReturnType<typeof getTools>[number]>) {
+    constructor(toolMap: Map<string, ReturnType<typeof getTools>[number]>, provider: LLMProvider, modelName: string) {
       this.toolMap = toolMap;
       this.tracingProvider = createTracingProvider();
+      this.provider = provider;
+      this.modelName = modelName;
     }
 
     async invoke(state: AgentState): Promise<AgentState> {
@@ -567,7 +542,7 @@ export function createToolExecutorNode(state: AgentState): Runnable<AgentState, 
               
         const result = await withTracingContext(executionContext, async () => {
           console.log(`[TOOL EXECUTION PATH 1] Inside withTracingContext for tool: ${toolName}`);
-          return await selectedTool.execute(toolArgs as any);
+          return await selectedTool.execute(toolArgs as any, { provider: this.provider, model: this.modelName });
         });
         console.log(`[TOOL EXECUTION PATH 1] ToolExecutorNode completed tool: ${toolName}`);
 
@@ -605,26 +580,32 @@ export function createToolExecutorNode(state: AgentState): Runnable<AgentState, 
             });
           }
           
-          // Create AgentSessionMessage for UI rendering
-          const agentSessionMessage: AgentSessionMessage = {
-            entity: ChatMessageEntity.AGENT_SESSION,
-            agentSession: result.agentSession as any,
-            summary: `Agent ${toolName} execution completed`
-          };
-          
-          console.log(`[AGENT SESSION] Created AgentSessionMessage:`, {
-            sessionId: (result.agentSession as any).sessionId,
-            agentName: (result.agentSession as any).agentName,
-            status: (result.agentSession as any).status
-          });
-          
-          // Add the AgentSessionMessage to the state immediately after tool result
-          messages.push(agentSessionMessage);
+          // Create AgentSessionMessage for UI rendering ONLY if this is a top-level agent (no parent)
+          const parentSessionId = (agentSession && typeof agentSession === 'object') ? agentSession.parentSessionId : undefined;
+          if (!parentSessionId) {
+            const agentSessionMessage: AgentSessionMessage = {
+              entity: ChatMessageEntity.AGENT_SESSION,
+              agentSession: result.agentSession as any,
+              summary: `Agent ${toolName} execution completed`
+            };
+            console.log(`[AGENT SESSION] Created top-level AgentSessionMessage:`, {
+              sessionId: (result.agentSession as any).sessionId,
+              agentName: (result.agentSession as any).agentName,
+              status: (result.agentSession as any).status
+            });
+            messages.push(agentSessionMessage);
+          } else {
+            console.log(`[AGENT SESSION] Skipping top-level AgentSessionMessage for nested child`, {
+              sessionId: (result.agentSession as any).sessionId,
+              parentSessionId
+            });
+          }
         }
 
         // Special handling for ConfigurableAgentTool results
-        if (selectedTool instanceof ConfigurableAgentTool && result && typeof result === 'object' && 'output' in result) {
-          // For ConfigurableAgentTool, only send the output field to the LLM
+        if (selectedTool instanceof ConfigurableAgentTool && result && typeof result === 'object' && 
+            ('output' in result || 'error' in result || 'success' in result)) {
+          // For ConfigurableAgentTool, only send the output/error fields to the LLM, never intermediateSteps
           const agentResult = result as any; // Cast to any to access ConfigurableAgentResult properties
           resultText = agentResult.output || (agentResult.error ? `Error: ${agentResult.error}` : 'No output');
           console.log(`[AGENT SESSION] Filtered ConfigurableAgentTool result for LLM:`, {
@@ -637,7 +618,13 @@ export function createToolExecutorNode(state: AgentState): Runnable<AgentState, 
           // Make sure the result is properly stringified
           resultText = typeof result === 'string' ? result : JSON.stringify(result);
         } else {
-          resultText = JSON.stringify(result, null, 2);
+          // If the result is effectively image-only, replace with placeholder to avoid sending large base64 blobs
+          const isObject = typeof result === 'object' && result !== null;
+          const likelyOnlyImage = isObject && (('imageData' in (result as any)) || ('dataUrl' in (result as any))) &&
+            Object.keys(result as any).filter(k => !['imageData', 'dataUrl', 'success', 'agentSession'].includes(k)).length === 0;
+          resultText = likelyOnlyImage
+            ? 'Image omitted (model lacks vision).'
+            : JSON.stringify(result, null, 2);
         }
 
         isError = (typeof result === 'object' && result !== null && 'error' in result);
@@ -748,7 +735,7 @@ export function createToolExecutorNode(state: AgentState): Runnable<AgentState, 
       
       return newState;
     }
-  }(toolMap);
+  }(toolMap, provider, modelName);
   return toolExecutorNode;
 }
 
