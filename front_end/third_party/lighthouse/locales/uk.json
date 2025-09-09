@@ -660,7 +660,7 @@
     "message": "Використовуйте формати відео для анімованого вмісту"
   },
   "core/audits/byte-efficiency/legacy-javascript.js | description": {
-    "message": "Polyfills and transforms enable legacy browsers to use new JavaScript features. However, many aren't necessary for modern browsers. Consider modifying your JavaScript build process to not transpile [Baseline](https://web.dev/baseline) features, unless you know you must support legacy browsers. [Learn why most sites can deploy ES6+ code without transpiling](https://philipwalton.com/articles/the-state-of-es5-on-the-web/)"
+    "message": "Поліфіли й перетворення дають застарілим вебпереглядачам змогу використовувати нові функції JavaScript. Однак багато з них не потрібні для сучасних вебпереглядачів. Змініть процес складання JavaScript, щоб не транспілювати функції [базового набору](https://web.dev/baseline), якщо вам не потрібно підтримувати застарілі вебпереглядачі. [Дізнайтеся, чому більшість сайтів можуть розгортати код ES6+ без транспілювання](https://philipwalton.com/articles/the-state-of-es5-on-the-web/)"
   },
   "core/audits/byte-efficiency/legacy-javascript.js | detectedCoreJs2Warning": {
     "message": "На сторінці виявлено версію 2 core-js. Щоб підвищити продуктивність, перейдіть на версію 3."
@@ -1188,7 +1188,7 @@
     "message": "Максимальна потенційна затримка відповіді на першу дію – це тривалість найдовшого завдання. [Докладніше про показник \"Максимальна потенційна затримка відповіді на першу дію\".](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/)"
   },
   "core/audits/metrics/speed-index.js | description": {
-    "message": "Індекс швидкості показує, через скільки часу відображається вміст сторінки. [Докладніше про показник \"Індекс швидкості\".](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)"
+    "message": "Speed Index показує, через скільки часу відображається вміст сторінки. [Докладніше про показник Speed Index.](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)"
   },
   "core/audits/metrics/total-blocking-time.js | description": {
     "message": "Загальна тривалість усіх періодів часу в мілісекундах між першою візуалізацією контенту та часом до повного завантаження, коли час виконання завдання перевищує 50 мс. [Докладніше про показник \"Загальний час блокування\".](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/)"
@@ -1440,7 +1440,7 @@
     "message": "Сервер відповідає швидко"
   },
   "core/audits/third-party-cookies.js | description": {
-    "message": "Chrome пропонуватиме користувачам переглядати вебсторінки без сторонніх файлів cookie. [Докладніше про ці файли.](https://developers.google.com/privacy-sandbox/cookies)"
+    "message": "Сторонні файли cookie можуть блокуватися в деяких контекстах. [Докладніше про підготовку до обмежень щодо сторонніх файлів cookie.](https://privacysandbox.google.com/cookies/prepare/overview)"
   },
   "core/audits/third-party-cookies.js | displayValue": {
     "message": "{itemCount,plural, =1{Знайдено 1 файл cookie}one{Знайдено # файл cookie}few{Знайдено # файли cookie}many{Знайдено # файлів cookie}other{Знайдено # файлу cookie}}"
@@ -1492,6 +1492,18 @@
   },
   "core/audits/third-party-summary.js | title": {
     "message": "Зменште використання стороннього коду"
+  },
+  "core/audits/trusted-types-xss.js | columnSeverity": {
+    "message": "Рівень серйозності"
+  },
+  "core/audits/trusted-types-xss.js | description": {
+    "message": "Директива `require-trusted-types-for` у заголовку `Content-Security-Policy` (CSP) указує агентам користувачів контролювати дані, які передаються функціям-приймачам міжсайтного скриптингу (XSS) на основі DOM. [Докладніше про те, як зменшити ризик міжсайтного скриптингу на основі DOM за допомогою Trusted Types.](https://developer.chrome.com/docs/lighthouse/best-practices/trusted-types-xss)"
+  },
+  "core/audits/trusted-types-xss.js | noTrustedTypesToMitigateXss": {
+    "message": "Заголовок `Content-Security-Policy` із директивою Trusted Types не знайдено"
+  },
+  "core/audits/trusted-types-xss.js | title": {
+    "message": "Зменште ризик міжсайтного скриптингу (XSS) на основі DOM за допомогою Trusted Types"
   },
   "core/audits/unsized-images.js | description": {
     "message": "Явно вказуючи ширину й висоту для зображень, ви зможете зменшити зміщення макета й покращити показник CLS. [Дізнайтесь, як налаштувати розміри зображень.](https://web.dev/articles/optimize-cls#images_without_dimensions)"
@@ -1676,11 +1688,17 @@
   "core/config/default-config.js | firstPaintImprovementsGroupTitle": {
     "message": "Покращення першого відображення"
   },
+  "core/config/default-config.js | insightsGroupDescription": {
+    "message": "Ця статистика також доступна на панелі \"Продуктивність\" в Інструментах розробника Chrome. Щоб переглянути докладнішу інформацію, [запишіть трасування](https://developer.chrome.com/docs/devtools/performance/reference)."
+  },
+  "core/config/default-config.js | insightsGroupTitle": {
+    "message": "Статистика"
+  },
   "core/config/default-config.js | metricGroupTitle": {
     "message": "Показники"
   },
   "core/config/default-config.js | overallImprovementsGroupDescription": {
-    "message": "Покращте загальну ефективність завантаження, щоб сторінка швидко реагувала й завантажувалася. Основні показники: час до повної взаємодії, індекс швидкості"
+    "message": "Покращте загальну ефективність завантаження, щоб сторінка швидко реагувала й завантажувалася. Основні показники: Time to Interactive, Speed Index"
   },
   "core/config/default-config.js | overallImprovementsGroupTitle": {
     "message": "Загальні покращення"
@@ -1857,22 +1875,22 @@
     "message": "URL-адреса"
   },
   "core/lib/i18n/i18n.js | columnWastedBytes": {
-    "message": "Потенційне заощадження"
+    "message": "Очікуване заощадження"
   },
   "core/lib/i18n/i18n.js | columnWastedMs": {
-    "message": "Потенційне заощадження"
+    "message": "Очікуване заощадження"
   },
   "core/lib/i18n/i18n.js | cumulativeLayoutShiftMetric": {
     "message": "Cumulative Layout Shift"
   },
   "core/lib/i18n/i18n.js | displayValueByteSavings": {
-    "message": "Можна зменшити на {wastedBytes, number, bytes} КіБ"
+    "message": "Очікуване заощадження: {wastedBytes, number, bytes} КіБ"
   },
   "core/lib/i18n/i18n.js | displayValueElementsFound": {
     "message": "{nodeCount,plural, =1{Знайдено 1 елемент}one{Знайдено # елемент}few{Знайдено # елементи}many{Знайдено # елементів}other{Знайдено # елемента}}"
   },
   "core/lib/i18n/i18n.js | displayValueMsSavings": {
-    "message": "Потенційне заощадження – {wastedMs, number, milliseconds} мс"
+    "message": "Очікуване заощадження: {wastedMs, number, milliseconds} мс"
   },
   "core/lib/i18n/i18n.js | documentResourceType": {
     "message": "Документ"
@@ -2070,7 +2088,7 @@
     "message": "Отримати оцінку ефективності в Lighthouse."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation2": {
-    "message": "Вимірювати показники ефективності завантаження сторінки, такі як візуалізація великого контенту й індекс швидкості."
+    "message": "Вимірювати показники ефективності завантаження сторінки, такі як Largest Contentful Paint і Speed Index."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation3": {
     "message": "Оцінювати можливості прогресивного веб-додатка."
@@ -2204,14 +2222,8 @@
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | GetUserMediaInsecureOrigin": {
     "message": "getUserMedia() більше не працює з незахищеними джерелами. Щоб користуватися цією функцією, перенесіть свій додаток на захищене джерело, наприклад HTTPS. Докладніше читайте на сторінці https://goo.gle/chrome-insecure-origins."
   },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | H1UserAgentFontSizeInSection": {
-    "message": "Знайдено тег <h1> у тегах <article>, <aside>, <nav> або <section>. Розмір шрифту не вказано. Незабаром розмір цього заголовка буде змінено у вебпереглядачі. Щоб дізнатися більше, перегляньте цю сторінку: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Heading_Elements#specifying_a_uniform_font_size_for_h1."
-  },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | HostCandidateAttributeGetter": {
     "message": "RTCPeerConnectionIceErrorEvent.hostCandidate не підтримується. Натомість використовуйте RTCPeerConnectionIceErrorEvent.address або RTCPeerConnectionIceErrorEvent.port."
-  },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityDigitalCredentials": {
-    "message": "Цей формат запиту navigator.credentials.get() для цифрових облікових даних більше не підтримується. Оновіть свій виклик, щоб використовувати новий формат."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityInCanMakePaymentEvent": {
     "message": "Джерело продавця й довільні дані події Service Worker canmakepayment не підтримуються. Їх буде вилучено: topOrigin, paymentRequestOrigin, methodData, modifiers."
@@ -2251,6 +2263,9 @@
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverflowVisibleOnReplacedElement": {
     "message": "Якщо вказати властивість overflow: visible у тегах img, video й canvas, візуальний контент може відображатися за межами цих елементів. Докладніше: https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
+  },
+  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverrideFlashEmbedwithHTML": {
+    "message": "Застарілу вставку Flash-відео перетворено на елемент HTML iframe. Технологія Flash давно не використовується, тому цей спосіб не підтримується й може бути вилучений у майбутньому."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | PaymentInstruments": {
     "message": "paymentManager.instruments не підтримується. Натомість скористайтесь актуальним API для обробників платежів."
@@ -2352,7 +2367,10 @@
     "message": "Основні причини зміщення макета"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | unsizedImage": {
-    "message": "Unsized image element"
+    "message": "Елемент зображення, розміри якого не вказано"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | webFont": {
+    "message": "Вебшрифт"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | worstCluster": {
     "message": "Найгірший кластер"
@@ -2381,8 +2399,17 @@
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | description": {
     "message": "Через велике дерево DOM обчислення стилів і перекомпонування макетів може тривати довше, що впливає на адаптивність сторінки. Крім того, у такому разі використовується більше пам’яті. [Дізнайтесь, як уникнути надмірного розміру DOM.](https://developer.chrome.com/docs/lighthouse/performance/dom-size/)"
   },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | duration": {
+    "message": "Тривалість"
+  },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | element": {
     "message": "Елемент"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeLayout": {
+    "message": "Макет (кількість об’єктів: {PH1})"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeStyleRecalc": {
+    "message": "Повторне обчислення стилю (кількість елементів: {PH1})"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | maxChildren": {
     "message": "Більшість дочірніх елементів"
@@ -2395,6 +2422,9 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | title": {
     "message": "Оптимізуйте розмір DOM"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | topUpdatesDescription": {
+    "message": "Це найбільші події перерахунку макета й стилю. Щоб зменшити вплив на продуктивність, спростіть DOM."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | totalElements": {
     "message": "Усього елементів"
@@ -2463,7 +2493,7 @@
     "message": "(анонімно)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | description": {
-    "message": "Багато API, які зазвичай читають геометрію макета, змушують систему відрисовки призупиняти виконання скрипту, щоб обчислити стиль і макет. Докладніше про [примусове перекомпонування](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) і способи його пом’якшення."
+    "message": "Примусове перекомпонування відбувається, коли JavaScript запитує геометричні властивості (наприклад, offsetWidth) після того, як стилі стають недійсними через зміну стану DOM. Це може призвести до низької продуктивності. Докладніше про [примусове перекомпонування](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) й можливі способи його пом’якшення."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | relatedStackTrace": {
     "message": "Трасування стека"
@@ -2479,6 +2509,30 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | unattributed": {
     "message": "[не визначено]"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | description": {
+    "message": "Почніть аналіз із найдовшого підрозділу. [Затримки можна зменшити.](https://web.dev/articles/optimize-inp#optimize_interactions) Щоб скоротити час обробки, [оптимізуйте витрати основного потоку](https://web.dev/articles/optimize-long-tasks), часто JS."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | duration": {
+    "message": "Тривалість"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | inputDelay": {
+    "message": "Затримка відповіді"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | noInteractions": {
+    "message": "Взаємодій не виявлено"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | presentationDelay": {
+    "message": "Затримка перед відображенням відповіді"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | processingDuration": {
+    "message": "Тривалість обробки"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | subpart": {
+    "message": "Підрозділ"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | title": {
+    "message": "Розподіл INP"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | description": {
     "message": "Зменшення часу завантаження зображень може прискорити візуалізацію сторінки й покращити показник LCP. [Докладніше про оптимізацію розміру зображень.](https://developer.chrome.com/docs/lighthouse/performance/uses-optimized-images/)"
@@ -2509,6 +2563,36 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | useVideoFormat": {
     "message": "Якщо використовувати відеоформати замість GIF, розмір завантаженого анімованого контенту може зменшитися."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | description": {
+    "message": "Для кожного підрозділу [передбачено конкретні стратегії оптимізації](https://web.dev/articles/optimize-lcp#lcp-breakdown). В ідеалі більшість часу LCP має витрачатися на завантаження ресурсів, а не в межах затримок."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | duration": {
+    "message": "Тривалість"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | elementRenderDelay": {
+    "message": "Затримка відображення елемента"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | fieldDuration": {
+    "message": "75-й процентиль реальних користувачів"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | noLcp": {
+    "message": "LCP не виявлено"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDelay": {
+    "message": "Затримка завантаження ресурсу"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDuration": {
+    "message": "Тривалість завантаження ресурсу"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | subpart": {
+    "message": "Підрозділ"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | timeToFirstByte": {
+    "message": "Time to First Byte"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | title": {
+    "message": "Розподіл LCP"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/LCPDiscovery.js | description": {
     "message": "Щоб оптимізувати показник LCP, зробіть зображення LCP [видимим](https://web.dev/articles/optimize-lcp#1_eliminate_resource_load_delay) у HTML-коді відразу й [не використовуйте відкладене завантаження](https://web.dev/articles/lcp-lazy-loading)"
@@ -2553,7 +2637,7 @@
     "message": "Протоколи HTTP/2 й HTTP/3 мають низку переваг над HTTP/1.1, наприклад мультиплексування. [Докладніше про використання сучасного протоколу HTTP.](https://developer.chrome.com/docs/lighthouse/best-practices/uses-http2/)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | noOldProtocolRequests": {
-    "message": "Не було запитів із використанням протоколу HTTP/1.1"
+    "message": "Не було запитів із використанням протоколу HTTP/1.1 або його поточне використання не дає значних можливостей для оптимізації. Запити HTTP/1.1 позначаються лише в тому разі, якщо шість або більше статичних об’єктів походять з одного джерела й не обслуговуються в локальному середовищі розробки або стороннім джерелом."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | protocol": {
     "message": "Протокол"
@@ -2653,6 +2737,12 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | title": {
     "message": "Витрати на селектор CSS"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorElapsedTime": {
+    "message": "Найкращий селектор за часом зіставлення"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorMatchAttempt": {
+    "message": "Найкращий селектор за кількістю спроб зіставлення"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectors": {
     "message": "Найкращі селектори"
@@ -2974,6 +3064,9 @@
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorker": {
     "message": "Сторінки, які використовують SharedWorker, наразі не підходять для зворотного кешу."
+  },
+  "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorkerMessage": {
+    "message": "Сторінку вилучено з кешу, оскільки вона отримала повідомлення від SharedWorker"
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | speechRecognizer": {
     "message": "Сторінки, які використовують SpeechRecognizer, наразі не підходять для зворотного кешу."
@@ -3575,8 +3668,14 @@
   "report/renderer/report-utils.js | footerIssue": {
     "message": "Повідомити про проблему"
   },
+  "report/renderer/report-utils.js | goBackToAudits": {
+    "message": "Повернутися до перевірок ефективності"
+  },
   "report/renderer/report-utils.js | hide": {
     "message": "Сховати"
+  },
+  "report/renderer/report-utils.js | insightsNotice": {
+    "message": "Пізніше цього року перевірки ефективності замінить статистика ефективності. [Щоб дізнатися більше й надіслати відгук, перейдіть за цим посиланням.](https://github.com/GoogleChrome/lighthouse/discussions/16462)"
   },
   "report/renderer/report-utils.js | labDataTitle": {
     "message": "Дані тестів"
@@ -3677,6 +3776,9 @@
   "report/renderer/report-utils.js | toplevelWarningsMessage": {
     "message": "Під час запуску Lighthouse виникли перелічені нижче проблеми."
   },
+  "report/renderer/report-utils.js | tryInsights": {
+    "message": "Спробувати статистику ефективності"
+  },
   "report/renderer/report-utils.js | unattributable": {
     "message": "Атрибуція неможлива"
   },
@@ -3705,7 +3807,10 @@
     "message": "Дані про використання"
   },
   "treemap/app/src/util.js | duplicateModulesLabel": {
-    "message": "Задубльовані модулі"
+    "message": "Повторювані модулі"
+  },
+  "treemap/app/src/util.js | duplicatedBytesLabel": {
+    "message": "Повторювані байти"
   },
   "treemap/app/src/util.js | resourceBytesLabel": {
     "message": "Розмір ресурсу в байтах"
@@ -3715,6 +3820,9 @@
   },
   "treemap/app/src/util.js | toggleTableButtonLabel": {
     "message": "Показати або сховати таблицю"
+  },
+  "treemap/app/src/util.js | transferBytesLabel": {
+    "message": "Розмір перенесеного файлу в байтах"
   },
   "treemap/app/src/util.js | unusedBytesLabel": {
     "message": "Невикористані байти"

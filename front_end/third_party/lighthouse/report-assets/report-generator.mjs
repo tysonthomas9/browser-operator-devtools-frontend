@@ -35,7 +35,7 @@
     ReportGenerator: () => ReportGenerator
   });
 
-  // replace-modules:/Users/cjamcl/src/lighthouse-pristine/report/generator/flow-report-assets.js
+  // replace-modules:/Users/cjamcl/src/lighthouse/report/generator/flow-report-assets.js
   var flowReportAssets = {};
 
   // report/generator/report-assets.js
@@ -144,8 +144,7 @@ SPDX-License-Identifier: Apache-2.0
       const separator = ",";
       const escape = (value) => `"${value.replace(/"/g, '""')}"`;
       const rowFormatter = (row) => row.map((value) => {
-        if (value === null)
-          return "null";
+        if (value === null) return "null";
         return value.toString();
       }).map(escape);
       const rows = [];
@@ -168,8 +167,7 @@ SPDX-License-Identifier: Apache-2.0
       for (const category of Object.values(lhr.categories)) {
         for (const auditRef of category.auditRefs) {
           const audit = lhr.audits[auditRef.id];
-          if (!audit)
-            continue;
+          if (!audit) continue;
           rows.push(rowFormatter([
             category.id,
             auditRef.id,
@@ -196,8 +194,7 @@ SPDX-License-Identifier: Apache-2.0
      */
     static generateReport(result, outputModes) {
       const outputAsArray = Array.isArray(outputModes);
-      if (typeof outputModes === "string")
-        outputModes = [outputModes];
+      if (typeof outputModes === "string") outputModes = [outputModes];
       const output = outputModes.map((outputMode) => {
         if (outputMode === "html") {
           if (_ReportGenerator.isFlowResult(result)) {

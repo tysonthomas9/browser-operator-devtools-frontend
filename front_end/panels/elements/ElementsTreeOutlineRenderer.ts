@@ -50,7 +50,7 @@ export class Renderer implements UI.UIUtils.Renderer {
     return rendererInstance;
   }
 
-  async render(object: Object): Promise<{
+  async render(object: Object, options?: UI.UIUtils.Options): Promise<{
     node: Node,
     tree: UI.TreeOutline.TreeOutline|null,
   }|null> {
@@ -70,14 +70,14 @@ export class Renderer implements UI.UIUtils.Renderer {
     const treeOutline = new ElementsTreeOutline(
         /* omitRootDOMNode: */ false, /* selectEnabled: */ true, /* hideGutter: */ true);
     treeOutline.rootDOMNode = node;
-    const firstChild = treeOutline.firstChild();
-    if (firstChild && !firstChild.isExpandable()) {
-      treeOutline.element.classList.add('single-node');
-    }
+    treeOutline.deindentSingleNode();
     treeOutline.setVisible(true);
     // @ts-expect-error used in console_test_runner
-    treeOutline.element.treeElementForTest = firstChild;
+    treeOutline.element.treeElementForTest = treeOutline.firstChild();
     treeOutline.setShowSelectionOnKeyboardFocus(/* show: */ true, /* preventTabOrder: */ true);
+    if (options?.expand) {
+      treeOutline.firstChild()?.expand();
+    }
     return {node: treeOutline.element, tree: treeOutline};
   }
 }

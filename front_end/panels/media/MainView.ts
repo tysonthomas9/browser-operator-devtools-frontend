@@ -16,22 +16,22 @@ import {PlayerListView} from './PlayerListView.js';
 
 const UIStrings = {
   /**
-   *@description Text to show if no media player has been selected
+   * @description Text to show if no media player has been selected
    * A media player can be an audio and video source of a page.
    */
   noPlayerDetailsSelected: 'No media player selected',
   /**
-   *@description Text to instruct the user on how to view media player details
+   * @description Text to instruct the user on how to view media player details
    * A media player can be an audio and video source of a page.
    */
   selectToViewDetails: 'Select a media player to inspect its details.',
   /**
-   *@description Text to show if no player can be shown
+   * @description Text to show if no player can be shown
    * A media player can be an audio and video source of a page.
    */
   noMediaPlayer: 'No media player',
   /**
-   *@description Text to explain this panel
+   * @description Text to explain this panel
    * A media player can be an audio and video source of a page.
    */
   mediaPlayerDescription: 'On this page you can view and export media player details.',
@@ -228,7 +228,7 @@ export class MainView extends UI.Panel.PanelWithSidebar implements SDK.TargetMan
     mediaModel.addEventListener(Events.PLAYER_EVENTS_ADDED, this.eventsAdded, this);
     mediaModel.addEventListener(Events.PLAYER_MESSAGES_LOGGED, this.messagesLogged, this);
     mediaModel.addEventListener(Events.PLAYER_ERRORS_RAISED, this.errorsRaised, this);
-    mediaModel.addEventListener(Events.PLAYERS_CREATED, this.playersCreated, this);
+    mediaModel.addEventListener(Events.PLAYER_CREATED, this.playerCreated, this);
   }
 
   private removeEventListeners(mediaModel: MediaModel): void {
@@ -236,7 +236,7 @@ export class MainView extends UI.Panel.PanelWithSidebar implements SDK.TargetMan
     mediaModel.removeEventListener(Events.PLAYER_EVENTS_ADDED, this.eventsAdded, this);
     mediaModel.removeEventListener(Events.PLAYER_MESSAGES_LOGGED, this.messagesLogged, this);
     mediaModel.removeEventListener(Events.PLAYER_ERRORS_RAISED, this.errorsRaised, this);
-    mediaModel.removeEventListener(Events.PLAYERS_CREATED, this.playersCreated, this);
+    mediaModel.removeEventListener(Events.PLAYER_CREATED, this.playerCreated, this);
   }
 
   private onPlayerCreated(playerID: string): void {
@@ -318,13 +318,11 @@ export class MainView extends UI.Panel.PanelWithSidebar implements SDK.TargetMan
     this.detailPanels.get(playerID)?.onEvent(event);
   }
 
-  private playersCreated(event: Common.EventTarget.EventTargetEvent<Protocol.Media.PlayerId[]>): void {
-    if (event.data.length > 0 && this.splitWidget().showMode() !== UI.SplitWidget.ShowMode.BOTH) {
+  private playerCreated(event: Common.EventTarget.EventTargetEvent<Protocol.Media.Player>): void {
+    if (this.splitWidget().showMode() !== UI.SplitWidget.ShowMode.BOTH) {
       this.splitWidget().showBoth();
     }
-    for (const playerID of event.data) {
-      this.onPlayerCreated(playerID);
-    }
+    this.onPlayerCreated(event.data.playerId);
   }
 
   markPlayerForDeletion(playerID: string): void {

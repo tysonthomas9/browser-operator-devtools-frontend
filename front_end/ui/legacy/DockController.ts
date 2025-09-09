@@ -40,16 +40,16 @@ import {type Provider, ToolbarButton, type ToolbarItem} from './Toolbar.js';
 
 const UIStrings = {
   /**
-   *@description Text to close something
+   * @description Text to close something
    */
   close: 'Close',
   /**
-   *@description Text announced when the DevTools are undocked
+   * @description Text announced when the DevTools are undocked
    */
   devtoolsUndocked: 'DevTools is undocked',
   /**
-   *@description Text announced when the DevTools are docked to the left, right, or bottom of the browser tab
-   *@example {bottom} PH1
+   * @description Text announced when the DevTools are docked to the left, right, or bottom of the browser tab
+   * @example {bottom} PH1
    */
   devToolsDockedTo: 'DevTools is docked to {PH1}',
 } as const;
@@ -116,14 +116,14 @@ export class DockController extends Common.ObjectWrapper.ObjectWrapper<EventType
 
   private dockSideChanged(): void {
     this.setDockSide(this.currentDockStateSetting.get());
-    setTimeout(this.announceDockLocation.bind(this), 2000);
   }
 
   dockSide(): DockState|undefined {
     return this.dockSideInternal;
   }
 
-  /** Whether the DevTools can be docked, used to determine if we show docking UI.
+  /**
+   * Whether the DevTools can be docked, used to determine if we show docking UI.
    * Set via `Root.Runtime.Runtime.queryParam('can_dock')`. See https://cs.chromium.org/can_dock+f:window
    *
    * Shouldn't be used as a heuristic for target connection state.
@@ -168,6 +168,7 @@ export class DockController extends Common.ObjectWrapper.ObjectWrapper<EventType
 
   private setIsDockedResponse(eventData: ChangeEvent): void {
     this.dispatchEventToListeners(Events.AFTER_DOCK_SIDE_CHANGED, eventData);
+    this.announceDockLocation();
   }
 
   toggleDockSide(): void {

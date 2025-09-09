@@ -8,10 +8,8 @@ import * as CPUProfile from '../../cpu_profile/cpu_profile.js';
 import * as Helpers from '../helpers/helpers.js';
 import * as Types from '../types/types.js';
 
-const events = new Map<Types.Events.ProcessID, Map<Types.Events.ThreadID, Types.Events.Complete[]>>();
-
-const profilesInProcess = new Map<Types.Events.ProcessID, Map<Types.Events.ThreadID, ProfileData>>();
-const entryToNode = new Map<Types.Events.Event, Helpers.TreeHelpers.TraceEntryNode>();
+let profilesInProcess = new Map<Types.Events.ProcessID, Map<Types.Events.ThreadID, ProfileData>>();
+let entryToNode = new Map<Types.Events.Event, Helpers.TreeHelpers.TraceEntryNode>();
 
 // The profile head, containing its metadata like its start
 // time, comes in a "Profile" event. The sample data comes in
@@ -22,7 +20,7 @@ const entryToNode = new Map<Types.Events.Event, Helpers.TreeHelpers.TraceEntryNo
 // For this reason, we have a preprocessed data structure, where events
 // are matched by profile id, which we then finish processing to export
 // events matched by thread id.
-const preprocessedData = new Map<Types.Events.ProcessID, Map<Types.Events.ProfileID, PreprocessedData>>();
+let preprocessedData = new Map<Types.Events.ProcessID, Map<Types.Events.ProfileID, PreprocessedData>>();
 
 function parseCPUProfileData(parseOptions: Types.Configuration.ParseOptions): void {
   for (const [processId, profiles] of preprocessedData) {
@@ -109,10 +107,9 @@ function parseCPUProfileData(parseOptions: Types.Configuration.ParseOptions): vo
 }
 
 export function reset(): void {
-  events.clear();
-  preprocessedData.clear();
-  profilesInProcess.clear();
-  entryToNode.clear();
+  preprocessedData = new Map();
+  profilesInProcess = new Map();
+  entryToNode = new Map();
 }
 
 export function handleEvent(event: Types.Events.Event): void {
@@ -146,10 +143,9 @@ export function handleEvent(event: Types.Events.Event): void {
   if (Types.Events.isProfileChunk(event)) {
     const profileData = getOrCreatePreProcessedData(event.pid, event.id);
     const cdpProfile = profileData.rawProfile;
-    const nodesAndSamples: Types.Events.PartialProfile|undefined = event.args?.data?.cpuProfile || {samples: []};
+    const nodesAndSamples: Types.Events.PartialProfile = event.args?.data?.cpuProfile || {samples: []};
     const samples = nodesAndSamples?.samples || [];
     const traceIds = event.args?.data?.cpuProfile?.trace_ids;
-    const nodes: CPUProfile.CPUProfileDataModel.ExtendedProfileNode[] = [];
     for (const n of nodesAndSamples?.nodes || []) {
       const lineNumber = typeof n.callFrame.lineNumber === 'undefined' ? -1 : n.callFrame.lineNumber;
       const columnNumber = typeof n.callFrame.columnNumber === 'undefined' ? -1 : n.callFrame.columnNumber;
@@ -166,22 +162,22 @@ export function handleEvent(event: Types.Events.Event): void {
           scriptId,
         },
       };
-      nodes.push(node);
+      cdpProfile.nodes.push(node);
     }
 
     const timeDeltas = event.args.data?.timeDeltas || [];
     const lines = event.args.data?.lines || Array(samples.length).fill(0);
-    cdpProfile.nodes.push(...nodes);
     cdpProfile.samples?.push(...samples);
     cdpProfile.timeDeltas?.push(...timeDeltas);
     cdpProfile.lines?.push(...lines);
 
     if (traceIds) {
-      cdpProfile.traceIds = cdpProfile.traceIds || {};
-      for (const [key, value] of Object.entries(traceIds)) {
-        cdpProfile.traceIds[key] = value;
+      cdpProfile.traceIds ??= {};
+      for (const key in traceIds) {
+        cdpProfile.traceIds[key] = traceIds[key];
       }
     }
+
     if (cdpProfile.samples && cdpProfile.timeDeltas && cdpProfile.samples.length !== cdpProfile.timeDeltas.length) {
       console.error('Failed to parse CPU profile.');
       return;

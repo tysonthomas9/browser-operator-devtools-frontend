@@ -1188,7 +1188,7 @@
     "message": "Thời gian phản hồi lần tương tác đầu tiên tối đa mà người dùng có thể gặp phải là thời gian thực hiện nhiệm vụ lâu nhất. [Tìm hiểu thêm về chỉ số Thời gian phản hồi lần tương tác đầu tiên tối đa có thể xảy ra](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/)."
   },
   "core/audits/metrics/speed-index.js | description": {
-    "message": "Chỉ số tốc độ cho biết nội dung của một trang hiển thị nhanh chóng đến mức nào. [Tìm hiểu thêm về Chỉ số tốc độ](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)."
+    "message": "Speed Index cho biết nội dung của một trang hiển thị nhanh chóng đến mức nào. [Tìm hiểu thêm về Speed Index](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)."
   },
   "core/audits/metrics/total-blocking-time.js | description": {
     "message": "Tổng tất cả các khoảng thời gian giữa thời điểm Hiển thị nội dung đầu tiên (FCP) và Thời điểm tương tác khi thời gian của nhiệm vụ vượt quá 50 mili giây, được biểu thị bằng đơn vị mili giây. [Tìm hiểu thêm về chỉ số Tổng thời gian chặn](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/)."
@@ -1440,7 +1440,7 @@
     "message": "Thời gian phản hồi ban đầu của máy chủ là ngắn"
   },
   "core/audits/third-party-cookies.js | description": {
-    "message": "Chrome đang hướng đến một trải nghiệm mới cho phép người dùng chọn duyệt web mà không dùng cookie của bên thứ ba. [Tìm hiểu thêm về cookie của bên thứ ba](https://developers.google.com/privacy-sandbox/cookies)."
+    "message": "Cookie của bên thứ ba có thể bị chặn trong một số trường hợp. [Tìm hiểu thêm về việc chuẩn bị cho các hạn chế đối với cookie của bên thứ ba](https://privacysandbox.google.com/cookies/prepare/overview)."
   },
   "core/audits/third-party-cookies.js | displayValue": {
     "message": "{itemCount,plural, =1{Đã tìm thấy 1 cookie}other{Đã tìm thấy # cookie}}"
@@ -1492,6 +1492,18 @@
   },
   "core/audits/third-party-summary.js | title": {
     "message": "Giảm thiểu mức sử dụng của bên thứ ba"
+  },
+  "core/audits/trusted-types-xss.js | columnSeverity": {
+    "message": "Mức độ nghiêm trọng"
+  },
+  "core/audits/trusted-types-xss.js | description": {
+    "message": "Chỉ thị `require-trusted-types-for` trong tiêu đề `Content-Security-Policy` (CSP) hướng dẫn các tác nhân người dùng kiểm soát dữ liệu được truyền đến các hàm bồn lưu trữ dữ liệu có thể gây ra lỗ hổng XSS trong DOM. [Tìm hiểu thêm về cách giảm thiểu XSS dựa trên DOM bằng Trusted Types](https://developer.chrome.com/docs/lighthouse/best-practices/trusted-types-xss)."
+  },
+  "core/audits/trusted-types-xss.js | noTrustedTypesToMitigateXss": {
+    "message": "Không tìm thấy tiêu đề `Content-Security-Policy` có chỉ thị Trusted Types"
+  },
+  "core/audits/trusted-types-xss.js | title": {
+    "message": "Giảm thiểu XSS dựa trên DOM bằng Trusted Types"
   },
   "core/audits/unsized-images.js | description": {
     "message": "Đặt chiều rộng và chiều cao rõ ràng đối với các phần tử hình ảnh để giảm sự thay đổi về bố cục và cải thiện CLS (Điểm số tổng hợp về mức thay đổi bố cục). [Tìm hiểu cách đặt kích thước hình ảnh](https://web.dev/articles/optimize-cls#images_without_dimensions)"
@@ -1676,11 +1688,17 @@
   "core/config/default-config.js | firstPaintImprovementsGroupTitle": {
     "message": "Các thao tác để cải thiện thời gian hiển thị hình ảnh đầu tiên"
   },
+  "core/config/default-config.js | insightsGroupDescription": {
+    "message": "Những thông tin chi tiết này cũng có trong Bảng điều khiển hiệu suất của Chrome DevTools – hãy [ghi lại dấu vết](https://developer.chrome.com/docs/devtools/performance/reference) để xem thông tin chi tiết hơn."
+  },
+  "core/config/default-config.js | insightsGroupTitle": {
+    "message": "Thông tin chi tiết"
+  },
   "core/config/default-config.js | metricGroupTitle": {
     "message": "Các chỉ số"
   },
   "core/config/default-config.js | overallImprovementsGroupDescription": {
-    "message": "Cải thiện trải nghiệm tải tổng thể để trang phản hồi và sẵn sàng cho bạn sử dụng sớm nhất có thể. Các số liệu chính: Thời điểm tương tác, Chỉ số tốc độ"
+    "message": "Cải thiện trải nghiệm tải tổng thể để trang phản hồi và sẵn sàng cho bạn sử dụng sớm nhất có thể. Các số liệu chính: Thời điểm tương tác, Speed Index"
   },
   "core/config/default-config.js | overallImprovementsGroupTitle": {
     "message": "Các thao tác để cải thiện hiệu suất tổng thể"
@@ -1857,22 +1875,22 @@
     "message": "URL"
   },
   "core/lib/i18n/i18n.js | columnWastedBytes": {
-    "message": "Lượng dữ liệu có thể tiết kiệm được"
+    "message": "Mức tiết kiệm ước tính"
   },
   "core/lib/i18n/i18n.js | columnWastedMs": {
-    "message": "Thời gian có thể tiết kiệm được"
+    "message": "Mức tiết kiệm ước tính"
   },
   "core/lib/i18n/i18n.js | cumulativeLayoutShiftMetric": {
     "message": "Cumulative Layout Shift"
   },
   "core/lib/i18n/i18n.js | displayValueByteSavings": {
-    "message": "Lượng dữ liệu có thể tiết kiệm được là {wastedBytes, number, bytes} KiB"
+    "message": "Mức tiết kiệm ước tính: {wastedBytes, number, bytes} KiB"
   },
   "core/lib/i18n/i18n.js | displayValueElementsFound": {
     "message": "{nodeCount,plural, =1{Tìm thấy 1 phần tử}other{Tìm thấy # phần tử}}"
   },
   "core/lib/i18n/i18n.js | displayValueMsSavings": {
-    "message": "Thời gian có thể tiết kiệm được là {wastedMs, number, milliseconds} mili giây"
+    "message": "Mức tiết kiệm ước tính: {wastedMs, number, milliseconds} mili giây"
   },
   "core/lib/i18n/i18n.js | documentResourceType": {
     "message": "Tài liệu"
@@ -2070,7 +2088,7 @@
     "message": "Đạt được điểm Hiệu suất Lighthouse."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation2": {
-    "message": "Đo lường các chỉ số về Hiệu suất tải trang, chẳng hạn như Thời gian hiển thị nội dung lớn nhất và Chỉ số tốc độ."
+    "message": "Đo lường các chỉ số về Hiệu suất tải trang, chẳng hạn như Thời gian hiển thị nội dung lớn nhất và Speed Index."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation3": {
     "message": "Đánh giá các chức năng của Ứng dụng web tiến bộ."
@@ -2204,14 +2222,8 @@
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | GetUserMediaInsecureOrigin": {
     "message": "getUserMedia() không còn hoạt động trên các nguồn gốc không an toàn. Để dùng tính năng này, bạn nên cân nhắc việc chuyển ứng dụng sang một nguồn gốc an toàn, chẳng hạn như HTTPS. Xem https://goo.gle/chrome-insecure-origins để biết thêm thông tin."
   },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | H1UserAgentFontSizeInSection": {
-    "message": "Đã tìm thấy thẻ <h1> trong <article>, <aside>, <nav> hoặc <section> không có cỡ chữ được chỉ định. Kích cỡ của văn bản tiêu đề này sẽ thay đổi trong trình duyệt này trong thời gian sắp tới. Hãy truy cập vào https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Heading_Elements#specifying_a_uniform_font_size_for_h1 để biết thêm thông tin."
-  },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | HostCandidateAttributeGetter": {
     "message": "RTCPeerConnectionIceErrorEvent.hostCandidate không còn hoạt động. Thay vào đó, hãy sử dụng RTCPeerConnectionIceErrorEvent.address hoặc RTCPeerConnectionIceErrorEvent.port."
-  },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityDigitalCredentials": {
-    "message": "Định dạng này dùng cho yêu cầu cung cấp thông tin đăng nhập kỹ thuật số navigator.credentials.get() không còn được dùng nữa. Vui lòng cập nhật lệnh gọi để sử dụng định dạng mới."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityInCanMakePaymentEvent": {
     "message": "Nguồn gốc của bên bán và dữ liệu bất kỳ trong sự kiện canmakepayment của trình chạy dịch vụ không được dùng nữa và sẽ bị loại bỏ: topOrigin, paymentRequestOrigin, methodData, modifiers."
@@ -2251,6 +2263,9 @@
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverflowVisibleOnReplacedElement": {
     "message": "Việc chỉ định overflow: visible trên thẻ img, video và canvas có thể khiến các thẻ này tạo ra nội dung hình ảnh bên ngoài ranh giới thành phần. Xem tại https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
+  },
+  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverrideFlashEmbedwithHTML": {
+    "message": "Mã nhúng video Flash cũ đã được viết lại thành iframe HTML. Flash đã ngừng hoạt động. Mẹo viết lại này không còn được dùng nữa và có thể bị loại bỏ trong tương lai."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | PaymentInstruments": {
     "message": "paymentManager.instruments không được dùng nữa. Vui lòng sử dụng chế độ cài đặt đúng thời điểm cho trình xử lý thanh toán."
@@ -2354,6 +2369,9 @@
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | unsizedImage": {
     "message": "Thành phần hình ảnh chưa xác định kích thước"
   },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | webFont": {
+    "message": "Phông chữ web"
+  },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | worstCluster": {
     "message": "Cụm tệ nhất"
   },
@@ -2381,8 +2399,17 @@
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | description": {
     "message": "DOM lớn có thể làm các phép tính về kiểu và quy trình trình bày lại bố cục dài hơn, ảnh hưởng đến tốc độ phản hồi của trang. DOM lớn cũng sẽ làm tăng mức sử dụng bộ nhớ. [Tìm hiểu cách tránh kích thước DOM quá lớn](https://developer.chrome.com/docs/lighthouse/performance/dom-size/)."
   },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | duration": {
+    "message": "Thời lượng"
+  },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | element": {
     "message": "Phần tử"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeLayout": {
+    "message": "Bố cục ({PH1} đối tượng)"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeStyleRecalc": {
+    "message": "Tính toán lại kiểu ({PH1} phần tử)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | maxChildren": {
     "message": "Hầu hết trẻ em"
@@ -2395,6 +2422,9 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | title": {
     "message": "Tối ưu hoá kích thước DOM"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | topUpdatesDescription": {
+    "message": "Đây là những sự kiện tính toán lại bố cục và kiểu lớn nhất. Bạn có thể giảm tác động đến hiệu suất của các phần tử này bằng cách đơn giản hoá DOM."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | totalElements": {
     "message": "Tổng số phần tử"
@@ -2463,7 +2493,7 @@
     "message": "(ẩn danh)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | description": {
-    "message": "Nhiều API, thường đọc hình học bố cục, buộc công cụ kết xuất phải tạm dừng thực thi tập lệnh để tính toán kiểu và bố cục. Tìm hiểu thêm về [chế độ buộc chỉnh lại luồng](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) và cách giảm thiểu tác động của chế độ này."
+    "message": "Chế độ buộc chỉnh lại luồng diễn ra khi JavaScript truy vấn các thuộc tính hình học (chẳng hạn như offsetWidth) sau khi các kiểu đã bị vô hiệu hoá do trạng thái DOM có thay đổi. Điều này có thể dẫn đến hiệu suất kém. Tìm hiểu thêm về [chế độ buộc chỉnh lại luồng](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) và các biện pháp giảm thiểu có thể áp dụng."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | relatedStackTrace": {
     "message": "Dấu vết ngăn xếp"
@@ -2479,6 +2509,30 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | unattributed": {
     "message": "[chưa được phân bổ]"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | description": {
+    "message": "Bắt đầu kiểm tra phần phụ dài nhất. [Có thể giảm thiểu sự chậm trễ](https://web.dev/articles/optimize-inp#optimize_interactions). Để giảm thời gian xử lý, [hãy tối ưu hoá hiệu suất của luồng chính](https://web.dev/articles/optimize-long-tasks), thường là JS."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | duration": {
+    "message": "Thời lượng"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | inputDelay": {
+    "message": "Độ trễ khi nhập thông tin"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | noInteractions": {
+    "message": "Không phát hiện ra hoạt động tương tác nào"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | presentationDelay": {
+    "message": "Độ trễ khi trình bày"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | processingDuration": {
+    "message": "Thời gian xử lý"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | subpart": {
+    "message": "Phần phụ"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | title": {
+    "message": "Bảng chi tiết về INP"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | description": {
     "message": "Việc giảm thời gian tải hình ảnh xuống có thể cải thiện thời gian tải trang và LCP được cảm nhận. [Tìm hiểu thêm về cách tối ưu hoá kích thước hình ảnh](https://developer.chrome.com/docs/lighthouse/performance/uses-optimized-images/)"
@@ -2509,6 +2563,36 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | useVideoFormat": {
     "message": "Việc sử dụng định dạng video thay vì GIF có thể cải thiện kích thước tải xuống của nội dung động."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | description": {
+    "message": "Mỗi [phần phụ có một chiến lược cải thiện cụ thể](https://web.dev/articles/optimize-lcp#lcp-breakdown). Tốt nhất là thời gian hiển thị LCP (Nội dung lớn nhất hiển thị) nên được dùng để tải các tài nguyên thay vì bị chậm trễ."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | duration": {
+    "message": "Thời lượng"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | elementRenderDelay": {
+    "message": "Độ trễ khi hiển thị phần tử"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | fieldDuration": {
+    "message": "Trường p75"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | noLcp": {
+    "message": "Không phát hiện ra LCP"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDelay": {
+    "message": "Độ trễ khi tải tài nguyên"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDuration": {
+    "message": "Thời lượng tải tài nguyên"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | subpart": {
+    "message": "Phần phụ"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | timeToFirstByte": {
+    "message": "Thời gian cho byte đầu tiên"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | title": {
+    "message": "Bảng chi tiết về LCP (Nội dung lớn nhất hiển thị)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/LCPDiscovery.js | description": {
     "message": "Tối ưu hoá LCP (Nội dung lớn nhất hiển thị) bằng cách giúp trình duyệt [có thể tìm thấy](https://web.dev/articles/optimize-lcp#1_eliminate_resource_load_delay) hình ảnh LCP dựa vào HTML ngay lập tức và [tránh tải từng phần](https://web.dev/articles/lcp-lazy-loading)"
@@ -2553,7 +2637,7 @@
     "message": "HTTP/2 và HTTP/3 mang lại nhiều lợi ích hơn HTTP/1.1, chẳng hạn như ghép kênh. [Tìm hiểu thêm về cách sử dụng HTTP hiện đại](https://developer.chrome.com/docs/lighthouse/best-practices/uses-http2/)."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | noOldProtocolRequests": {
-    "message": "Không có yêu cầu nào sử dụng HTTP/1.1"
+    "message": "Không có yêu cầu nào sử dụng HTTP/1.1 hoặc việc sử dụng HTTP/1.1 hiện tại không mang lại cơ hội tối ưu hoá đáng kể. Yêu cầu HTTP/1.1 chỉ được gắn cờ nếu có từ 6 tài sản tĩnh cùng nguồn gốc trở lên và không được phân phát từ môi trường phát triển cục bộ hoặc nguồn của bên thứ ba."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | protocol": {
     "message": "Giao thức"
@@ -2653,6 +2737,12 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | title": {
     "message": "Hiệu suất của Bộ chọn CSS"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorElapsedTime": {
+    "message": "Thời gian đã trôi qua của bộ chọn hàng đầu"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorMatchAttempt": {
+    "message": "Nỗ lực khớp bộ chọn hàng đầu"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectors": {
     "message": "Bộ chọn hàng đầu"
@@ -2974,6 +3064,9 @@
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorker": {
     "message": "Những trang sử dụng SharedWorker hiện không đủ điều kiện dùng bộ nhớ đệm cho thao tác tiến/lùi."
+  },
+  "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorkerMessage": {
+    "message": "Trang này đã bị xoá khỏi bộ nhớ đệm vì nhận được thông báo từ một SharedWorker"
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | speechRecognizer": {
     "message": "Những trang sử dụng SpeechRecognizer hiện không đủ điều kiện dùng bộ nhớ đệm cho thao tác tiến/lùi."
@@ -3575,8 +3668,14 @@
   "report/renderer/report-utils.js | footerIssue": {
     "message": "Tạo vấn đề"
   },
+  "report/renderer/report-utils.js | goBackToAudits": {
+    "message": "Quay lại phần kiểm tra"
+  },
   "report/renderer/report-utils.js | hide": {
     "message": "Ẩn"
+  },
+  "report/renderer/report-utils.js | insightsNotice": {
+    "message": "Vào cuối năm nay, các báo cáo kiểm tra thông tin chi tiết sẽ thay thế cho báo cáo kiểm tra hiệu suất. [Tìm hiểu thêm và đưa ra ý kiến phản hồi tại đây](https://github.com/GoogleChrome/lighthouse/discussions/16462)."
   },
   "report/renderer/report-utils.js | labDataTitle": {
     "message": "Dữ liệu của phòng thí nghiệm"
@@ -3677,6 +3776,9 @@
   "report/renderer/report-utils.js | toplevelWarningsMessage": {
     "message": "Đã xảy ra sự cố ảnh hưởng đến lần chạy Lighthouse này:"
   },
+  "report/renderer/report-utils.js | tryInsights": {
+    "message": "Thử tính năng kiểm tra thông tin chi tiết"
+  },
   "report/renderer/report-utils.js | unattributable": {
     "message": "Không thể phân bổ"
   },
@@ -3707,6 +3809,9 @@
   "treemap/app/src/util.js | duplicateModulesLabel": {
     "message": "Mô-đun trùng lặp"
   },
+  "treemap/app/src/util.js | duplicatedBytesLabel": {
+    "message": "Số byte trùng lặp"
+  },
   "treemap/app/src/util.js | resourceBytesLabel": {
     "message": "Số byte tài nguyên"
   },
@@ -3715,6 +3820,9 @@
   },
   "treemap/app/src/util.js | toggleTableButtonLabel": {
     "message": "Ẩn/hiện bảng"
+  },
+  "treemap/app/src/util.js | transferBytesLabel": {
+    "message": "Số byte cần chuyển"
   },
   "treemap/app/src/util.js | unusedBytesLabel": {
     "message": "Số byte chưa dùng đến"

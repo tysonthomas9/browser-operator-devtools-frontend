@@ -660,7 +660,7 @@
     "message": "Använd videoformat för animationer"
   },
   "core/audits/byte-efficiency/legacy-javascript.js | description": {
-    "message": "Polyfills and transforms enable legacy browsers to use new JavaScript features. However, many aren't necessary for modern browsers. Consider modifying your JavaScript build process to not transpile [Baseline](https://web.dev/baseline) features, unless you know you must support legacy browsers. [Learn why most sites can deploy ES6+ code without transpiling](https://philipwalton.com/articles/the-state-of-es5-on-the-web/)"
+    "message": "Med polyfill-koder och transformeringar går det att använda nya JavaScript-funktioner i äldre webbläsare. Många av dem är dock inte nödvändiga för moderna webbläsare. Överväg att ändra JavaScript-byggprocessen så att du inte transpilerar [Baseline](https://web.dev/baseline)-funktioner, förutom om du vet att du måste ha stöd för äldre webbläsare. [Läs mer om varför de flesta webbplatser kan implementera ES6+-kod utan transpilering](https://philipwalton.com/articles/the-state-of-es5-on-the-web/)"
   },
   "core/audits/byte-efficiency/legacy-javascript.js | detectedCoreJs2Warning": {
     "message": "Version 2 av core-js hittades på sidan. Du bör uppgradera till version 3 för att få prestandaförbättringar."
@@ -1188,7 +1188,7 @@
     "message": "Den högsta potentiella fördröjningen till första inmatningen som användarna kan få är längden på den längsta uppgiften. [Läs mer om mätvärdet Maximum Potential First Input Delay](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/)."
   },
   "core/audits/metrics/speed-index.js | description": {
-    "message": "Hastighetsindexet visar hur snabbt en sida fylls med synligt innehåll. [Läs mer om mätvärdet Speed Index](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)."
+    "message": "Speed Index visar hur snabbt en sida fylls med synligt innehåll. [Läs mer om mätvärdet Speed Index](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)."
   },
   "core/audits/metrics/total-blocking-time.js | description": {
     "message": "Summan av alla tidsperioder mellan FCP och Tid till interaktivt tillstånd när uppgiftstiden överskred 50 ms, uttryckt i millisekunder. [Läs mer om mätvärdet Total Blocking Time](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/)."
@@ -1440,7 +1440,7 @@
     "message": "Serverns första svarstid var kort"
   },
   "core/audits/third-party-cookies.js | description": {
-    "message": "Chrome går mot en ny upplevelse som gör det möjligt för användare att välja att surfa utan tredjepartscookies. [Läs mer om tredjepartscookies](https://developers.google.com/privacy-sandbox/cookies)."
+    "message": "Tredjepartscookies kan blockeras i vissa sammanhang. [Läs mer om hur du förbereder dig för begränsningar av tredjepartscookies](https://privacysandbox.google.com/cookies/prepare/overview)."
   },
   "core/audits/third-party-cookies.js | displayValue": {
     "message": "{itemCount,plural, =1{1 cookie hittades}other{# cookies hittades}}"
@@ -1492,6 +1492,18 @@
   },
   "core/audits/third-party-summary.js | title": {
     "message": "Minimera användning av tredjepartskod"
+  },
+  "core/audits/trusted-types-xss.js | columnSeverity": {
+    "message": "Allvarlighetsgrad"
+  },
+  "core/audits/trusted-types-xss.js | description": {
+    "message": "Direktivet `require-trusted-types-for` i sidhuvudet `Content-Security-Policy` (CSP) instruerar användaragenter att kontrollera datan som skickas till DOM XSS-sinkfunktioner. [Läs mer om hur du minskar risken med DOM-baserad XSS med hjälp av Trusted Types](https://developer.chrome.com/docs/lighthouse/best-practices/trusted-types-xss)."
+  },
+  "core/audits/trusted-types-xss.js | noTrustedTypesToMitigateXss": {
+    "message": "Ingen `Content-Security-Policy`-rubrik med direktivet Trusted Types hittades"
+  },
+  "core/audits/trusted-types-xss.js | title": {
+    "message": "Minska risken med DOM-baserad XSS med hjälp av Trusted Types"
   },
   "core/audits/unsized-images.js | description": {
     "message": "Reducera layoutförskjutningarna och förbättra CLS genom att ange explicit bredd och höjd för bildelement. [Läs mer om hur du ställer in bildmått](https://web.dev/articles/optimize-cls#images_without_dimensions)"
@@ -1676,11 +1688,17 @@
   "core/config/default-config.js | firstPaintImprovementsGroupTitle": {
     "message": "Förbättringar av första skärmuppritningen"
   },
+  "core/config/default-config.js | insightsGroupDescription": {
+    "message": "Dessa insikter är även tillgängliga i prestandapanelen i Chromes verktyg för programmerare – [registrera en spårning](https://developer.chrome.com/docs/devtools/performance/reference) för att se mer detaljerad information."
+  },
+  "core/config/default-config.js | insightsGroupTitle": {
+    "message": "Insikter"
+  },
   "core/config/default-config.js | metricGroupTitle": {
     "message": "Mätvärden"
   },
   "core/config/default-config.js | overallImprovementsGroupDescription": {
-    "message": "Förbättra inläsningstiden överlag så att sidan upplevs som responsiv och blir klar att använda så snabbt som möjligt. Viktiga mätvärden: Tid till interaktivt tillstånd, Hastighetsindex"
+    "message": "Förbättra inläsningstiden överlag så att sidan upplevs som responsiv och blir klar att använda så snabbt som möjligt. Viktiga mätvärden: Tid till interaktivt tillstånd, Speed Index"
   },
   "core/config/default-config.js | overallImprovementsGroupTitle": {
     "message": "Övergripande förbättringar"
@@ -1857,22 +1875,22 @@
     "message": "Webbadress"
   },
   "core/lib/i18n/i18n.js | columnWastedBytes": {
-    "message": "Möjlig besparing"
+    "message": "Beräknad besparing"
   },
   "core/lib/i18n/i18n.js | columnWastedMs": {
-    "message": "Möjlig besparing"
+    "message": "Beräknad besparing"
   },
   "core/lib/i18n/i18n.js | cumulativeLayoutShiftMetric": {
     "message": "Cumulative Layout Shift"
   },
   "core/lib/i18n/i18n.js | displayValueByteSavings": {
-    "message": "Möjlig databesparing {wastedBytes, number, bytes} Kibit"
+    "message": "Beräknad besparing: {wastedBytes, number, bytes} Kibit"
   },
   "core/lib/i18n/i18n.js | displayValueElementsFound": {
     "message": "{nodeCount,plural, =1{1 element hittades}other{# element hittades}}"
   },
   "core/lib/i18n/i18n.js | displayValueMsSavings": {
-    "message": "Möjlig tidsbesparing: {wastedMs, number, milliseconds} ms"
+    "message": "Beräknad besparing: {wastedMs, number, milliseconds} ms"
   },
   "core/lib/i18n/i18n.js | documentResourceType": {
     "message": "Dokument"
@@ -2070,7 +2088,7 @@
     "message": "Hämta ett prestandavärde för Lighthouse."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation2": {
-    "message": "Mät resultatmätvärden för sidhämtningar, t.ex. Största uppritningen av innehåll och hastighetsindex."
+    "message": "Mät resultatmätvärden för sidhämtningar, t.ex. Största uppritningen av innehåll och Speed Index."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation3": {
     "message": "Testa funktioner för progressiva webbappar."
@@ -2204,14 +2222,8 @@
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | GetUserMediaInsecureOrigin": {
     "message": "getUserMedia() fungerar inte längre i osäkra ursprung. Om du vill använda den här funktionen rekommenderar vi att du flyttar appen till ett säkert ursprung, till exempel HTTPS. Läs mer på https://goo.gle/chrome-insecure-origins."
   },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | H1UserAgentFontSizeInSection": {
-    "message": "En <h1>-tagg hittades i en <article>, <aside>, <nav> eller <section> som inte har en angiven teckensnittsstorlek. Storleken på den här rubriken ändras i webbläsaren inom en snar framtid. Mer information finns på https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Heading_Elements#specifying_a_uniform_font_size_for_h1."
-  },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | HostCandidateAttributeGetter": {
     "message": "RTCPeerConnectionIceErrorEvent.hostCandidate är utfasad. Använd RTCPeerConnectionIceErrorEvent.address eller RTCPeerConnectionIceErrorEvent.port i stället."
-  },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityDigitalCredentials": {
-    "message": "Det här formatet för GET-begäran navigator.credentials.get() om digitala certifikat har fasats ut. Uppdatera anropet så att det nya formatet används."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityInCanMakePaymentEvent": {
     "message": "Säljarursprunget och arbiträr data från tjänstefunktionens canmakepayment-händelse har fasats ut och tas bort: topOrigin, paymentRequestOrigin, methodData, modifiers."
@@ -2251,6 +2263,9 @@
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverflowVisibleOnReplacedElement": {
     "message": "Om du anger overflow: visible för img-, video- och canvas-taggar kan det leda till att visuellt innehåll visas utanför elementets gränser. Läs mer på https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
+  },
+  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverrideFlashEmbedwithHTML": {
+    "message": "Äldre inbäddad Flash-video har skrivits om till HTML-iframe. Flash finns inte mer. Den här omskrivningslösningen har fasats ut och kan komma att tas bort i framtiden."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | PaymentInstruments": {
     "message": "paymentManager.instruments är utfasat. Använd just-in-time-installation för betalningshanterare i stället."
@@ -2352,7 +2367,10 @@
     "message": "De vanligaste orsakerna till layoutförskjutningar"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | unsizedImage": {
-    "message": "Unsized image element"
+    "message": "Bildelement utan angiven storlek"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | webFont": {
+    "message": "Webbteckensnitt"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | worstCluster": {
     "message": "Sämsta klustret"
@@ -2381,8 +2399,17 @@
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | description": {
     "message": "En stor DOM kan förlänga tiden för formatberäkningar och flödesomformningar av layouten, vilket påverkar sidans responsivitet. En stor DOM ökar även minnesanvändningen. [Läs om hur du undviker en för stor DOM-storlek](https://developer.chrome.com/docs/lighthouse/performance/dom-size/)."
   },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | duration": {
+    "message": "Längd"
+  },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | element": {
     "message": "Element"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeLayout": {
+    "message": "Layout ({PH1} objekt)"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeStyleRecalc": {
+    "message": "Formatomformning ({PH1} element)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | maxChildren": {
     "message": "Flest underordnade element"
@@ -2395,6 +2422,9 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | title": {
     "message": "Optimera DOM-storlek"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | topUpdatesDescription": {
+    "message": "Det här är de största händelserna för layout- och formatomformningar. Deras påverkan på prestandan kan minskas genom att göra DOM enklare."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | totalElements": {
     "message": "Totalt antal element"
@@ -2463,7 +2493,7 @@
     "message": "(anonym)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | description": {
-    "message": "Många API:er, vanligtvis när de läser layoutgeometri, tvingar renderingsmotorn att pausa skriptkörningen för att beräkna format och layout. Läs mer om [framtvingad flödesomformning](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) och hur det kan begränsas."
+    "message": "En tvingad flödesomformning sker när JavaScript frågar efter geometriska egenskaper (som offsetWidth) efter att format har ogiltigförklarats av en ändring i DOM-statusen. Detta kan leda till dåliga resultat. Läs mer om [framtvingade flödesomformningar](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) och möjliga begränsningar."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | relatedStackTrace": {
     "message": "Stackspårning"
@@ -2479,6 +2509,30 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | unattributed": {
     "message": "[utan attribut]"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | description": {
+    "message": "Börja undersöka med den längsta delen. [Fördröjningar kan minimeras](https://web.dev/articles/optimize-inp#optimize_interactions). För att minska bearbetningstiden kan du [optimera kostnaderna för huvudtrådar](https://web.dev/articles/optimize-long-tasks), ofta JS."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | duration": {
+    "message": "Längd"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | inputDelay": {
+    "message": "Inmatningsfördröjning"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | noInteractions": {
+    "message": "Inga interaktioner har identifierats"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | presentationDelay": {
+    "message": "Presentationsfördröjning"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | processingDuration": {
+    "message": "Behandlingstid"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | subpart": {
+    "message": "Del"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | title": {
+    "message": "INP-fördelning"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | description": {
     "message": "Om du minskar nedladdningstiden för bilder kan du förbättra den upplevda hämtningstiden för sidan och LCP. [Läs mer om att optimera bildstorlek](https://developer.chrome.com/docs/lighthouse/performance/uses-optimized-images/)"
@@ -2509,6 +2563,36 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | useVideoFormat": {
     "message": "Om du använder videoformat i stället för giffar kan du minska nedladdningsstorleken för animerat innehåll."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | description": {
+    "message": "Varje [del har specifika förbättringsstrategier](https://web.dev/articles/optimize-lcp#lcp-breakdown). LCP-tiden bör helst användas till att läsa in resurser, inte till fördröjningar."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | duration": {
+    "message": "Längd"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | elementRenderDelay": {
+    "message": "Fördröjning av elementrendering"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | fieldDuration": {
+    "message": "Fält p75"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | noLcp": {
+    "message": "Ingen LCP upptäcktes"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDelay": {
+    "message": "Fördröjning av resursinläsning"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDuration": {
+    "message": "Inläsningstid för resurs"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | subpart": {
+    "message": "Del"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | timeToFirstByte": {
+    "message": "Time to First Byte"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | title": {
+    "message": "LCP-fördelning"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/LCPDiscovery.js | description": {
     "message": "Optimera LCP genom att göra LCP-bilden [synlig](https://web.dev/articles/optimize-lcp#1_eliminate_resource_load_delay) från HTML direkt och [undvika uppskjuten inläsning](https://web.dev/articles/lcp-lazy-loading)"
@@ -2553,7 +2637,7 @@
     "message": "HTTP/2 och HTTP/3 ger många fördelar jämfört med HTTP/1.1, till exempel multiplexering. [Läs mer om hur du använder modern HTTP](https://developer.chrome.com/docs/lighthouse/best-practices/uses-http2/)."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | noOldProtocolRequests": {
-    "message": "Inga begäranden använde HTTP/1.1"
+    "message": "Inga begäranden använde HTTP/1.1 eller så utgör den aktuella användningen av HTTP/1.1 inte en betydande optimeringsmöjlighet. HTTP/1.1-begäranden flaggas endast om sex eller fler statiska tillgångar har samma ursprung och inte visas från en lokal utvecklingsmiljö eller tredjepartskälla."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | protocol": {
     "message": "Protokoll"
@@ -2653,6 +2737,12 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | title": {
     "message": "Kostnader för CSS-väljare"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorElapsedTime": {
+    "message": "Förfluten tid för toppväljare"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorMatchAttempt": {
+    "message": "Matchningsförsök för vanligaste väljaren"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectors": {
     "message": "Vanligaste väljarna"
@@ -2974,6 +3064,9 @@
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorker": {
     "message": "Sidor som använder SharedWorker kan för närvarande inte placeras i vilocacheminnet."
+  },
+  "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorkerMessage": {
+    "message": "Sidan togs bort från cacheminnet eftersom den fick ett meddelande från en SharedWorker"
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | speechRecognizer": {
     "message": "Sidor som använder SpeechRecognizer kan för närvarande inte placeras i vilocacheminnet."
@@ -3575,8 +3668,14 @@
   "report/renderer/report-utils.js | footerIssue": {
     "message": "Rapportera ett problem"
   },
+  "report/renderer/report-utils.js | goBackToAudits": {
+    "message": "Gå tillbaka till granskningar"
+  },
   "report/renderer/report-utils.js | hide": {
     "message": "Dölj"
+  },
+  "report/renderer/report-utils.js | insightsNotice": {
+    "message": "Senare i år ersätts granskningar av prestanda med insikter. [Läs mer och lämna feedback här](https://github.com/GoogleChrome/lighthouse/discussions/16462)."
   },
   "report/renderer/report-utils.js | labDataTitle": {
     "message": "Labbdata"
@@ -3677,6 +3776,9 @@
   "report/renderer/report-utils.js | toplevelWarningsMessage": {
     "message": "Problem uppstod med den här körningen av Lighthouse."
   },
+  "report/renderer/report-utils.js | tryInsights": {
+    "message": "Prova insikter"
+  },
   "report/renderer/report-utils.js | unattributable": {
     "message": "Kan inte tillskrivas"
   },
@@ -3707,6 +3809,9 @@
   "treemap/app/src/util.js | duplicateModulesLabel": {
     "message": "Moduldubbletter"
   },
+  "treemap/app/src/util.js | duplicatedBytesLabel": {
+    "message": "Dubbletter av byte"
+  },
   "treemap/app/src/util.js | resourceBytesLabel": {
     "message": "Resursstorlek i byte"
   },
@@ -3715,6 +3820,9 @@
   },
   "treemap/app/src/util.js | toggleTableButtonLabel": {
     "message": "Aktivera och inaktivera tabell"
+  },
+  "treemap/app/src/util.js | transferBytesLabel": {
+    "message": "Överför byte"
   },
   "treemap/app/src/util.js | unusedBytesLabel": {
     "message": "Byte som inte används"

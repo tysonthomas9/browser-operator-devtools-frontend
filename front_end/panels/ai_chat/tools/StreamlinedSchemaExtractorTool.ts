@@ -8,10 +8,9 @@ import * as Utils from '../common/utils.js';
 import type { AccessibilityNode } from '../common/context.js';
 import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
-import { AIChatPanel } from '../ui/AIChatPanel.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
-
-import type { Tool } from './Tools.js';
+import type { Tool, LLMContext } from './Tools.js';
+import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
 
 const logger = createLogger('Tool:StreamlinedSchemaExtractor');
 
@@ -64,15 +63,15 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
   };
 
 
-  async execute(args: StreamlinedSchemaExtractionArgs): Promise<StreamlinedExtractionResult> {
+  async execute(args: StreamlinedSchemaExtractionArgs, ctx?: LLMContext): Promise<StreamlinedExtractionResult> {
     try {
       const context = await this.setupExecution(args);
       if (context.success !== true) {
         return context as StreamlinedExtractionResult;
       }
 
-      const extractionResult = await this.performExtraction(context as ExecutionContext);
-      const finalData = await this.resolveUrlsWithRetry(extractionResult, context as ExecutionContext);
+      const extractionResult = await this.performExtraction(context as ExecutionContext, ctx);
+      const finalData = await this.resolveUrlsWithRetry(extractionResult, context as ExecutionContext, ctx);
 
       return {
         success: true,
@@ -139,17 +138,18 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
     };
   }
 
-  private async performExtraction(context: ExecutionContext): Promise<any> {
+  private async performExtraction(context: ExecutionContext, ctx?: LLMContext): Promise<any> {
     return await this.extractWithJsonRetry(
       context.schema, 
       context.treeText, 
       context.instruction, 
       context.apiKey,
-      this.MAX_JSON_RETRIES
+      this.MAX_JSON_RETRIES,
+      ctx
     );
   }
 
-  private async resolveUrlsWithRetry(extractionResult: any, context: ExecutionContext): Promise<any> {
+  private async resolveUrlsWithRetry(extractionResult: any, context: ExecutionContext, ctx?: LLMContext): Promise<any> {
     const urlFields = this.findUrlFields(context.schema);
     let finalData = this.resolveUrlsDirectly(extractionResult, context.urlMappings, urlFields);
 
@@ -175,10 +175,11 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
         extractionResult,
         unresolvedNodeIds,
         context.apiKey,
-        attempt
+        attempt,
+        ctx
       );
       
-      if (retryResult) {
+      if (retryResult && typeof retryResult === 'object') {
         finalData = this.resolveUrlsDirectly(retryResult, context.urlMappings, urlFields);
         extractionResult = retryResult; // Update for next iteration
       } else {
@@ -195,7 +196,8 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
     treeText: string,
     instruction: string,
     apiKey: string,
-    maxRetries: number
+    maxRetries: number,
+    ctx?: LLMContext
   ): Promise<any> {
     const systemPrompt = `You are a data extraction agent. Extract structured data from the accessibility tree according to the provided schema.
 
@@ -238,7 +240,11 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
           extractionPrompt += `\n\nIMPORTANT: Previous attempt ${attempt - 1} failed due to invalid JSON. Please ensure you return ONLY valid JSON that can be parsed. Do not hallucinate any data - only extract what actually exists in the tree.`;
         }
 
-        const { model, provider } = AIChatPanel.getMiniModelWithProvider();
+        if (!ctx?.provider || !ctx.miniModel) {
+          throw new Error('Missing LLM context (provider/miniModel) for streamlined extraction');
+        }
+        const provider = ctx.provider;
+        const model = ctx.miniModel;
         const llmResponse = await callLLMWithTracing(
           {
             provider,
@@ -263,10 +269,20 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
             }
           }
         );
-        const result = llmResponse.text;
+        const text = llmResponse.text || '';
+        // Parse using LLMResponseParser with strict mode then fallbacks
+        let parsed: any;
+        try {
+          parsed = LLMResponseParser.parseStrictJSON(text);
+        } catch {
+          parsed = LLMResponseParser.parseJSONWithFallbacks(text);
+        }
         
-        logger.debug(`JSON extraction successful on attempt ${attempt}`);
-        return result;
+        if (parsed && typeof parsed === 'object') {
+          logger.debug(`JSON extraction successful on attempt ${attempt}`);
+          return parsed;
+        }
+        throw new Error('Parsed extraction result is not an object/array');
 
       } catch (error) {
         if (attempt <= maxRetries) {
@@ -330,7 +346,8 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
     originalResult: any,
     unresolvedNodeIds: string[],
     apiKey: string,
-    attemptNumber: number
+    attemptNumber: number,
+    ctx?: LLMContext
   ): Promise<any> {
     const systemPrompt = `You are a data extraction agent. A previous extraction attempt was made but some nodeIDs could not be resolved to URLs.
 
@@ -377,7 +394,11 @@ Extract data according to the schema. For URL fields, return different nodeId nu
 CRITICAL: Only use nodeIds that you can actually see in the accessibility tree above. Do not invent, guess, or make up any nodeIds.`;
 
     try {
-      const { model, provider } = AIChatPanel.getMiniModelWithProvider();
+      if (!ctx?.provider || !ctx.miniModel) {
+        throw new Error('Missing LLM context (provider/miniModel) for URL retry extraction');
+      }
+      const provider = ctx.provider;
+      const model = ctx.miniModel;
       const llmResponse = await callLLMWithTracing(
         {
           provider,
@@ -401,9 +422,17 @@ CRITICAL: Only use nodeIds that you can actually see in the accessibility tree a
           }
         }
       );
-      const result = llmResponse.text;
-      
-      return result;
+      const text = llmResponse.text || '';
+      try {
+        return LLMResponseParser.parseStrictJSON(text);
+      } catch {
+        try {
+          return LLMResponseParser.parseJSONWithFallbacks(text);
+        } catch {
+          logger.warn('Retry URL resolution returned non-JSON; aborting this attempt');
+          return null;
+        }
+      }
     } catch (error) {
       logger.error(`Error in URL retry attempt ${attemptNumber}:`, error instanceof Error ? error.message : String(error));
       return null;

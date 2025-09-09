@@ -8,13 +8,13 @@ import * as Types from '../types/types.js';
 import type {HandlerName} from './types.js';
 import {data as userTimingsData} from './UserTimingsHandler.js';
 
-const extensionTrackEntries: Types.Extensions.SyntheticExtensionTrackEntry[] = [];
-const extensionTrackData: Types.Extensions.ExtensionTrackData[] = [];
-const extensionMarkers: Types.Extensions.SyntheticExtensionMarker[] = [];
-const entryToNode = new Map<Types.Events.Event, Helpers.TreeHelpers.TraceEntryNode>();
-const timeStampByName = new Map<string, Types.Events.ConsoleTimeStamp>();
+let extensionTrackEntries: Types.Extensions.SyntheticExtensionTrackEntry[] = [];
+let extensionTrackData: Types.Extensions.ExtensionTrackData[] = [];
+let extensionMarkers: Types.Extensions.SyntheticExtensionMarker[] = [];
+let entryToNode = new Map<Types.Events.Event, Helpers.TreeHelpers.TraceEntryNode>();
+let timeStampByName = new Map<string, Types.Events.ConsoleTimeStamp>();
 
-const syntheticConsoleEntriesForTimingsTrack: Types.Events.SyntheticConsoleTimeStamp[] = [];
+let syntheticConsoleEntriesForTimingsTrack: Types.Events.SyntheticConsoleTimeStamp[] = [];
 
 export interface ExtensionTraceData {
   extensionTrackData: readonly Types.Extensions.ExtensionTrackData[];
@@ -29,12 +29,12 @@ export function handleEvent(_event: Types.Events.Event): void {
 }
 
 export function reset(): void {
-  extensionTrackEntries.length = 0;
-  syntheticConsoleEntriesForTimingsTrack.length = 0;
-  extensionTrackData.length = 0;
-  extensionMarkers.length = 0;
-  entryToNode.clear();
-  timeStampByName.clear();
+  extensionTrackEntries = [];
+  syntheticConsoleEntriesForTimingsTrack = [];
+  extensionTrackData = [];
+  extensionMarkers = [];
+  entryToNode = new Map();
+  timeStampByName = new Map();
 }
 
 export async function finalize(): Promise<void> {
@@ -214,37 +214,14 @@ export function extractPerformanceAPIExtensionEntries(
   }
 }
 
-function parseDetail(timingDetail: string, key: string): Types.Extensions.ExtensionDataPayload|
-    Types.Extensions.ExtensionTrackEntryPayloadDeeplink|null {
-  try {
-    // Attempt to parse the detail as an object that might be coming from a
-    // DevTools Perf extension.
-    // Wrapped in a try-catch because timingDetail might either:
-    // 1. Not be `json.parse`-able (it should, but just in case...)
-    // 2.Not be an object - in which case the `in` check will error.
-    // If we hit either of these cases, we just ignore this mark and move on.
-    const detailObj = JSON.parse(timingDetail);
-    if (!(key in detailObj)) {
-      return null;
-    }
-    if (!Types.Extensions.isValidExtensionPayload(detailObj[key])) {
-      return null;
-    }
-    return detailObj[key];
-  } catch {
-    // No need to worry about this error, just discard this event and don't
-    // treat it as having any useful information for the purposes of extensions
-    return null;
-  }
-}
-
 function extensionPayloadForConsoleApi(timing: Types.Events.ConsoleTimeStamp):
     Types.Extensions.ExtensionTrackEntryPayloadDeeplink|null {
   if (!timing.args.data || !('devtools' in timing.args.data)) {
     return null;
   }
 
-  return parseDetail(`{"additionalContext": ${timing.args.data.devtools} }`, 'additionalContext') as
+  return Helpers.Trace.parseDevtoolsDetails(
+             `{"additionalContext": ${timing.args.data.devtools} }`, 'additionalContext') as
       Types.Extensions.ExtensionTrackEntryPayloadDeeplink;
 }
 
@@ -256,7 +233,7 @@ export function extensionDataInPerformanceTiming(
   if (!timingDetail) {
     return null;
   }
-  return parseDetail(timingDetail, 'devtools') as Types.Extensions.ExtensionDataPayload;
+  return Helpers.Trace.parseDevtoolsDetails(timingDetail, 'devtools') as Types.Extensions.ExtensionDataPayload;
 }
 
 /**
@@ -276,7 +253,7 @@ export function extensionDataInPerformanceTiming(
  * `ExtensionUI::extensionEntryColor`).
  *
  * @param timeStamp The `ConsoleTimeStamp` event to extract data from.
- * @return An `ExtensionTrackEntryPayload` object if the event contains
+ * @returns An `ExtensionTrackEntryPayload` object if the event contains
  *         valid extension data for a track entry, or `null` otherwise.
  */
 export function extensionDataInConsoleTimeStamp(timeStamp: Types.Events.ConsoleTimeStamp):

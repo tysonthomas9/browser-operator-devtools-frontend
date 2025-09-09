@@ -216,6 +216,10 @@ export class TraceProcessor extends EventTarget {
     options.logger?.end('parse:handleEvent');
 
     // Finalize.
+    const finalizeOptions: Handlers.Types.FinalizeOptions = {
+      ...options,
+      allTraceEvents: traceEvents,
+    };
     for (let i = 0; i < sortedHandlers.length; i++) {
       const [name, handler] = sortedHandlers[i];
       if (handler.finalize) {
@@ -223,46 +227,19 @@ export class TraceProcessor extends EventTarget {
         // Yield to the UI because finalize() calls can be expensive
         // TODO(jacktfranklin): consider using `scheduler.yield()` or `scheduler.postTask(() => {}, {priority: 'user-blocking'})`
         await new Promise(resolve => setTimeout(resolve, 0));
-        await handler.finalize(options);
+        await handler.finalize(finalizeOptions);
         options.logger?.end(`parse:${name}:finalize`);
       }
       const percent = calculateProgress(i / sortedHandlers.length, ProgressPhase.FINALIZE);
       this.dispatchEvent(new TraceParseProgressEvent({percent}));
     }
 
-    // Handlers that depend on other handlers do so via .data(), which used to always
-    // return a shallow clone of its internal data structures. However, that pattern
-    // easily results in egregious amounts of allocation. Now .data() does not do any
-    // cloning, and it happens here instead so that users of the trace processor may
-    // still assume that the parsed data is theirs.
-    // See: crbug/41484172
-    const shallowClone = (value: unknown, recurse = true): unknown => {
-      if (value instanceof Map) {
-        return new Map(value);
-      }
-      if (value instanceof Set) {
-        return new Set(value);
-      }
-      if (Array.isArray(value)) {
-        return [...value];
-      }
-      if (typeof value === 'object' && value && recurse) {
-        const obj: Record<string, unknown> = {};
-        for (const [key, v] of Object.entries(value)) {
-          obj[key] = shallowClone(v, false);
-        }
-        return obj;
-      }
-      return value;
-    };
-
-    options.logger?.start('parse:clone');
+    options.logger?.start('parse:handler.data()');
     const parsedTrace = {};
     for (const [name, handler] of Object.entries(this.#traceHandlers)) {
-      const data = shallowClone(handler.data());
-      Object.assign(parsedTrace, {[name]: data});
+      Object.assign(parsedTrace, {[name]: handler.data()});
     }
-    options.logger?.end('parse:clone');
+    options.logger?.end('parse:handler.data()');
 
     this.dispatchEvent(new TraceParseProgressEvent({percent: ProgressPhase.CLONE}));
 
@@ -379,14 +356,14 @@ export class TraceProcessor extends EventTarget {
 
     // Normalize the estimated savings to a single number, weighted by its relative impact
     // to the page experience based on the same scoring curve that Lighthouse uses.
-    const observedLcpMicro = Insights.Common.getLCP(this.#insights, insightSet.id)?.value;
+    const observedLcpMicro = Insights.Common.getLCP(insightSet)?.value;
     const observedLcp = observedLcpMicro ? Helpers.Timing.microToMilli(observedLcpMicro) : Types.Timing.Milli(0);
-    const observedCls = Insights.Common.getCLS(this.#insights, insightSet.id).value;
+    const observedCls = Insights.Common.getCLS(insightSet).value;
 
     // INP is special - if users did not interact with the page, we'll have no INP, but we should still
     // be able to prioritize insights based on this metric. When we observe no interaction, instead use
     // a default value for the baseline INP.
-    const observedInpMicro = Insights.Common.getINP(this.#insights, insightSet.id)?.value;
+    const observedInpMicro = Insights.Common.getINP(insightSet)?.value;
     const observedInp = observedInpMicro ? Helpers.Timing.microToMilli(observedInpMicro) : Types.Timing.Milli(200);
 
     const observedLcpScore =

@@ -660,7 +660,7 @@
     "message": "Используйте видеоформаты для анимированного контента"
   },
   "core/audits/byte-efficiency/legacy-javascript.js | description": {
-    "message": "Polyfills and transforms enable legacy browsers to use new JavaScript features. However, many aren't necessary for modern browsers. Consider modifying your JavaScript build process to not transpile [Baseline](https://web.dev/baseline) features, unless you know you must support legacy browsers. [Learn why most sites can deploy ES6+ code without transpiling](https://philipwalton.com/articles/the-state-of-es5-on-the-web/)"
+    "message": "Полифилы и преобразования позволяют работать с новыми возможностями JavaScript в устаревших браузерах. Однако для современных браузеров большинство из них не требуется. Если вам не нужно поддерживать устаревшие браузеры, возможно, стоит изменить процесс сборки JavaScript, чтобы не транспилировать [базовые](https://web.dev/baseline) функции. Подробнее о том, [почему большинство сайтов могут использовать код ES6+ без транспилирования](https://philipwalton.com/articles/the-state-of-es5-on-the-web/)…"
   },
   "core/audits/byte-efficiency/legacy-javascript.js | detectedCoreJs2Warning": {
     "message": "На странице была обнаружена библиотека core-js версии 2. Для улучшения производительности обновите ее до версии 3."
@@ -1188,7 +1188,7 @@
     "message": "Максимальная потенциальная задержка после первого ввода показывает время выполнения самой длительной задачи. Подробнее [о максимальной потенциальной задержке после первого ввода](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/)…"
   },
   "core/audits/metrics/speed-index.js | description": {
-    "message": "Индекс скорости загрузки показывает, как быстро на странице появляется контент. Подробнее [об индексе скорости загрузки](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)…"
+    "message": "Speed Index отражает, как быстро на странице появляется контент. Подробнее [о Speed Index](https://developer.chrome.com/docs/lighthouse/performance/speed-index/)…"
   },
   "core/audits/metrics/total-blocking-time.js | description": {
     "message": "Сумма (в миллисекундах) всех периодов от первой отрисовки контента до загрузки для взаимодействия, когда скорость выполнения задач превышала 50 мс. Подробнее [об общем времени блокировки](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/)…"
@@ -1440,7 +1440,7 @@
     "message": "Время до получения первого байта от сервера допустимое"
   },
   "core/audits/third-party-cookies.js | description": {
-    "message": "В будущем у пользователей Chrome будет возможность отказаться от сторонних файлов cookie. Подробнее [о сторонних файлах cookie](https://developers.google.com/privacy-sandbox/cookies)…"
+    "message": "Иногда сторонние файлы cookie могут блокироваться. Узнайте, [что делать в случае ограничений на использование таких файлов](https://privacysandbox.google.com/cookies/prepare/overview)."
   },
   "core/audits/third-party-cookies.js | displayValue": {
     "message": "{itemCount,plural, =1{Обнаружен 1 файл cookie}one{Обнаружен # файл cookie}few{Обнаружено # файла cookie}many{Обнаружено # файлов cookie}other{Обнаружено # файла cookie}}"
@@ -1492,6 +1492,18 @@
   },
   "core/audits/third-party-summary.js | title": {
     "message": "Уменьшение использования стороннего кода"
+  },
+  "core/audits/trusted-types-xss.js | columnSeverity": {
+    "message": "Уровень серьезности"
+  },
+  "core/audits/trusted-types-xss.js | description": {
+    "message": "Директива `require-trusted-types-for` в заголовке `Content-Security-Policy` (CSP) предписывает агентам пользователей управлять данными, которые передаются в приемники DOM XSS. Подробнее о том, [как использовать Trusted Types для предотвращения XSS-атак на основе DOM](https://developer.chrome.com/docs/lighthouse/best-practices/trusted-types-xss)…"
+  },
+  "core/audits/trusted-types-xss.js | noTrustedTypesToMitigateXss": {
+    "message": "Заголовок `Content-Security-Policy` с директивой Trusted Types не найден"
+  },
+  "core/audits/trusted-types-xss.js | title": {
+    "message": "Используйте Trusted Types для предотвращения XSS-атак на основе DOM"
   },
   "core/audits/unsized-images.js | description": {
     "message": "Чтобы уменьшить совокупное смещение макета и избежать проблем, связанных со смещением элементов, рекомендуем всегда явным образом задавать ширину и высоту для изображений. Подробнее о том, [как задавать размеры изображений](https://web.dev/articles/optimize-cls#images_without_dimensions)…"
@@ -1676,11 +1688,17 @@
   "core/config/default-config.js | firstPaintImprovementsGroupTitle": {
     "message": "Уменьшение времени загрузки контента"
   },
+  "core/config/default-config.js | insightsGroupDescription": {
+    "message": "Статистические данные доступны на панели \"Производительность\" инструментов разработчика в Chrome. Чтобы узнавать подробную информацию, [создайте трассировку](https://developer.chrome.com/docs/devtools/performance/reference)."
+  },
+  "core/config/default-config.js | insightsGroupTitle": {
+    "message": "Статистика"
+  },
   "core/config/default-config.js | metricGroupTitle": {
     "message": "Показатели"
   },
   "core/config/default-config.js | overallImprovementsGroupDescription": {
-    "message": "Улучшите параметры загрузки, чтобы страница была готова для работы как можно скорее. Ключевые показатели: \"Время загрузки для взаимодействия\" и \"Индекс скорости загрузки\"."
+    "message": "Улучшите параметры загрузки, чтобы страница была готова для работы как можно скорее. Ключевые показатели: Time to Interactive и Speed Index."
   },
   "core/config/default-config.js | overallImprovementsGroupTitle": {
     "message": "Общие улучшения"
@@ -1857,22 +1875,22 @@
     "message": "URL"
   },
   "core/lib/i18n/i18n.js | columnWastedBytes": {
-    "message": "Потенциальная экономия"
+    "message": "Ожидаемая экономия"
   },
   "core/lib/i18n/i18n.js | columnWastedMs": {
-    "message": "Потенциальная экономия"
+    "message": "Ожидаемая экономия"
   },
   "core/lib/i18n/i18n.js | cumulativeLayoutShiftMetric": {
     "message": "Cumulative Layout Shift"
   },
   "core/lib/i18n/i18n.js | displayValueByteSavings": {
-    "message": "Потенциальная экономия – {wastedBytes, number, bytes} КиБ"
+    "message": "Ожидаемая экономия – {wastedBytes, number, bytes} КиБ"
   },
   "core/lib/i18n/i18n.js | displayValueElementsFound": {
     "message": "{nodeCount,plural, =1{Обнаружен 1 элемент}one{Обнаружен # элемент}few{Обнаружено # элемента}many{Обнаружено # элементов}other{Обнаружено # элемента}}"
   },
   "core/lib/i18n/i18n.js | displayValueMsSavings": {
-    "message": "Потенциальная экономия – {wastedMs, number, milliseconds} мс"
+    "message": "Ожидаемая экономия – {wastedMs, number, milliseconds} мс"
   },
   "core/lib/i18n/i18n.js | documentResourceType": {
     "message": "Документ"
@@ -2070,7 +2088,7 @@
     "message": "Получить показатель производительности Lighthouse."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation2": {
-    "message": "Измерить показатели загрузки страницы, например время отрисовки самого крупного контента и индекс скорости загрузки."
+    "message": "Измерить показатели загрузки страницы, например Largest Contentful Paint и Speed Index."
   },
   "flow-report/src/i18n/ui-strings.js | helpUseCaseNavigation3": {
     "message": "Оценить возможности современного веб-приложения."
@@ -2204,14 +2222,8 @@
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | GetUserMediaInsecureOrigin": {
     "message": "Метод getUserMedia() больше не работает с небезопасными источниками. Чтобы использовать его, задайте для приложения безопасный источник, например HTTPS. Подробнее: https://goo.gle/chrome-insecure-origins."
   },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | H1UserAgentFontSizeInSection": {
-    "message": "В элементе <article>, <aside>, <nav> или <section> найден тег <h1>, для которого не указан размер шрифта. Размер этого заголовка в текущем браузере изменится в будущем. Подробнее: https://developer.mozilla.org/ru/docs/Web/HTML/Element/Heading_Elements#specifying_a_uniform_font_size_for_h1."
-  },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | HostCandidateAttributeGetter": {
     "message": "RTCPeerConnectionIceErrorEvent.hostCandidate больше не поддерживается. Используйте RTCPeerConnectionIceErrorEvent.address или RTCPeerConnectionIceErrorEvent.port."
-  },
-  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityDigitalCredentials": {
-    "message": "Текущий формат запроса navigator.credentials.get() для получения цифровых учетных данных устарел. Используйте в параметрах вызова новый формат."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | IdentityInCanMakePaymentEvent": {
     "message": "Страна продавца и случайные данные из события service workercanmakepayment устарели и будут удалены: topOrigin, paymentRequestOrigin, methodData, modifiers."
@@ -2248,6 +2260,9 @@
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverflowVisibleOnReplacedElement": {
     "message": "Если назначить свойство overflow: visible для элементов img, video или canvas, их визуальный контент может выйти за пределы границ. Подробности: https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
+  },
+  "node_modules/@paulirish/trace_engine/generated/Deprecation.js | OverrideFlashEmbedwithHTML": {
+    "message": "Устаревшее встраивание видео в формате Flash заменено на окно iframe. Поскольку технология Flash больше не используется, данный метод считается устаревшим и в будущем может быть удален."
   },
   "node_modules/@paulirish/trace_engine/generated/Deprecation.js | PaymentInstruments": {
     "message": "paymentManager.instruments больше не поддерживается. Используйте актуальный API для обработки платежей."
@@ -2349,7 +2364,10 @@
     "message": "Основные причины смещения макета"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | unsizedImage": {
-    "message": "Unsized image element"
+    "message": "Элемент \"Изображение\" без указания размера"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | webFont": {
+    "message": "Веб-шрифт"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/CLSCulprits.js | worstCluster": {
     "message": "Худший кластер"
@@ -2378,8 +2396,17 @@
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | description": {
     "message": "Из-за большого размера дерева DOM может замедляться расчет стиля и компоновка макета. Это повлияет на скорость отклика страницы и увеличит объем используемой памяти. Узнайте, [как уменьшить размер дерева DOM](https://developer.chrome.com/docs/lighthouse/performance/dom-size/)."
   },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | duration": {
+    "message": "Продолжительность"
+  },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | element": {
     "message": "Элемент"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeLayout": {
+    "message": "Макет (объектов: {PH1})."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | largeStyleRecalc": {
+    "message": "Перерасчет стилей (элементов: {PH1})"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | maxChildren": {
     "message": "Больше всего дочерних элементов"
@@ -2392,6 +2419,9 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | title": {
     "message": "Оптимизация размера DOM-дерева"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | topUpdatesDescription": {
+    "message": "Это самые значительные события перерасчета макета и стиля. Их влияние на производительность можно уменьшить, упростив структуру DOM."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/DOMSize.js | totalElements": {
     "message": "Всего элементов"
@@ -2460,7 +2490,7 @@
     "message": "(анонимная)"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | description": {
-    "message": "Многие API, прежде всего считывающие геометрию макета, принуждают движок отрисовки приостановить выполнение скриптов, чтобы рассчитать стиль и макет страницы. Подробнее [о принудительной компоновке и способах ее избежать](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts)…"
+    "message": "Принудительная компоновка происходит, когда JavaScript запрашивает геометрические свойства (например, offsetWidth) после того, как стили становятся недействительными из-за изменения состояния DOM. Это может привести к снижению производительности. Подробнее [о принудительной компоновке](https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing#avoid-forced-synchronous-layouts) и возможных способах ее устранения…"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | relatedStackTrace": {
     "message": "Трассировка стека"
@@ -2476,6 +2506,30 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ForcedReflow.js | unattributed": {
     "message": "[без атрибуции]"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | description": {
+    "message": "Начните анализ с самого длинного этапа. Задержки [можно уменьшить](https://web.dev/articles/optimize-inp#optimize_interactions). Чтобы сократить продолжительность обработки, [оптимизируйте затраты основного потока](https://web.dev/articles/optimize-long-tasks). Обычно они относятся к JS."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | duration": {
+    "message": "Продолжительность"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | inputDelay": {
+    "message": "Задержка ввода"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | noInteractions": {
+    "message": "Взаимодействия не обнаружены"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | presentationDelay": {
+    "message": "Задержка вывода ответа на экран"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | processingDuration": {
+    "message": "Длительность обработки"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | subpart": {
+    "message": "Этап"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/INPBreakdown.js | title": {
+    "message": "Обзор INP"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | description": {
     "message": "Если изображения будут быстрее скачиваться, то время загрузки страницы и значение LCP могут стать меньше. Узнайте, [как оптимизировать размер изображений](https://developer.chrome.com/docs/lighthouse/performance/uses-optimized-images/)."
@@ -2506,6 +2560,36 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ImageDelivery.js | useVideoFormat": {
     "message": "Если использовать не GIF, а видеоформаты, размер файла с анимированным контентом будет меньше."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | description": {
+    "message": "Для каждого этапа [есть стратегии улучшения](https://web.dev/articles/optimize-lcp#lcp-breakdown). В идеале большая часть времени, требуемого на полную отрисовку элементов LCP, должна тратиться на загрузку ресурсов, а не на задержки."
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | duration": {
+    "message": "Продолжительность"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | elementRenderDelay": {
+    "message": "Задержка при отрисовке элемента"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | fieldDuration": {
+    "message": "75-й процентиль данных"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | noLcp": {
+    "message": "Значение LCP не обнаружено"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDelay": {
+    "message": "Задержка загрузки ресурса"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | resourceLoadDuration": {
+    "message": "Продолжительность загрузки ресурса"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | subpart": {
+    "message": "Этап"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | timeToFirstByte": {
+    "message": "Time to First Byte"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/LCPBreakdown.js | title": {
+    "message": "Разбивка LCP"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/LCPDiscovery.js | description": {
     "message": "Оптимизируйте LCP, сделав возможным [находить](https://web.dev/articles/optimize-lcp#1_eliminate_resource_load_delay) самое крупное изображение прямо из HTML-кода. Также советуем [избегать отложенной загрузки](https://web.dev/articles/lcp-lazy-loading)."
@@ -2550,7 +2634,7 @@
     "message": "HTTP/2 и HTTP/3 имеют много преимуществ перед HTTP/1.1, например мультиплексирование. Подробнее [о современных версиях HTTP](https://developer.chrome.com/docs/lighthouse/best-practices/uses-http2/)…"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | noOldProtocolRequests": {
-    "message": "Нет запросов с использованием HTTP/1.1"
+    "message": "Нет запросов с использованием HTTP/1.1, или текущее использование HTTP/1.1 не представляет значительной возможности для оптимизации. Запросы HTTP/1.1 помечаются, только если с одного источника загружаются шесть или более статических ресурсов, и они не обслуживаются из локальной среды разработки или стороннего источника."
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/ModernHTTP.js | protocol": {
     "message": "Протокол"
@@ -2650,6 +2734,12 @@
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | title": {
     "message": "Затраты на селектор CSS"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorElapsedTime": {
+    "message": "Лучший селектор по затраченному времени"
+  },
+  "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectorMatchAttempt": {
+    "message": "Лучший селектор по попыткам поиска совпадения"
   },
   "node_modules/@paulirish/trace_engine/models/trace/insights/SlowCSSSelector.js | topSelectors": {
     "message": "Основные селекторы"
@@ -2971,6 +3061,9 @@
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorker": {
     "message": "Страницы, которые используют SharedWorker, в настоящее время нельзя добавить в возвратный кеш."
+  },
+  "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | sharedWorkerMessage": {
+    "message": "Страница удалена из кеша, так как было получено сообщение от SharedWorker."
   },
   "node_modules/@paulirish/trace_engine/panels/application/components/BackForwardCacheStrings.js | speechRecognizer": {
     "message": "Страницы, которые используют SpeechRecognizer, в настоящее время нельзя добавить в возвратный кеш."
@@ -3572,8 +3665,14 @@
   "report/renderer/report-utils.js | footerIssue": {
     "message": "Сообщить о проблеме"
   },
+  "report/renderer/report-utils.js | goBackToAudits": {
+    "message": "Использовать проверки"
+  },
   "report/renderer/report-utils.js | hide": {
     "message": "Скрыть"
+  },
+  "report/renderer/report-utils.js | insightsNotice": {
+    "message": "В этом году отчеты о проверке производительности будут заменены статистическими данными. Вы можете [узнать больше и оставить отзыв](https://github.com/GoogleChrome/lighthouse/discussions/16462)."
   },
   "report/renderer/report-utils.js | labDataTitle": {
     "message": "Имитация загрузки страницы"
@@ -3674,6 +3773,9 @@
   "report/renderer/report-utils.js | toplevelWarningsMessage": {
     "message": "Во время работы Lighthouse возникли следующие проблемы:"
   },
+  "report/renderer/report-utils.js | tryInsights": {
+    "message": "Использовать статистику"
+  },
   "report/renderer/report-utils.js | unattributable": {
     "message": "Несвязанные"
   },
@@ -3704,6 +3806,9 @@
   "treemap/app/src/util.js | duplicateModulesLabel": {
     "message": "Повторяющиеся модули"
   },
+  "treemap/app/src/util.js | duplicatedBytesLabel": {
+    "message": "Дублирующиеся байты"
+  },
   "treemap/app/src/util.js | resourceBytesLabel": {
     "message": "Размер в байтах"
   },
@@ -3712,6 +3817,9 @@
   },
   "treemap/app/src/util.js | toggleTableButtonLabel": {
     "message": "Показать/скрыть таблицу"
+  },
+  "treemap/app/src/util.js | transferBytesLabel": {
+    "message": "Переданные байты"
   },
   "treemap/app/src/util.js | unusedBytesLabel": {
     "message": "Неиспользуемые байты"
