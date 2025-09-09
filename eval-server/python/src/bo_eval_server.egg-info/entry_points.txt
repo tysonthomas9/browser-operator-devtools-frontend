@@ -1,0 +1,4 @@
+[console_scripts]
+bo-eval-basic = scripts:run_basic_server
+bo-eval-programmatic = scripts:run_programmatic_evals
+bo-eval-stack = scripts:run_with_stack

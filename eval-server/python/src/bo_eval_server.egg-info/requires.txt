@@ -1,0 +1,15 @@
+websockets>=11.0.0
+loguru>=0.7.0
+pandas>=2.0.0
+requests>=2.31.0
+openai>=1.0.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+httpx>=0.24.0
+
+[dev]
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+mypy>=1.0.0

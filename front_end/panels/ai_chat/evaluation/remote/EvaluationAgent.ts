@@ -171,7 +171,12 @@ export class EvaluationAgent {
         this.handleRegistrationAck(message);
       }
       else if (isEvaluationRequest(message)) {
-        await this.handleEvaluationRequest(message);
+        // Check if this is a get models request
+        if (message.params?.tool === 'get_models') {
+          await this.handleGetModelsRequest(message);
+        } else {
+          await this.handleEvaluationRequest(message);
+        }
       }
       else if (isPongMessage(message)) {
         logger.debug('Received pong');
@@ -297,6 +302,94 @@ export class EvaluationAgent {
     this.ready = true;
 
     logger.info('Sent ready signal to server');
+  }
+
+  private async handleGetModelsRequest(request: EvaluationRequest): Promise<void> {
+    const { id } = request;
+    logger.info('Received get models request');
+
+    try {
+      // Get current model selection from localStorage
+      const currentModelSelection = localStorage.getItem('ai_chat_model_selection');
+      
+      // Get custom models from localStorage
+      const customModelsStr = localStorage.getItem('ai_chat_custom_models');
+      let customModels = [];
+      if (customModelsStr) {
+        try {
+          customModels = JSON.parse(customModelsStr);
+        } catch (e) {
+          logger.warn('Failed to parse custom models from localStorage:', e);
+        }
+      }
+
+      // Import LLMProviderRegistry to get available models from providers
+      const { LLMProviderRegistry } = await import('../../LLM/LLMProviderRegistry.js');
+      
+      // Get all models from registered providers
+      const providerModels = await LLMProviderRegistry.getAllModels();
+      
+      // Combine provider models and custom models
+      const allModels = [...providerModels, ...customModels];
+      
+      // Mark the current model as selected
+      const modelsWithSelection = allModels.map(model => ({
+        ...model,
+        selected: model.id === currentModelSelection
+      }));
+      
+      logger.info('Retrieved models with current selection', {
+        modelCount: allModels.length,
+        currentSelection: currentModelSelection,
+        providerModelCount: providerModels.length,
+        customModelCount: customModels.length,
+        models: modelsWithSelection.map(m => ({ 
+          id: m.id, 
+          provider: m.provider, 
+          selected: m.selected 
+        }))
+      });
+
+      // Send JSON-RPC success response with models
+      const rpcResponse = createSuccessResponse(
+        id,
+        { 
+          models: modelsWithSelection,
+          currentSelection: currentModelSelection 
+        },
+        0, // No execution time for model listing
+        [],
+        {}
+      );
+
+      if (this.client) {
+        this.client.send(rpcResponse);
+      }
+
+      logger.info('Models response sent successfully', { 
+        modelCount: allModels.length,
+        currentSelection: currentModelSelection 
+      });
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Get models failed: ${errorMessage}`);
+
+      // Send JSON-RPC error response
+      const rpcResponse = createErrorResponse(
+        id,
+        ErrorCodes.TOOL_EXECUTION_ERROR,
+        'Failed to get available models',
+        {
+          error: errorMessage,
+          timestamp: new Date().toISOString()
+        }
+      );
+
+      if (this.client) {
+        this.client.send(rpcResponse);
+      }
+    }
   }
 
   private async handleEvaluationRequest(request: EvaluationRequest): Promise<void> {
@@ -447,7 +540,7 @@ export class EvaluationAgent {
         
         toolResult = await this.executeChatEvaluation(
           mergedInput,
-          params.timeout || 300000, // Default 5 minutes for chat
+          params.timeout || 2700000, // Default 15 minutes for chat
           tracingContext
         );
       } else {
@@ -457,7 +550,7 @@ export class EvaluationAgent {
         toolResult = await this.executeToolWithTimeout(
           tool,
           params.input,
-          params.timeout || 30000,
+          params.timeout || 2700000,
           tracingContext,
           params.tool
         );

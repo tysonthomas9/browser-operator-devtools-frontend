@@ -15,6 +15,7 @@ Both implementations provide:
 - 📚 **Programmatic API** - Create and manage evaluations in code
 - ⚡ **Concurrent Support** - Handle multiple agents simultaneously
 - 📊 **Structured Logging** - Comprehensive evaluation tracking
+- 🌐 **OpenAI-Compatible API** - Standard REST endpoints for seamless integration
 
 ## Quick Start
 
@@ -56,6 +57,60 @@ python examples/basic_server.py
 
 See [`python/README.md`](python/README.md) for detailed usage.
 
+## OpenAI-Compatible API
+
+Both implementations now include OpenAI-compatible HTTP endpoints that provide seamless integration with existing OpenAI clients and tools.
+
+### Architecture
+
+```
+┌─────────────────┐    HTTP     ┌──────────────────┐    WebSocket    ┌─────────────────┐
+│ OpenAI Client   │ ──────────→ │ OpenAI HTTP      │ ──────────────→ │ WebSocket       │
+│ (External)      │             │ Wrapper          │                 │ Eval Server     │
+└─────────────────┘             └──────────────────┘                 └─────────────────┘
+                                                                               │
+                                                                               │ RPC
+                                                                               ▼
+                                                          ┌─────────────────────────────────────┐
+                                                          │ Connected DevTools Tabs             │
+                                                          │ ┌─────┐ ┌─────┐ ┌─────┐           │
+                                                          │ │Tab 1│ │Tab 2│ │Tab N│ ...       │
+                                                          │ └─────┘ └─────┘ └─────┘           │
+                                                          └─────────────────────────────────────┘
+```
+
+### Supported Endpoints
+
+- **`GET /v1/models`** - List available models from connected DevTools tabs
+- **`POST /v1/chat/completions`** - OpenAI-compatible chat completions
+- **`GET /health`** - Health check and status
+
+### Usage Example
+
+```bash
+# List available models
+curl http://localhost:8081/v1/models
+
+# Send a chat completion request
+curl -X POST http://localhost:8081/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1",
+    "messages": [
+      {"role": "user", "content": "Hello, how are you?"}
+    ]
+  }'
+```
+
+### Request Flow
+
+1. **External client** sends OpenAI-compatible HTTP request
+2. **HTTP wrapper** converts request to evaluation format  
+3. **WebSocket server** selects connected DevTools tab
+4. **RPC call** sent to tab via existing JSON-RPC protocol
+5. **Tab processes** request using Browser Operator's LLM system
+6. **Response flows back** through WebSocket → HTTP → OpenAI format
+
 ## Architecture Comparison
 
 | Feature | NodeJS | Python |
@@ -68,6 +123,7 @@ See [`python/README.md`](python/README.md) for detailed usage.
 | **Structured Logging** | ✅ (Winston) | ✅ (Loguru) |
 | **YAML Evaluations** | ✅ | ❌ |
 | **HTTP API Wrapper** | ✅ | ❌ |
+| **OpenAI-Compatible API** | ✅ | ✅ |
 | **CLI Interface** | ✅ | ❌ |
 | **LLM Judge System** | ✅ | ❌ |
 | **Type System** | TypeScript | Type Hints |

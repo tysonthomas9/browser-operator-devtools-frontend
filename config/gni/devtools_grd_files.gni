@@ -635,6 +635,7 @@ grd_files_bundled_sources = [
   "front_end/panels/ai_chat/LLM/OpenRouterProvider.js",
   "front_end/panels/ai_chat/LLM/LLMClient.js",
   "front_end/panels/ai_chat/tools/Tools.js",
+  "front_end/panels/ai_chat/tools/LLMTracingWrapper.js",
   "front_end/panels/ai_chat/tools/CombinedExtractionTool.js",
   "front_end/panels/ai_chat/tools/CritiqueTool.js",
   "front_end/panels/ai_chat/tools/FetcherTool.js",

@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/bo_eval_server/__init__.py
+src/bo_eval_server/client_manager.py
+src/bo_eval_server/config.py
+src/bo_eval_server/eval_server.py
+src/bo_eval_server/evaluation_stack.py
+src/bo_eval_server/logger.py
+src/bo_eval_server/openai_server.py
+src/bo_eval_server/rpc_client.py
+src/bo_eval_server.egg-info/PKG-INFO
+src/bo_eval_server.egg-info/SOURCES.txt
+src/bo_eval_server.egg-info/dependency_links.txt
+src/bo_eval_server.egg-info/entry_points.txt
+src/bo_eval_server.egg-info/requires.txt
+src/bo_eval_server.egg-info/top_level.txt
+tests/test_openai_compatibility.py
