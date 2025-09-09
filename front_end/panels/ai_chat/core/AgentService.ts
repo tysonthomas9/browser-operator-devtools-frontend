@@ -18,6 +18,7 @@ import type { TracingProvider, TracingContext } from '../tracing/TracingProvider
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
 import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
+import { AIChatPanel } from '../ui/AIChatPanel.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 
 const logger = createLogger('AgentService');
@@ -196,8 +197,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       // Determine selected provider for primary graph execution
       const selectedProvider = (localStorage.getItem('ai_chat_provider') || 'openai') as LLMProvider;
 
+      // Get mini and nano models for tool execution
+      const miniModel = AIChatPanel.getMiniModel();
+      const nanoModel = AIChatPanel.getNanoModel();
+
       // Will throw error if model/provider configuration is invalid
-      this.#graph = createAgentGraph(apiKey, modelName, selectedProvider);
+      this.#graph = createAgentGraph(apiKey, modelName, selectedProvider, miniModel, nanoModel);
 
       this.#isInitialized = true;
     } catch (error) {

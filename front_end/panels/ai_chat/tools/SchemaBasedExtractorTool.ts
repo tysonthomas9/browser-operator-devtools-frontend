@@ -451,11 +451,11 @@ CRITICAL:
 Only output the JSON object with real data from the accessibility tree.`;
 
     try {
-      if (!options.ctx?.provider || !(options.ctx.nanoModel || options.ctx.model)) {
-        throw new Error('Missing LLM context (provider/model) for extraction');
+      if (!options.ctx?.provider || !(options.ctx.nanoModel)) {
+        throw new Error('Missing LLM context (provider/nano model) for extraction');
       }
       const provider = options.ctx.provider;
-      const model = options.ctx.nanoModel || options.ctx.model;
+      const model = options.ctx.nanoModel;
       const llmResponse = await callLLMWithTracing(
         {
           provider,

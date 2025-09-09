@@ -8,9 +8,12 @@ import { AgentService } from '../../core/AgentService.js';
 import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
 import type { EvaluationConfig, TestResult, TestCase } from '../framework/types.js';
 import { createLogger } from '../../core/Logger.js';
+import { LLMClient } from '../../LLM/LLMClient.js';
+import type { LLMProviderConfig } from '../../LLM/LLMClient.js';
 import { TIMING_CONSTANTS } from '../../core/Constants.js';
 import { createTracingProvider, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
+import { AIChatPanel } from '../../ui/AIChatPanel.js';
 
 const logger = createLogger('EvaluationRunner');
 
@@ -36,11 +39,20 @@ export class EvaluationRunner {
     // Use provided judge model or default
     const evaluationModel = judgeModel || 'gpt-4.1-mini';
 
+    // Get the actual models configured in the UI for tools and agents
+    // TODO: Use a more robust method to get these settings
+    const mainModel = AIChatPanel.instance().getSelectedModel();
+    const miniModel = AIChatPanel.getMiniModel();
+    const nanoModel = AIChatPanel.getNanoModel();
+
     this.config = {
       extractionModel: evaluationModel,
       extractionApiKey: apiKey,
       evaluationModel: evaluationModel,
       evaluationApiKey: apiKey,
+      mainModel,
+      miniModel,
+      nanoModel,
       maxConcurrency: 1,
       timeoutMs: TIMING_CONSTANTS.AGENT_TEST_SCHEMA_TIMEOUT,
       retries: 2,
@@ -51,6 +63,9 @@ export class EvaluationRunner {
     this.evaluator = new GenericToolEvaluator(this.config);
     this.llmEvaluator = new LLMEvaluator(this.config.evaluationApiKey, this.config.evaluationModel);
     
+    // Initialize LLM client for tools under evaluation (based on selected provider)
+    void this.#initializeLLMForEvaluation();
+
     // Initialize tracing
     this.tracingProvider = createTracingProvider();
     this.sessionId = `evaluation-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -64,6 +79,46 @@ export class EvaluationRunner {
     
     // Initialize tracing provider
     this.initializeTracing();
+  }
+
+  // Initialize LLMClient with the currently selected provider for extraction tools
+  async #initializeLLMForEvaluation(): Promise<void> {
+    try {
+      const provider = (localStorage.getItem('ai_chat_provider') || 'openai') as any;
+      const providers: LLMProviderConfig[] = [];
+
+      if (provider === 'openai') {
+        const key = localStorage.getItem('ai_chat_api_key') || '';
+        if (key) providers.push({ provider: 'openai', apiKey: key });
+      } else if (provider === 'openrouter') {
+        const key = localStorage.getItem('ai_chat_openrouter_api_key') || '';
+        if (key) providers.push({ provider: 'openrouter', apiKey: key });
+      } else if (provider === 'groq') {
+        const key = localStorage.getItem('ai_chat_groq_api_key') || '';
+        if (key) providers.push({ provider: 'groq', apiKey: key });
+      } else if (provider === 'litellm') {
+        const key = localStorage.getItem('ai_chat_litellm_api_key') || '';
+        const endpoint = localStorage.getItem('ai_chat_litellm_endpoint') || '';
+        if (endpoint) providers.push({ provider: 'litellm', apiKey: key, providerURL: endpoint });
+      }
+
+      // Fallback to OpenAI if specific selection is not configured but an OpenAI key exists
+      if (!providers.length) {
+        const fallback = localStorage.getItem('ai_chat_api_key') || '';
+        if (fallback) providers.push({ provider: 'openai', apiKey: fallback });
+      }
+
+      if (!providers.length) {
+        logger.warn('LLMClient initialization skipped: no provider credentials found');
+        return;
+      }
+
+      const llm = LLMClient.getInstance();
+      await llm.initialize({ providers });
+      logger.info('LLMClient initialized for evaluation', { providerSelection: provider, providersRegistered: providers.map(p => p.provider) });
+    } catch (error) {
+      logger.warn('Failed to initialize LLM client for evaluation:', error);
+    }
   }
   
   private async initializeTracing(): Promise<void> {

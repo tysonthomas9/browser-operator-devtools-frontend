@@ -811,12 +811,12 @@ export class NavigateURLTool implements Tool<{ url: string, reasoning: string },
         return false;
       }
 
-      if (!ctx?.provider || !(ctx.nanoModel || ctx.model)) {
+      if (!ctx?.provider || !ctx.nanoModel) {
         logger.warn('Missing LLM context for 404 confirmation');
         return false;
       }
       const provider = ctx.provider;
-      const model = ctx.nanoModel || ctx.model;
+      const model = ctx.nanoModel;
       const llm = LLMClient.getInstance();
       
       const systemPrompt = `You are analyzing web page content to determine if it represents a 404 "Page Not Found" error page.
@@ -1455,9 +1455,9 @@ export class WaitTool implements Tool<{ seconds?: number, duration?: number, rea
         const treeResult = await Utils.getVisibleAccessibilityTree(target);
         
         // Generate summary using LLM if ctx is available
-        if (ctx?.provider && (ctx.nanoModel || ctx.model)) {
+        if (ctx?.provider && ctx.nanoModel) {
           const provider = ctx.provider;
-          const model = ctx.nanoModel || ctx.model;
+          const model = ctx.nanoModel;
           const llm = LLMClient.getInstance();
         
         const reasonContext = waitReason ? `The wait was specifically for: ${waitReason}` : 'No specific reason was provided for the wait.';

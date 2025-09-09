@@ -1016,7 +1016,7 @@ export class AIChatPanel extends UI.Panel.Panel {
    */
   #setupOAuthEventListeners(): void {
     // Listen for OAuth success events
-    window.addEventListener('openrouter-oauth-success', () => {
+    window.addEventListener('openrouter-oauth-success', async () => {
       logger.info('=== OAUTH SUCCESS EVENT RECEIVED IN AICHATPANEL ===');
       logger.info('Timestamp:', new Date().toISOString());
       logger.info('Current localStorage state for OpenRouter:');
@@ -1025,6 +1025,18 @@ export class AIChatPanel extends UI.Panel.Panel {
       logger.info('- API key exists:', !!apiKey);
       logger.info('- API key length:', apiKey?.length || 0);
       logger.info('- Auth method:', authMethod);
+      
+      // Auto-fetch OpenRouter models after successful OAuth
+      if (apiKey) {
+        try {
+          logger.info('Auto-fetching OpenRouter models after OAuth success...');
+          await this.#autoFetchOpenRouterModels(apiKey);
+          logger.info('Successfully auto-fetched OpenRouter models');
+        } catch (error) {
+          logger.warn('Failed to auto-fetch OpenRouter models after OAuth:', error);
+        }
+      }
+      
       logger.info('Re-initializing agent service after OAuth success...');
       this.#initializeAgentService();
     });
@@ -1518,6 +1530,45 @@ export class AIChatPanel extends UI.Panel.Panel {
     }).catch(error => {
       logger.error('Failed to import OpenRouterOAuth:', error);
     });
+  }
+
+  /**
+   * Auto-fetch OpenRouter models after successful OAuth authentication
+   */
+  async #autoFetchOpenRouterModels(apiKey: string): Promise<void> {
+    try {
+      logger.debug('Fetching OpenRouter models automatically after OAuth...');
+      
+      // Import LLMClient and SettingsDialog dynamically to fetch and update models
+      const [{ LLMClient }, { SettingsDialog }] = await Promise.all([
+        import('../LLM/LLMClient.js'),
+        import('./SettingsDialog.js')
+      ]);
+      
+      const openrouterModels = await LLMClient.fetchOpenRouterModels(apiKey);
+      logger.debug(`Auto-fetched ${openrouterModels.length} OpenRouter models`);
+      
+      // Update models programmatically via SettingsDialog static method
+      SettingsDialog.updateOpenRouterModels(openrouterModels);
+      
+      // Also update AIChatPanel's model options for immediate UI availability
+      const modelOptions: ModelOption[] = openrouterModels.map(model => ({
+        value: model.id,
+        label: model.name || model.id,
+        type: 'openrouter' as const,
+      }));
+      AIChatPanel.updateModelOptions(modelOptions, false);
+      this.performUpdate();
+      
+      // Also dispatch event for backward compatibility / other listeners
+      window.dispatchEvent(new CustomEvent('openrouter-models-fetched', {
+        detail: { models: openrouterModels }
+      }));
+      
+    } catch (error) {
+      logger.error('Failed to auto-fetch OpenRouter models:', error);
+      throw error;
+    }
   }
 
   /**

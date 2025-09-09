@@ -13,6 +13,7 @@ import { createLogger } from '../../core/Logger.js';
 import { TIMING_CONSTANTS } from '../../core/Constants.js';
 import { createTracingProvider, isTracingEnabled } from '../../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
+import { AIChatPanel } from '../../ui/AIChatPanel.js';
 
 const logger = createLogger('VisionAgentEvaluationRunner');
 
@@ -59,11 +60,19 @@ export class VisionAgentEvaluationRunner {
     // Use provided judge model or default
     const evaluationModel = judgeModel || 'gpt-4.1-mini';
 
+    // Get the actual models configured in the UI for tools and agents
+    const mainModel = AIChatPanel.instance().getSelectedModel();
+    const miniModel = AIChatPanel.getMiniModel();
+    const nanoModel = AIChatPanel.getNanoModel();
+
     this.config = {
       extractionModel: evaluationModel,
       extractionApiKey: apiKey,
       evaluationModel: evaluationModel, 
       evaluationApiKey: apiKey,
+      mainModel,
+      miniModel,
+      nanoModel,
       maxConcurrency: 1, // Agent tools should run sequentially
       timeoutMs: TIMING_CONSTANTS.AGENT_TEST_DEFAULT_TIMEOUT,
       retries: 2,

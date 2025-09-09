@@ -165,12 +165,12 @@ Return a JSON array of requirement statements. Example format:
 ["Requirement 1", "Requirement 2", ...]`;
 
     try {
-      if (!ctx?.provider || !(ctx.nanoModel || ctx.model)) {
-        throw new Error('Missing LLM context (provider/model) for requirements extraction');
+      if (!ctx?.provider || !ctx.nanoModel) {
+        throw new Error('Missing LLM context (provider/miniModel) for requirements extraction');
       }
       const provider = ctx.provider;
-      const model = ctx.nanoModel || ctx.model;
-      
+      const model = ctx.nanoModel;
+
       const response = await callLLMWithTracing(
         {
           provider,
@@ -272,11 +272,11 @@ Return a JSON object evaluating the plan against the requirements using this sch
 ${JSON.stringify(evaluationSchema, null, 2)}`;
 
     try {
-      if (!ctx?.provider || !(ctx.nanoModel || ctx.model)) {
-        throw new Error('Missing LLM context (provider/model) for evaluation');
+      if (!ctx?.provider || !ctx.nanoModel) {
+        throw new Error('Missing LLM context (provider/miniModel) for requirements extraction');
       }
       const provider = ctx.provider;
-      const model = ctx.nanoModel || ctx.model;
+      const model = ctx.nanoModel;
       
       const response = await callLLMWithTracing(
         {
@@ -347,11 +347,11 @@ Provide clear, actionable feedback focused on helping improve the final response
 Be concise, specific, and constructive.`;
 
     try {
-      if (!ctx?.provider || !(ctx.nanoModel || ctx.model)) {
-        throw new Error('Missing LLM context (provider/model) for feedback generation');
+      if (!ctx?.provider || !ctx.nanoModel) {
+        throw new Error('Missing LLM context (provider/miniModel) for requirements extraction');
       }
       const provider = ctx.provider;
-      const model = ctx.nanoModel || ctx.model;
+      const model = ctx.nanoModel;
       
       const response = await callLLMWithTracing(
         {

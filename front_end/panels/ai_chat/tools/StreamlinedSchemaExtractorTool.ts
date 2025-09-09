@@ -239,11 +239,11 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
           extractionPrompt += `\n\nIMPORTANT: Previous attempt ${attempt - 1} failed due to invalid JSON. Please ensure you return ONLY valid JSON that can be parsed. Do not hallucinate any data - only extract what actually exists in the tree.`;
         }
 
-        if (!ctx?.provider || !(ctx.miniModel || ctx.model)) {
-          throw new Error('Missing LLM context (provider/model) for streamlined extraction');
+        if (!ctx?.provider || !ctx.miniModel) {
+          throw new Error('Missing LLM context (provider/miniModel) for streamlined extraction');
         }
         const provider = ctx.provider;
-        const model = ctx.miniModel || ctx.model;
+        const model = ctx.miniModel;
         const llmResponse = await callLLMWithTracing(
           {
             provider,
@@ -383,11 +383,11 @@ Extract data according to the schema. For URL fields, return different nodeId nu
 CRITICAL: Only use nodeIds that you can actually see in the accessibility tree above. Do not invent, guess, or make up any nodeIds.`;
 
     try {
-      if (!ctx?.provider || !(ctx.miniModel || ctx.model)) {
-        throw new Error('Missing LLM context (provider/model) for URL retry extraction');
+      if (!ctx?.provider || !ctx.miniModel) {
+        throw new Error('Missing LLM context (provider/miniModel) for URL retry extraction');
       }
       const provider = ctx.provider;
-      const model = ctx.miniModel || ctx.model;
+      const model = ctx.miniModel;
       const llmResponse = await callLLMWithTracing(
         {
           provider,

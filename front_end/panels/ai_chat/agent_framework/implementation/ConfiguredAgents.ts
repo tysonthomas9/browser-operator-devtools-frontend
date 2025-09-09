@@ -10,7 +10,6 @@ import { BookmarkStoreTool } from '../../tools/BookmarkStoreTool.js';
 import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
 import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool } from '../../tools/Tools.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
-import { AIChatPanel } from '../../ui/AIChatPanel.js';
 import { ChatMessageEntity, type ChatMessage } from '../../models/ChatTypes.js';
 import {
   ConfigurableAgentTool,
@@ -70,7 +69,6 @@ If the page does not match the expected content, retry with a different URL patt
 Remember: Always use navigate_url to actually go to the constructed URLs. Return easy-to-read markdown reports.`,
     tools: ['navigate_url', 'get_page_content'],
     maxIterations: 5,
-    modelName: () => AIChatPanel.instance().getSelectedModel(),
     temperature: 0.1,
     schema: {
       type: 'object',
@@ -322,7 +320,7 @@ Remember: You gather data, content_writer_agent writes the report. Always hand o
       'document_search'
     ],
     maxIterations: 15,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0,
     schema: {
       type: 'object',
@@ -423,7 +421,7 @@ Your process should follow these steps:
 The final output should be in markdown format, and it should be lengthy and detailed. Aim for 5-10 pages of content, at least 1000 words.`,
     tools: [],
     maxIterations: 3,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.3,
     schema: {
       type: 'object',
@@ -531,7 +529,7 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
       'take_screenshot',
     ],
     maxIterations: 10,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.5,
     schema: {
       type: 'object',
@@ -640,7 +638,7 @@ Remember that verification is time-sensitive - the page state might change durin
       'take_screenshot'
     ],
     maxIterations: 3,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.2,
     schema: {
       type: 'object',
@@ -725,7 +723,7 @@ When selecting an element to click, prioritize:
       'node_ids_to_urls',
     ],
     maxIterations: 5,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.7,
     schema: {
       type: 'object',
@@ -805,7 +803,7 @@ When selecting a form field to fill, prioritize:
       'schema_based_extractor',
     ],
     maxIterations: 5,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.7,
     schema: {
       type: 'object',
@@ -881,7 +879,7 @@ When selecting an element for keyboard input, prioritize:
       'schema_based_extractor',
     ],
     maxIterations: 5,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.7,
     schema: {
       type: 'object',
@@ -966,7 +964,7 @@ When selecting an element to hover over, prioritize:
       'schema_based_extractor',
     ],
     maxIterations: 5,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.7,
     schema: {
       type: 'object',
@@ -1048,7 +1046,7 @@ The accessibility tree includes information about scrollable containers. Look fo
       'schema_based_extractor',
     ],
     maxIterations: 5,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.7,
     schema: {
       type: 'object',
@@ -1283,7 +1281,6 @@ Remember: **Plan adaptively, execute systematically, validate continuously, and 
       'thinking',
     ],
     maxIterations: 15,
-    modelName: () => AIChatPanel.instance().getSelectedModel(),
     temperature: 0.3,
     schema: {
       type: 'object',
@@ -1422,7 +1419,7 @@ Remember to adapt your analysis based on the product category - different attrib
       'get_page_content',
     ],
     maxIterations: 5,
-    modelName: () => AIChatPanel.getMiniModel(),
+    modelName: 'use-mini',
     temperature: 0.2,
     schema: {
       type: 'object',
