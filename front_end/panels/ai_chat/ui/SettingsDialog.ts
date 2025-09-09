@@ -559,6 +559,8 @@ export class SettingsDialog {
               type: 'openrouter' as const
             }));
             updateModelOptions(modelOptions, false);
+            // Persist cache alongside timestamp for consistency
+            localStorage.setItem('openrouter_models_cache', JSON.stringify(modelOptions));
             localStorage.setItem('openrouter_models_cache_timestamp', Date.now().toString());
             logger.debug('Successfully refreshed OpenRouter models after provider change');
           } catch (error) {

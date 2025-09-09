@@ -18,6 +18,7 @@ import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
 const logger = createLogger('AgentRunner');
 
 import { ConfigurableAgentTool, ToolRegistry, type ConfigurableAgentArgs, type ConfigurableAgentResult, type AgentRunTerminationReason, type HandoffConfig /* , HandoffContextTransform, ContextFilterRegistry*/ } from './ConfigurableAgentTool.js';
+import { MODEL_SENTINELS } from '../core/Constants.js';
 
 /**
  * Configuration for the AgentRunner
@@ -296,7 +297,7 @@ export class AgentRunner {
     let resolvedModelName: string;
     if (typeof targetConfig.modelName === 'function') {
       resolvedModelName = targetConfig.modelName();
-    } else if (targetConfig.modelName === 'use-mini') {
+    } else if (targetConfig.modelName === MODEL_SENTINELS.USE_MINI) {
       if (!miniModel) {
         throw new Error(`Mini model not provided for handoff to agent '${targetAgentName}'. Ensure miniModel is passed in context.`);
       }

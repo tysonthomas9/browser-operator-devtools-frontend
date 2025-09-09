@@ -16,6 +16,7 @@ import { webTaskAgentTests } from '../evaluation/test-cases/web-task-agent-tests
 import type { TestResult } from '../evaluation/framework/types.js';
 import { createLogger } from '../core/Logger.js';
 import { AIChatPanel } from './AIChatPanel.js';
+import { MODEL_PLACEHOLDERS } from '../core/Constants.js';
 
 const logger = createLogger('EvaluationDialog');
 
@@ -847,7 +848,7 @@ export class EvaluationDialog {
     
     // Filter models to only show those from the selected provider
     const filteredModels = modelOptions.filter(option => {
-      if (option.value.startsWith('_placeholder')) {
+      if (option.value.startsWith(MODEL_PLACEHOLDERS.NO_MODELS) || option.value.startsWith(MODEL_PLACEHOLDERS.ADD_CUSTOM)) {
         return false; // Skip placeholder options
       }
       // Use the model's type to determine if it belongs to the selected provider

@@ -10,6 +10,7 @@ import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import type { Tool, LLMContext } from './Tools.js';
+import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
 
 const logger = createLogger('Tool:StreamlinedSchemaExtractor');
 
@@ -268,10 +269,17 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
             }
           }
         );
-        const result = llmResponse.text;
+        const text = llmResponse.text || '';
+        // Parse using LLMResponseParser with strict mode then fallbacks
+        let parsed: any;
+        try {
+          parsed = LLMResponseParser.parseStrictJSON(text);
+        } catch {
+          parsed = LLMResponseParser.parseJSONWithFallbacks(text);
+        }
         
         logger.debug(`JSON extraction successful on attempt ${attempt}`);
-        return result;
+        return parsed;
 
       } catch (error) {
         if (attempt <= maxRetries) {
@@ -411,9 +419,17 @@ CRITICAL: Only use nodeIds that you can actually see in the accessibility tree a
           }
         }
       );
-      const result = llmResponse.text;
-      
-      return result;
+      const text = llmResponse.text || '';
+      try {
+        return LLMResponseParser.parseStrictJSON(text);
+      } catch {
+        try {
+          return LLMResponseParser.parseJSONWithFallbacks(text);
+        } catch {
+          logger.warn('Retry URL resolution returned non-JSON; aborting this attempt');
+          return null;
+        }
+      }
     } catch (error) {
       logger.error(`Error in URL retry attempt ${attemptNumber}:`, error instanceof Error ? error.message : String(error));
       return null;

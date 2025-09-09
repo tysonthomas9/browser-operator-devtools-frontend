@@ -83,6 +83,7 @@ import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelCha
 import { HelpDialog } from './HelpDialog.js';
 import { SettingsDialog, isVectorDBEnabled } from './SettingsDialog.js';
 import { EvaluationDialog } from './EvaluationDialog.js';
+import { MODEL_PLACEHOLDERS } from '../core/Constants.js';
 import * as Snackbars from '../../../ui/components/snackbars/snackbars.js';
 
 const {html} = Lit;
@@ -558,7 +559,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       // Add placeholder if no Groq models available
       if (MODEL_OPTIONS.length === 0) {
         MODEL_OPTIONS.push({
-          value: '_placeholder_no_models',
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
           label: 'Groq: Please configure API key in settings',
           type: 'groq' as const
         });
@@ -569,7 +570,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       // Add placeholder if no OpenRouter models available
       if (MODEL_OPTIONS.length === 0) {
         MODEL_OPTIONS.push({
-          value: '_placeholder_no_models',
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
           label: 'OpenRouter: Please configure API key in settings',
           type: 'openrouter' as const
         });
@@ -581,7 +582,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       // Add placeholder if needed for LiteLLM when we have no models
       if (hadWildcard && MODEL_OPTIONS.length === 0) {
         MODEL_OPTIONS.push({
-          value: '_placeholder_add_custom',
+          value: MODEL_PLACEHOLDERS.ADD_CUSTOM,
           label: 'LiteLLM: Please add custom models in settings',
           type: 'litellm' as const
         });
@@ -1250,8 +1251,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     return {
       isLiteLLM: Boolean(modelOption?.type === 'litellm'),
       isPlaceholder: Boolean(
-        modelOption?.value === '_placeholder_add_custom' || 
-        modelOption?.value === '_placeholder_no_models'
+        modelOption?.value === MODEL_PLACEHOLDERS.ADD_CUSTOM || 
+        modelOption?.value === MODEL_PLACEHOLDERS.NO_MODELS
       ),
     };
   }

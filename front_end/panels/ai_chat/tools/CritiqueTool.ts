@@ -76,8 +76,6 @@ export class CritiqueTool implements Tool<CritiqueToolArgs, CritiqueToolResult> 
   async execute(args: CritiqueToolArgs, ctx?: LLMContext): Promise<CritiqueToolResult> {
     logger.debug('Executing with args', args);
     const { userInput, finalResponse, reasoning } = args;
-    const agentService = AgentService.getInstance();
-    const apiKey = agentService.getApiKey();
 
     // Validate input
     if (!userInput || !finalResponse) {
@@ -88,19 +86,11 @@ export class CritiqueTool implements Tool<CritiqueToolArgs, CritiqueToolResult> 
       };
     }
 
-    if (!apiKey) {
-      return {
-        satisfiesCriteria: false,
-        success: false,
-        error: 'API key not configured.'
-      };
-    }
-
     try {
       logger.info('Evaluating planning response against user requirements');
 
       // First, extract requirements from user input
-      const requirementsResult = await this.extractRequirements(userInput, apiKey, ctx);
+      const requirementsResult = await this.extractRequirements(userInput, ctx);
       if (!requirementsResult.success) {
         throw new Error('Failed to extract requirements from user input.');
       }
@@ -110,7 +100,6 @@ export class CritiqueTool implements Tool<CritiqueToolArgs, CritiqueToolResult> 
         userInput,
         finalResponse,
         requirementsResult.requirements,
-        apiKey,
         ctx
       );
 
@@ -123,7 +112,7 @@ export class CritiqueTool implements Tool<CritiqueToolArgs, CritiqueToolResult> 
       // Generate feedback only if criteria not satisfied
       let feedback = undefined;
       if (!criteria.satisfiesCriteria) {
-        feedback = await this.generateFeedback(criteria, userInput, finalResponse, apiKey, ctx);
+        feedback = await this.generateFeedback(criteria, userInput, finalResponse, ctx);
       }
 
       logger.info('Evaluation complete', {
@@ -150,7 +139,7 @@ export class CritiqueTool implements Tool<CritiqueToolArgs, CritiqueToolResult> 
   /**
    * Extract structured requirements from user input
    */
-  private async extractRequirements(userInput: string, apiKey: string, ctx?: LLMContext): Promise<{success: boolean, requirements: string[], error?: string}> {
+  private async extractRequirements(userInput: string, ctx?: LLMContext): Promise<{success: boolean, requirements: string[], error?: string}> {
     const systemPrompt = `You are an expert requirements analyst. 
 Your task is to extract clear, specific requirements from the user's input.
 Focus on functional requirements, constraints, and expected outcomes.
@@ -216,7 +205,6 @@ Return a JSON array of requirement statements. Example format:
     userInput: string,
     finalResponse: string,
     requirements: string[],
-    apiKey: string,
     ctx?: LLMContext
   ): Promise<{success: boolean, criteria?: EvaluationCriteria, error?: string}> {
     const systemPrompt = `You are an expert plan evaluator.
@@ -324,7 +312,6 @@ ${JSON.stringify(evaluationSchema, null, 2)}`;
     criteria: EvaluationCriteria,
     userInput: string,
     finalResponse: string,
-    apiKey: string,
     ctx?: LLMContext
   ): Promise<string> {
     const systemPrompt = `You are an expert feedback provider.

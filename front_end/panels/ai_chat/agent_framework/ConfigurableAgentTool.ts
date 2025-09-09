@@ -7,11 +7,26 @@ import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
 import { getCurrentTracingContext } from '../tracing/TracingConfig.js';
+import { MODEL_SENTINELS } from '../core/Constants.js';
 import type { AgentSession } from './AgentSessionTypes.js';
+import type { LLMProvider } from '../LLM/LLMTypes.js';
 
 const logger = createLogger('ConfigurableAgentTool');
 
 import { AgentRunner, type AgentRunnerConfig, type AgentRunnerHooks } from './AgentRunner.js';
+
+// Context passed along with agent/tool calls
+export interface CallCtx {
+  provider?: LLMProvider,
+  model?: string,
+  miniModel?: string,
+  nanoModel?: string,
+  mainModel?: string,
+  getVisionCapability?: (modelName: string) => Promise<boolean> | boolean,
+  overrideSessionId?: string,
+  overrideParentSessionId?: string,
+  overrideTraceId?: string,
+}
 
 /**
  * Defines the possible reasons an agent run might terminate.
@@ -413,21 +428,11 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     const maxIterations = this.config.maxIterations || 10;
     
     // Parse execution context first
-    const callCtx = (_ctx || {}) as {
-      provider?: import('../LLM/LLMTypes.js').LLMProvider;
-      model?: string;
-      miniModel?: string;
-      nanoModel?: string;
-      mainModel?: string;
-      getVisionCapability?: (modelName: string) => Promise<boolean> | boolean;
-      overrideSessionId?: string;
-      overrideParentSessionId?: string;
-      overrideTraceId?: string;
-    };
+    const callCtx = (_ctx || {}) as CallCtx;
     
     // Resolve model name from context or configuration
     let modelName: string;
-    if (this.config.modelName === 'use-mini') {
+    if (this.config.modelName === MODEL_SENTINELS.USE_MINI) {
       if (!callCtx.miniModel) {
         throw new Error(`Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel.`);
       }

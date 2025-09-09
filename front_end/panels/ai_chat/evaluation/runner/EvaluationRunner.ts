@@ -32,6 +32,7 @@ export class EvaluationRunner {
   private config: EvaluationConfig;
   private tracingProvider: TracingProvider;
   private sessionId: string;
+  #llmInitPromise: Promise<void> | null = null;
 
   constructor(options: EvaluationRunnerOptions) {
     // Get API key from AgentService
@@ -65,7 +66,7 @@ export class EvaluationRunner {
     this.llmEvaluator = new LLMEvaluator(this.config.evaluationApiKey, this.config.evaluationModel);
     
     // Initialize LLM client for tools under evaluation (based on selected provider)
-    void this.#initializeLLMForEvaluation();
+    this.#llmInitPromise = this.#initializeLLMForEvaluation();
 
     // Initialize tracing
     this.tracingProvider = createTracingProvider();
@@ -150,6 +151,10 @@ export class EvaluationRunner {
    * Run a single test case
    */
   async runSingleTest(testCase: TestCase<any>): Promise<TestResult> {
+    // Ensure LLM client initialization completes before running tests
+    if (this.#llmInitPromise) {
+      try { await this.#llmInitPromise; } catch { /* ignore; errors are logged in initializer */ }
+    }
     const traceId = `eval-${testCase.id || testCase.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const startTime = new Date();
 
@@ -305,6 +310,10 @@ export class EvaluationRunner {
    * Run all tests from a given test array
    */
   async runAllTests(testCases: TestCase<any>[]): Promise<TestResult[]> {
+    // Ensure LLM client initialization completes before running batch
+    if (this.#llmInitPromise) {
+      try { await this.#llmInitPromise; } catch { /* ignore; errors are logged in initializer */ }
+    }
     logger.debug(`[EvaluationRunner] Running ${testCases.length} tests...`);
     
     // Create tool instances map based on tools used in test cases
