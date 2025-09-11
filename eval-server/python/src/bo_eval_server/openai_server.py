@@ -619,10 +619,10 @@ class OpenAICompatibleServer:
 async def main():
     """Main entry point for running the OpenAI-compatible server standalone"""
     from .eval_server import EvalServer
-    from .config import ServerConfig
+    from .config import Config
     
     # Create config
-    config = ServerConfig()
+    config = Config()
     
     # Create and start evaluation server
     eval_server = EvalServer(config)
