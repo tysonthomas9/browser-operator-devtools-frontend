@@ -1396,10 +1396,6 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @returns true if at least one provider has valid credentials
    */
   #hasAnyProviderCredentials(): boolean {
-    // Skip auth check in automated mode
-    if (BUILD_CONFIG.AUTOMATED_MODE) {
-      return true;
-    }
     
     const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     
@@ -1995,6 +1991,9 @@ export class AIChatPanel extends UI.Panel.Panel {
         inputPlaceholder: this.#getInputPlaceholderText(),
         // Add OAuth login state
         showOAuthLogin: (() => {
+          if (BUILD_CONFIG.AUTOMATED_MODE) {
+            return false;
+          }
           const hasCredentials = this.#hasAnyProviderCredentials();
           return !hasCredentials;
         })(),
