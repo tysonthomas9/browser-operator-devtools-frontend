@@ -42,14 +42,13 @@ RUN /workspace/depot_tools/ensure_bootstrap
 # Build standard DevTools first
 RUN npm run build
 
-# For development/testing - use current branch with automated mode changes
-# In production, this would fetch from Browser Operator upstream
-# RUN git remote add upstream https://github.com/BrowserOperator/browser-operator-core.git
-# RUN git fetch upstream
-# RUN git checkout upstream/main
+# Add Browser Operator fork and switch to it
+RUN git remote add upstream https://github.com/BrowserOperator/browser-operator-core.git
+RUN git fetch upstream
+RUN git checkout upstream/main
 
 # Allow configurable automated mode
-ARG AUTOMATED_MODE=true
+ARG AUTOMATED_MODE=false
 
 # Set build-time flags based on Docker arg
 RUN if [ "$AUTOMATED_MODE" = "true" ]; then \
