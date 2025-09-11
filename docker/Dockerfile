@@ -49,7 +49,7 @@ RUN npm run build
 # RUN git checkout upstream/main
 
 # Allow configurable automated mode
-ARG AUTOMATED_MODE=true
+ARG AUTOMATED_MODE=false
 
 # Set build-time flags based on Docker arg
 RUN if [ "$AUTOMATED_MODE" = "true" ]; then \
