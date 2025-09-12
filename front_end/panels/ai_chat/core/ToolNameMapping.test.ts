@@ -5,7 +5,7 @@
 import { createToolExecutorNode } from './AgentNodes.js';
 import type { AgentState } from './State.js';
 import type { Tool } from '../tools/Tools.js';
-import { ChatMessageEntity } from '../ui/ChatView.js';
+import { ChatMessageEntity } from '../models/ChatTypes.js';
 
 /* eslint-env mocha */
 
@@ -66,7 +66,7 @@ describe('AgentNodes sanitized tool name mapping', () => {
       }
     } as any;
 
-    const node = createToolExecutorNode(state);
+    const node = createToolExecutorNode(state, 'openai', 'gpt-4', 'gpt-4-mini', 'gpt-4-mini');
     const result = await node.invoke(state);
     
     // Tool execute should have been called once

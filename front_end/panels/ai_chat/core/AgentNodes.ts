@@ -257,6 +257,10 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
             tracingContext.currentToolCallId = toolCallObservationId;
           }
           
+          // Determine lane: agent tools render in agent lane only
+          const regTool = ToolRegistry.getRegisteredTool(parsedAction.name as any);
+          const isAgentTool = !!regTool && (regTool instanceof ConfigurableAgentTool);
+
           newModelMessage = {
             entity: ChatMessageEntity.MODEL,
             action: 'tool',
@@ -265,6 +269,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
             toolCallId, // Add for linking with tool response
             isFinalAnswer: false,
             reasoning: response.reasoning?.summary,
+            uiLane: isAgentTool ? 'agent' : 'chat',
           };
 
           logger.debug('AgentNode: Created tool message', { toolName: parsedAction.name, toolCallId });
@@ -732,6 +737,7 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
       }
 
       // Create the NEW ToolResultMessage
+      const isAgentTool = selectedTool instanceof ConfigurableAgentTool;
       const toolResultMessage: ToolResultMessage = {
         entity: ChatMessageEntity.TOOL_RESULT,
         toolName,
@@ -739,8 +745,7 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         isError,
         toolCallId, // Link back to the tool call for OpenAI format
         ...(isError && { error: resultText }),
-        // Mark if this is from a ConfigurableAgentTool
-        ...(selectedTool instanceof ConfigurableAgentTool && { isFromConfigurableAgent: true })
+        uiLane: isAgentTool ? 'agent' as const : 'chat',
       };
 
       logger.debug('ToolExecutorNode: Adding tool result message with toolCallId:', { toolCallId, toolResultMessage });
