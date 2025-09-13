@@ -288,11 +288,12 @@ export class ChatView extends HTMLElement {
       this.#selectedPromptType = data.selectedAgentType;
     }
 
-    // Check if we should exit the first message view state
-    // We're no longer in first message view if there are user messages
-    const hasUserMessages = data.messages && Array.isArray(data.messages) ? 
+    // Check if we should show the centered first-message view
+    // Only show it if there are no user messages AND at most one message (welcome)
+    const messageCount = data.messages && Array.isArray(data.messages) ? data.messages.length : 0;
+    const hasUserMessages = data.messages && Array.isArray(data.messages) ?
       data.messages.some(msg => msg && msg.entity === ChatMessageEntity.USER) : false;
-    this.#isFirstMessageView = !hasUserMessages;
+    this.#isFirstMessageView = !hasUserMessages && messageCount <= 1;
 
     // Controller owns session message upserts; no UI sync required
 

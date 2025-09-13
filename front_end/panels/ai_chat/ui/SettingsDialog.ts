@@ -12,6 +12,7 @@ import { getMCPConfig, setMCPConfig, isMCPEnabled } from '../mcp/MCPConfig.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 
 import { DEFAULT_PROVIDER_MODELS } from './AIChatPanel.js';
+import './model_selector/ModelSelector.js';
 
 const logger = createLogger('SettingsDialog');
 
@@ -395,14 +396,7 @@ const UIStrings = {
    *@description MCP no tools message
    */
   mcpNoTools: 'No tools discovered. Connect to an MCP server first.',
-  /**
-   *@description MCP autostart label
-   */
-  mcpAutostart: 'Auto-connect on startup',
-  /**
-   *@description MCP autostart hint
-   */
-  mcpAutostartHint: 'Automatically connect to MCP server when DevTools opens',
+  
   /**
    *@description MCP tool mode label
    */
@@ -451,14 +445,14 @@ export function isVectorDBEnabled(): boolean {
 
 export class SettingsDialog {
   // Variables to store direct references to model selectors
-  static #openaiMiniModelSelect: HTMLSelectElement | null = null;
-  static #openaiNanoModelSelect: HTMLSelectElement | null = null;
-  static #litellmMiniModelSelect: HTMLSelectElement | null = null;
-  static #litellmNanoModelSelect: HTMLSelectElement | null = null;
-  static #groqMiniModelSelect: HTMLSelectElement | null = null;
-  static #groqNanoModelSelect: HTMLSelectElement | null = null;
-  static #openrouterMiniModelSelect: HTMLSelectElement | null = null;
-  static #openrouterNanoModelSelect: HTMLSelectElement | null = null;
+  static #openaiMiniModelSelect: any | null = null;
+  static #openaiNanoModelSelect: any | null = null;
+  static #litellmMiniModelSelect: any | null = null;
+  static #litellmNanoModelSelect: any | null = null;
+  static #groqMiniModelSelect: any | null = null;
+  static #groqNanoModelSelect: any | null = null;
+  static #openrouterMiniModelSelect: any | null = null;
+  static #openrouterNanoModelSelect: any | null = null;
   
   static async show(
     selectedModel: string,
@@ -871,10 +865,10 @@ export class SettingsDialog {
         
         // Refresh existing model selectors with new options if they exist
         if (SettingsDialog.#litellmMiniModelSelect) {
-          refreshModelSelectOptions(SettingsDialog.#litellmMiniModelSelect, allLiteLLMModels, miniModel);
+          refreshModelSelectOptions(SettingsDialog.#litellmMiniModelSelect, allLiteLLMModels, miniModel, i18nString(UIStrings.defaultMiniOption));
         }
         if (SettingsDialog.#litellmNanoModelSelect) {
-          refreshModelSelectOptions(SettingsDialog.#litellmNanoModelSelect, allLiteLLMModels, nanoModel);
+          refreshModelSelectOptions(SettingsDialog.#litellmNanoModelSelect, allLiteLLMModels, nanoModel, i18nString(UIStrings.defaultNanoOption));
         }
 
         if (hadWildcard && actualModelCount === 0 && !hasCustomModels) {
@@ -935,27 +929,36 @@ export class SettingsDialog {
     customModelsSection.appendChild(customModelsList);
 
     // Helper function to refresh the model list in a select element
-    function refreshModelSelectOptions(select: HTMLSelectElement, models: ModelOption[], currentValue: string) {
-      // Remember the current value
-      const previousValue = select.value;
-      
-      // Remove all options except the default (first) option
+    function refreshModelSelectOptions(select: any, models: ModelOption[], currentValue: string, defaultLabel: string) {
+      // Custom component path
+      if (select && select.tagName && select.tagName.toLowerCase() === 'ai-model-selector') {
+        const previousValue = select.value || select.selected || '';
+        const opts = [{ value: '', label: defaultLabel }, ...models];
+        select.options = opts;
+        if (previousValue && opts.some((o: any) => o.value === previousValue)) {
+          select.value = previousValue;
+        } else if (currentValue && opts.some((o: any) => o.value === currentValue)) {
+          select.value = currentValue;
+        } else {
+          select.value = '';
+        }
+        return;
+      }
+
+      // Native <select> fallback
+      const previousValue = (select as HTMLSelectElement).value;
       while (select.options.length > 1) {
         select.remove(1);
       }
-      
-      // Add new options
-      models.forEach(option => {
+      models.forEach((option: ModelOption) => {
         const optionElement = document.createElement('option');
         optionElement.value = option.value;
         optionElement.textContent = option.label;
         select.appendChild(optionElement);
       });
-      
-      // Try to restore previous selection, or use the provided value if it exists in the new options
-      if (previousValue && Array.from(select.options).some(opt => opt.value === previousValue)) {
+      if (previousValue && Array.from(select.options).some((opt: any) => opt.value === previousValue)) {
         select.value = previousValue;
-      } else if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
+      } else if (currentValue && Array.from(select.options).some((opt: any) => opt.value === currentValue)) {
         select.value = currentValue;
       }
     }
@@ -1305,7 +1308,7 @@ export class SettingsDialog {
     
     const advancedToggleHint = document.createElement('div');
     advancedToggleHint.className = 'settings-hint';
-    advancedToggleHint.textContent = 'Show advanced configuration options (Browsing History, Vector DB, Tracing, Evaluation, MCP)';
+    advancedToggleHint.textContent = 'Show advanced configuration options (Browsing History, Vector DB, Tracing, Evaluation)';
     advancedToggleSection.appendChild(advancedToggleHint);
     
     // Add browsing history section
@@ -1515,10 +1518,10 @@ export class SettingsDialog {
         
         // Refresh existing model selectors with new options if they exist
         if (SettingsDialog.#groqMiniModelSelect) {
-          refreshModelSelectOptions(SettingsDialog.#groqMiniModelSelect, allGroqModels, miniModel);
+          refreshModelSelectOptions(SettingsDialog.#groqMiniModelSelect, allGroqModels, miniModel, i18nString(UIStrings.defaultMiniOption));
         }
         if (SettingsDialog.#groqNanoModelSelect) {
-          refreshModelSelectOptions(SettingsDialog.#groqNanoModelSelect, allGroqModels, nanoModel);
+          refreshModelSelectOptions(SettingsDialog.#groqNanoModelSelect, allGroqModels, nanoModel, i18nString(UIStrings.defaultNanoOption));
         }
 
         fetchGroqModelsStatus.textContent = i18nString(UIStrings.fetchedModels, {PH1: actualModelCount});
@@ -2498,6 +2501,8 @@ export class SettingsDialog {
     // ---- MCP Integration Section ----
     const mcpSection = document.createElement('div');
     mcpSection.className = 'settings-section mcp-section';
+    // Hide MCP UI: auto-connect is always on; settings are not user-configurable
+    mcpSection.style.display = 'none';
     contentDiv.appendChild(mcpSection);
 
     const mcpSectionTitle = document.createElement('h3');
@@ -2725,27 +2730,7 @@ export class SettingsDialog {
     mcpConfigContainer.appendChild(mcpConnectButton);
 
     // Autostart checkbox
-    const mcpAutostartContainer = document.createElement('div');
-    mcpAutostartContainer.className = 'settings-checkbox-container';
-    mcpConfigContainer.appendChild(mcpAutostartContainer);
-
-    const mcpAutostartCheckbox = document.createElement('input');
-    mcpAutostartCheckbox.type = 'checkbox';
-    mcpAutostartCheckbox.id = 'mcp-autostart';
-    mcpAutostartCheckbox.className = 'mcp-autostart-checkbox';
-    mcpAutostartCheckbox.checked = currentMCPConfig.autostart || false;
-    mcpAutostartContainer.appendChild(mcpAutostartCheckbox);
-
-    const mcpAutostartLabel = document.createElement('label');
-    mcpAutostartLabel.htmlFor = 'mcp-autostart';
-    mcpAutostartLabel.className = 'settings-label';
-    mcpAutostartLabel.textContent = i18nString(UIStrings.mcpAutostart);
-    mcpAutostartContainer.appendChild(mcpAutostartLabel);
-
-    const mcpAutostartHint = document.createElement('div');
-    mcpAutostartHint.className = 'settings-hint';
-    mcpAutostartHint.textContent = i18nString(UIStrings.mcpAutostartHint);
-    mcpConfigContainer.appendChild(mcpAutostartHint);
+    // Autostart UI removed: MCP auto-connect is always enabled by the panel
 
     // Tool mode selection
     const mcpToolModeLabel = document.createElement('div');
@@ -2917,14 +2902,7 @@ export class SettingsDialog {
     // Initial tools list update
     updateToolsList();
 
-    // Update autostart setting
-    mcpAutostartCheckbox.addEventListener('change', () => {
-      setMCPConfig({
-        ...getMCPConfig(),
-        autostart: mcpAutostartCheckbox.checked,
-      });
-      onSettingsSaved();
-    });
+    // Autostart is deprecated; always auto-connect is handled by the UI layer
 
     // Toggle visibility on enable/disable
     mcpEnabledCheckbox.addEventListener('change', async () => {
@@ -2932,7 +2910,6 @@ export class SettingsDialog {
         enabled: mcpEnabledCheckbox.checked,
         endpoint: mcpEndpointInput.value.trim(),
         token: mcpTokenInput.value.trim() || undefined,
-        autostart: mcpAutostartCheckbox.checked,
       });
       mcpConfigContainer.style.display = mcpEnabledCheckbox.checked ? 'block' : 'none';
       try {
@@ -3069,13 +3046,13 @@ export class SettingsDialog {
     disclaimerText.classList.add('settings-disclaimer');
     disclaimerText.innerHTML = `
       <p class="disclaimer-warning">
-        <strong>Alpha Version:</strong> This is an alpha version of the Browser Operator - AI Assistant feature.
+        <strong>Beta Version:</strong> This is an beta version of the Browser Operator - AI Assistant feature.
       </p>
       <p class="disclaimer-note">
         <strong>Data Sharing:</strong> When using this feature, your browser data and conversation content will be sent to the AI model for processing.
       </p>
       <p class="disclaimer-note">
-        <strong>Model Support:</strong> We currently support OpenAI models directly. And we support LiteLLM as a proxy to access 100+ other models.
+        <strong>Provider Support:</strong> We currently support OpenAI, Groq and OpenRouter providers directly. And we support LiteLLM as a proxy to access 100+ other models.
       </p>
       <p class="disclaimer-footer">
         By using this feature, you acknowledge that your data will be processed according to Model Provider's privacy policy and terms of service.
@@ -3243,29 +3220,7 @@ export class SettingsDialog {
         secretKey: evaluationSecretKeyInput.value.trim()
       });
 
-      // Save MCP configuration as part of general Save (not only on Connect/Enable)
-      try {
-        // Safely read current inputs if MCP section exists
-        const enabled = !!mcpEnabledCheckbox?.checked;
-        const endpoint = mcpEndpointInput?.value?.trim() || '';
-        const token = mcpTokenInput?.value?.trim() || '';
-        const autostart = !!mcpAutostartCheckbox?.checked;
-        const toolMode = (mcpToolModeSelect?.value as 'all' | 'router' | 'meta') || 'router';
-        const maxTools = Math.max(1, Math.min(100, parseInt(mcpMaxToolsInput?.value || '20', 10)));
-        const maxMcp = Math.max(1, Math.min(50, parseInt(mcpMaxMcpInput?.value || '8', 10)));
-
-        setMCPConfig({
-          enabled,
-          endpoint: endpoint || undefined,
-          token: token || undefined,
-          autostart,
-          toolMode,
-          maxToolsPerTurn: maxTools,
-          maxMcpPerTurn: maxMcp,
-        });
-      } catch (err) {
-        logger.warn('Failed to save MCP settings from Save button:', err);
-      }
+      // MCP settings are auto-managed; no save from UI
       
       logger.debug('Settings saved successfully');
       logger.debug('Mini Model:', localStorage.getItem(MINI_MODEL_STORAGE_KEY));
@@ -3477,6 +3432,41 @@ export class SettingsDialog {
       .model-selection-container {
         margin-bottom: 20px;
       }
+
+      /* Model selector component styles (shared with chat view) */
+      .model-selection-container ai-model-selector { display: block; width: 100%; }
+      .model-selector.searchable { position: relative; }
+      .model-select-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        border: 1px solid var(--color-details-hairline);
+        border-radius: 6px;
+        background: var(--color-background-elevation-1);
+        cursor: pointer;
+        width: 100%;
+        font-size: 12px;
+        color: var(--color-text-primary);
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+      }
+      .model-select-trigger:hover:not(:disabled) { background: var(--color-background-elevation-2); border-color: #00a4fe; }
+      .model-select-trigger:disabled { opacity: 0.6; cursor: not-allowed; background-color: var(--color-background-elevation-0); }
+      .selected-model { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .dropdown-arrow { margin-left: 8px; font-size: 10px; color: var(--color-text-secondary); transition: transform 0.2s ease; }
+      .model-dropdown { position: absolute; left: 0; right: 0; background: var(--color-background-elevation-1); border: 1px solid var(--color-details-hairline); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-height: 300px; overflow: hidden; }
+      .model-dropdown.below { top: 100%; margin-top: 2px; }
+      .model-dropdown.above { bottom: 100%; margin-bottom: 2px; }
+      .model-search { width: 100%; padding: 8px 12px; border: none; border-bottom: 1px solid var(--color-details-hairline); outline: none; background: var(--color-background-elevation-1); color: var(--color-text-primary); font-size: 12px; box-sizing: border-box; }
+      .model-search::placeholder { color: var(--color-text-secondary); }
+      .model-options { max-height: 240px; overflow-y: auto; }
+      .model-option { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--color-details-hairline); font-size: 12px; color: var(--color-text-primary); transition: background-color 0.2s ease; }
+      .model-option:last-child { border-bottom: none; }
+      .model-option:hover, .model-option.highlighted { background: #def1fb; }
+      .model-option.selected { background: #00a4fe; color: white; }
+      .model-option.no-results { color: var(--color-text-secondary); cursor: default; font-style: italic; }
+      .model-option.no-results:hover { background: transparent; }
       
       .mini-model-description, .nano-model-description {
         font-size: 12px;
@@ -3669,6 +3659,44 @@ export class SettingsDialog {
         border-left: 2px solid var(--color-details-hairline);
       }
 
+      /* Apply tracing config visual style to Evaluation section */
+      .evaluation-enabled-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .evaluation-checkbox { margin: 0; }
+      .evaluation-label {
+        font-weight: 500;
+        color: var(--color-text-primary);
+        cursor: pointer;
+      }
+      .evaluation-config-container {
+        margin-top: 16px;
+        padding-left: 24px;
+        border-left: 2px solid var(--color-details-hairline);
+      }
+
+      /* Apply tracing config visual style to MCP section */
+      .mcp-enabled-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .mcp-checkbox { margin: 0; }
+      .mcp-label {
+        font-weight: 500;
+        color: var(--color-text-primary);
+        cursor: pointer;
+      }
+      .mcp-config-container {
+        margin-top: 16px;
+        padding-left: 24px;
+        border-left: 2px solid var(--color-details-hairline);
+      }
+
       /* Advanced Settings Toggle styles */
       .advanced-settings-toggle-section {
         padding: 16px 20px;
@@ -3749,6 +3777,12 @@ export class SettingsDialog {
         opacity: 0.6;
         cursor: not-allowed;
       }
+
+      .mcp-section {
+        margin-top: 16px;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--color-details-hairline);
+      }
     `;
     dialog.contentElement.appendChild(styleElement);
     
@@ -3788,57 +3822,50 @@ export class SettingsDialog {
   }
 }
 
-// Helper function to create a model selector
+// Helper function to create a model selector (uses shared component)
 function createModelSelector(
   container: HTMLElement,
   labelText: string,
   description: string,
-  selectorType: string, // renamed from className for clarity
+  selectorType: string, // semantic identifier
   modelOptions: ModelOption[],
   selectedModel: string,
   defaultOptionText: string,
-  onFocus?: () => void // Optional callback for when the selector is focused
-): HTMLSelectElement {
+  onFocus?: () => void // Optional callback for when the selector is opened/focused
+): HTMLElement {
   const modelContainer = document.createElement('div');
   modelContainer.className = 'model-selection-container';
   container.appendChild(modelContainer);
-  
+
   const modelLabel = document.createElement('div');
   modelLabel.className = 'settings-label';
   modelLabel.textContent = labelText;
   modelContainer.appendChild(modelLabel);
-  
+
   const modelDescription = document.createElement('div');
   modelDescription.className = 'settings-hint';
   modelDescription.textContent = description;
   modelContainer.appendChild(modelDescription);
-  
-  const modelSelect = document.createElement('select');
-  modelSelect.className = 'settings-input';
-  modelSelect.dataset.modelType = selectorType; // Use data attribute instead of class
-  modelContainer.appendChild(modelSelect);
-  
-  // Add default option
-  const defaultOption = document.createElement('option');
-  defaultOption.value = '';
-  defaultOption.textContent = defaultOptionText;
-  modelSelect.appendChild(defaultOption);
-  
-  // Add model options
-  modelOptions.forEach(option => {
-    const optionElement = document.createElement('option');
-    optionElement.value = option.value;
-    optionElement.textContent = option.label;
-    if (option.value === selectedModel) {
-      optionElement.selected = true;
-    }
-    modelSelect.appendChild(optionElement);
-  });
-  
-  // Add focus event listener if a callback was provided
+
+  const selectorEl = document.createElement('ai-model-selector') as any;
+  selectorEl.dataset.modelType = selectorType;
+  selectorEl.options = [{ value: '', label: defaultOptionText }, ...modelOptions];
+  selectorEl.selected = selectedModel || '';
+  selectorEl.forceSearchable = true; // Ensure consistent UI in Settings
+
+  // Expose a `.value` API similar to native <select> for existing code paths
+  try {
+    Object.defineProperty(selectorEl, 'value', {
+      get() { return selectorEl.selected || ''; },
+      set(v: string) { selectorEl.selected = v || ''; },
+      configurable: true,
+    });
+  } catch {}
+
   if (onFocus) {
-    modelSelect.addEventListener('focus', onFocus);
+    selectorEl.addEventListener('model-selector-focus', onFocus);
   }
-  
-  return modelSelect;
+
+  modelContainer.appendChild(selectorEl);
+  return selectorEl as HTMLElement;
 }

@@ -793,14 +793,11 @@ export class AIChatPanel extends UI.Panel.Panel {
   #setupMCPIntegration(): void {
     const initAndRefresh = async () => {
       try {
-        const mcpConfig = getMCPConfig();
-        // Only auto-connect if both enabled and autostart are true
-        if (mcpConfig.enabled && mcpConfig.autostart) {
-          await MCPRegistry.init();
-          await MCPRegistry.refresh();
-          const status = MCPRegistry.getStatus();
-          logger.info('MCP autostart completed', status);
-        }
+        // Always attempt to connect to MCP on startup
+        await MCPRegistry.init();
+        await MCPRegistry.refresh();
+        const status = MCPRegistry.getStatus();
+        logger.info('MCP auto-connect completed', status);
       } catch (err) {
         logger.error('Failed to initialize MCP', err);
       }
@@ -2086,7 +2083,8 @@ export class AIChatPanel extends UI.Panel.Panel {
   }
 
   #onHelpClick(): void {
-    HelpDialog.show();
+    // Open external getting started docs in a new tab
+    UI.UIUtils.openInNewTab('https://browseroperator.io/docs/getting-started/');
   }
 
   /**
