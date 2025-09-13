@@ -32,6 +32,10 @@ dependencies = [
     "loguru>=0.7.0",
     "pandas>=2.0.0",
     "requests>=2.31.0",
+    "python-dotenv>=1.0.1",
+    "langfuse>=0.0.7",
+    "litellm>=1.77.0",
+    "openai>=1.107.2",
 ]
 
 [project.optional-dependencies]

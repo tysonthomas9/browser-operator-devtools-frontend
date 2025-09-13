@@ -456,7 +456,7 @@ export class EvaluationAgent {
         
         toolResult = await this.executeChatEvaluation(
           mergedInput,
-          params.timeout || 300000, // Default 5 minutes for chat
+          (params.timeout ? params.timeout * 1000 : 300000), // Convert seconds to ms, default 5 minutes for chat
           tracingContext
         );
       } else {
@@ -466,7 +466,7 @@ export class EvaluationAgent {
         toolResult = await this.executeToolWithTimeout(
           tool,
           params.input,
-          params.timeout || 30000,
+          (params.timeout ? params.timeout * 1000 : 30000), // Convert seconds to ms, default 30 seconds
           tracingContext,
           params.tool
         );
@@ -487,7 +487,10 @@ export class EvaluationAgent {
         }],
         {
           url: params.url,
-          evaluationId: params.evaluationId
+          evaluationId: params.evaluationId,
+          traceId: traceId,
+          sessionId: sessionId,
+          trace_correlation_id: this.createTraceCorrelationId(params.evaluationId)
         }
       );
 
@@ -531,7 +534,13 @@ export class EvaluationAgent {
           tool: params.tool,
           error: errorMessage,
           url: params.url,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          metadata: {
+            evaluationId: params.evaluationId,
+            traceId: traceId,
+            sessionId: sessionId,
+            trace_correlation_id: this.createTraceCorrelationId(params.evaluationId)
+          }
         }
       );
 
@@ -680,6 +689,30 @@ export class EvaluationAgent {
 
   public getActiveEvaluations(): string[] {
     return Array.from(this.activeEvaluations.keys());
+  }
+
+  private createTraceCorrelationId(evaluationId: string, runName?: string): string {
+    /**
+     * Create a stable correlation ID for linking traces across systems.
+     * 
+     * Args:
+     *   evaluationId: ID of the evaluation
+     *   runName: Optional name of the experiment run
+     *   
+     * Returns:
+     *   Stable hash that can be used for correlation
+     */
+    const baseString = `${runName || 'no-run'}-${evaluationId}`;
+    
+    // Simple hash function for correlation ID
+    let hash = 0;
+    for (let i = 0; i < baseString.length; i++) {
+      const char = baseString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    return Math.abs(hash).toString(16).substring(0, 16);
   }
 
 

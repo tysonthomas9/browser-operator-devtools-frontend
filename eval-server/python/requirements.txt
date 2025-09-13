@@ -1,6 +1,14 @@
 # Core dependencies
 websockets>=11.0.0
 loguru>=0.7.0
+python-dotenv>=1.0.0
+
+# Optional Langfuse integration
+langfuse>=2.0.0
+
+# LLM Judge integration
+litellm>=1.5.0
+openai>=1.0.0
 
 # Development dependencies (optional)
 # Install with: pip install -e ".[dev]"

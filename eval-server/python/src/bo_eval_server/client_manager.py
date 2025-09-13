@@ -16,6 +16,7 @@ from loguru import logger
 
 from .rpc_client import RpcClient, RpcError, RpcTimeoutError
 from .logger import log_connection, log_evaluation
+from .langfuse_tracer import get_tracer, score_agent_trace
 
 
 class ClientProxy:
@@ -95,8 +96,11 @@ class ClientProxy:
                 timeout=timeout,
                 client_id=self.id,
             )
-            
+
             duration = time.time() - start_time
+            
+            # Extract traceId from result metadata for Langfuse scoring
+            trace_id = self._extract_trace_id(result)
             
             # Log evaluation completion
             log_evaluation(
@@ -107,6 +111,15 @@ class ClientProxy:
                 evaluation_name=evaluation.get('name'),
                 tool=evaluation.get('tool'),
             )
+            
+            # Attach basic scores to agent trace if traceId available
+            if trace_id:
+                self._attach_evaluation_scores(
+                    trace_id=trace_id,
+                    evaluation=evaluation,
+                    result=result,
+                    duration=duration
+                )
             
             return result
             
@@ -124,6 +137,12 @@ class ClientProxy:
             
         except Exception as e:
             duration = time.time() - start_time
+            
+            # Try to extract traceId from RPC error if available
+            trace_id = None
+            if hasattr(e, 'response') and e.response:
+                trace_id = self._extract_trace_id(e.response)
+            
             log_evaluation(
                 evaluation_id=evaluation_id,
                 client_id=self.id,
@@ -133,6 +152,16 @@ class ClientProxy:
                 evaluation_name=evaluation.get('name'),
                 tool=evaluation.get('tool'),
             )
+            
+            # Attach failure scores if traceId available
+            if trace_id:
+                self._attach_evaluation_scores(
+                    trace_id=trace_id,
+                    evaluation=evaluation,
+                    result={'error': str(e)},
+                    duration=duration
+                )
+            
             raise
     
     async def send_message(self, message: Dict[str, Any]) -> None:
@@ -167,6 +196,98 @@ class ClientProxy:
     def is_connected(self) -> bool:
         """Check if the client is still connected."""
         return self._rpc_client.is_connected()
+    
+    def _extract_trace_id(self, result: Any) -> Optional[str]:
+        """
+        Extract traceId from evaluation result or error response.
+        
+        Args:
+            result: The RPC result or error response
+            
+        Returns:
+            The traceId if found, None otherwise
+        """
+        if not isinstance(result, dict):
+            return None
+            
+        # Check direct metadata field (success responses)
+        if 'metadata' in result:
+            metadata = result['metadata']
+            if isinstance(metadata, dict) and 'traceId' in metadata:
+                return metadata['traceId']
+        
+        # Check nested error data metadata (error responses)
+        if 'error' in result and isinstance(result['error'], dict):
+            error_data = result['error'].get('data')
+            if isinstance(error_data, dict) and 'metadata' in error_data:
+                metadata = error_data['metadata']
+                if isinstance(metadata, dict) and 'traceId' in metadata:
+                    return metadata['traceId']
+        
+        return None
+    
+    def _attach_evaluation_scores(
+        self,
+        trace_id: str,
+        evaluation: Dict[str, Any],
+        result: Dict[str, Any],
+        duration: float
+    ) -> None:
+        """
+        Attach basic evaluation scores to the agent trace.
+        
+        Args:
+            trace_id: The agent's trace ID
+            evaluation: The evaluation request
+            result: The evaluation result
+            duration: Execution duration in seconds
+        """
+        try:
+            # Basic timing score
+            score_agent_trace(
+                trace_id=trace_id,
+                name="execution_time",
+                value=duration,
+                comment=f"Tool execution time in seconds",
+                metadata={
+                    "evaluation_id": evaluation.get('id'),
+                    "tool": evaluation.get('tool'),
+                    "client_id": self.id
+                }
+            )
+            
+            # Success/failure score based on result structure
+            if 'error' in result:
+                # Evaluation failed
+                score_agent_trace(
+                    trace_id=trace_id,
+                    name="task_success",
+                    value=0,
+                    comment="Evaluation failed with error",
+                    metadata={
+                        "evaluation_id": evaluation.get('id'),
+                        "error": result.get('error', 'Unknown error'),
+                        "tool": evaluation.get('tool')
+                    }
+                )
+            else:
+                # Evaluation succeeded
+                score_agent_trace(
+                    trace_id=trace_id,
+                    name="task_success",
+                    value=1,
+                    comment="Evaluation completed successfully",
+                    metadata={
+                        "evaluation_id": evaluation.get('id'),
+                        "tool": evaluation.get('tool'),
+                        "execution_time": duration
+                    }
+                )
+            
+            logger.debug(f"Attached scores to agent trace {trace_id}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to attach scores to trace {trace_id}: {e}")
     
     def __repr__(self) -> str:
         """String representation of the client proxy."""

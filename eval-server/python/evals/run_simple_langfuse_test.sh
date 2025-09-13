@@ -1,6 +1,6 @@
 #!/bin/bash
-# Wrapper script to run browsecomp eval server and optionally launch Browser Operator
-# so a DevTools client connects automatically and processes the evals.
+# Simple Langfuse Test Runner
+# Runs a quick evaluation test to verify Langfuse score uploads work end-to-end
 
 set -euo pipefail
 
@@ -11,8 +11,6 @@ EVAL_SERVER_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Defaults (can be overridden via env)
 : "${DEVTOOLS_URL:=http://localhost:8000}"
 : "${REMOTE_DEBUGGING_PORT:=9222}"
-# Leave USER_DATA_DIR empty by default so Browser Operator uses the default profile.
-# Set USER_DATA_DIR to a path to force an isolated profile (e.g., /tmp/bo-eval).
 : "${USER_DATA_DIR:=}"
 
 # Detect Browser Operator command
@@ -21,7 +19,7 @@ detect_bo_cmd() {
     "BrowserOperator"
     "browser-operator"
     "browser_operator"
-    "Browser"  # fallback, user may have a wrapper named "Browser Operator" (with space)
+    "Browser"
   )
   if [[ -n "${BROWSER_OPERATOR_CMD:-}" ]]; then
     echo "$BROWSER_OPERATOR_CMD"
@@ -33,7 +31,6 @@ detect_bo_cmd() {
       return 0
     fi
   done
-  # Last resort: try literal "Browser Operator" if present in PATH (uncommon on *nix)
   if command -v "Browser Operator" >/dev/null 2>&1; then
     echo "Browser Operator"
     return 0
@@ -45,13 +42,12 @@ detect_bo_cmd() {
 EVAL_PORT=8080
 for arg in "$@"; do
   case "$arg" in
-    --port)
-      echo "Warning: use --port <num>, got bare --port" >&2 ;;
     --port=*)
       EVAL_PORT="${arg#*=}" ;;
   esac
 done
-# Support the spaced form: --port 8090
+
+# Support spaced form: --port 8090
 for i in "$@"; do
   if [[ "$i" == "--port" ]]; then
     shift
@@ -70,23 +66,26 @@ port_in_use() {
 # Change to eval-server python directory
 cd "$EVAL_SERVER_DIR"
 
-echo "==> Starting Browsecomp Eval Server on ws://127.0.0.1:${EVAL_PORT}"
+echo "🧪 Starting Simple Langfuse Integration Test"
+echo "============================================"
+
+# Check port availability
 if port_in_use "$EVAL_PORT"; then
-  echo "Error: Port ${EVAL_PORT} is already in use. Free it or pass --port <free-port>." >&2
+  echo "❌ Error: Port ${EVAL_PORT} is already in use. Free it or pass --port <free-port>."
   exit 1
 fi
 
-# Pick runner: uv if available, else python
+# Run the simple test script in background
 if command -v uv >/dev/null 2>&1; then
-  ( uv run python evals/browsecomp_eval_server.py "$@" ) &
+  ( uv run python evals/simple_langfuse_test.py --port "$EVAL_PORT" "$@" ) &
 else
-  echo "uv not found; running with system python" >&2
-  ( python3 evals/browsecomp_eval_server.py "$@" ) &
+  echo "uv not found; running with system python"
+  ( python3 evals/simple_langfuse_test.py --port "$EVAL_PORT" "$@" ) &
 fi
 SERVER_PID=$!
 
 cleanup() {
-  echo "\n==> Stopping eval server (PID ${SERVER_PID})"
+  echo "\n🛑 Stopping test server (PID ${SERVER_PID})"
   kill "$SERVER_PID" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
@@ -101,13 +100,13 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 0.5
 done
 if [[ -z "$READY" ]]; then
-  echo "Warning: server does not appear to be listening on ${EVAL_PORT} yet. Continuing..." >&2
+  echo "⚠️  Server does not appear to be listening on ${EVAL_PORT} yet. Continuing..."
 fi
 
-# Launch Browser Operator (CLI or .app on macOS)
+# Launch Browser Operator
 BO_CMD="$(detect_bo_cmd)"
 if [[ -n "$BO_CMD" ]]; then
-  echo "==> Launching Browser Operator: $BO_CMD"
+  echo "🚀 Launching Browser Operator: $BO_CMD"
   echo "    --custom-devtools-frontend=${DEVTOOLS_URL}"
   echo "    --remote-debugging-port=${REMOTE_DEBUGGING_PORT}"
   if [[ -n "$USER_DATA_DIR" ]]; then
@@ -129,12 +128,12 @@ if [[ -n "$BO_CMD" ]]; then
 
   "$BO_CMD" "${BO_ARGS[@]}" >/dev/null 2>&1 &
   BO_PID=$!
-  echo "==> Browser Operator started (PID ${BO_PID})."
+  echo "✅ Browser Operator started (PID ${BO_PID})"
 else
   # Try macOS .app via open -a
   if [[ "$(uname -s)" == "Darwin" ]]; then
     BO_APP_NAME="${BROWSER_OPERATOR_APP:-Browser Operator}"
-    echo "==> Launching ${BO_APP_NAME}.app via 'open -a'"
+    echo "🚀 Launching ${BO_APP_NAME}.app via 'open -a'"
     echo "    --custom-devtools-frontend=${DEVTOOLS_URL}"
     echo "    --remote-debugging-port=${REMOTE_DEBUGGING_PORT}"
     if [[ -n "$USER_DATA_DIR" ]]; then
@@ -156,20 +155,28 @@ else
       OPEN_ARGS+=(--user-data-dir "${USER_DATA_DIR}-${EVAL_PORT}")
     fi
 
-    # Launch and disown
     ( open "${OPEN_ARGS[@]}" ) >/dev/null 2>&1 &
-    echo "==> Requested launch of ${BO_APP_NAME}.app"
+    echo "✅ Requested launch of ${BO_APP_NAME}.app"
   else
-    echo "Note: Browser Operator CLI not found. You can launch it manually, e.g.:" >&2
-    echo "      BrowserOperator --custom-devtools-frontend=${DEVTOOLS_URL}" >&2
-    echo "        --remote-debugging-port=${REMOTE_DEBUGGING_PORT} --auto-open-devtools-for-tabs" >&2
+    echo "ℹ️  Browser Operator CLI not found. You can launch it manually:"
+    echo "      BrowserOperator --custom-devtools-frontend=${DEVTOOLS_URL}"
+    echo "        --remote-debugging-port=${REMOTE_DEBUGGING_PORT} --auto-open-devtools-for-tabs"
   fi
 fi
 
-echo "\nTips:"
-echo "  1) In the AI Assistant panel Settings, enable Evaluation and set endpoint ws://127.0.0.1:${EVAL_PORT}"
-echo "  2) Credentials: configure your LLM provider/API key as needed"
-echo "  3) This script will keep the server running until you Ctrl+C"
+echo ""
+echo "📋 Test Instructions:"
+echo "  1) Browser Operator should launch automatically"
+echo "  2) In AI Assistant panel Settings:"
+echo "     - Enable Evaluation mode"
+echo "     - Set endpoint: ws://127.0.0.1:${EVAL_PORT}"
+echo "     - Enable Langfuse integration with same credentials as server"
+echo "  3) The test will run 3 simple questions (< 30 seconds total)"
+echo "  4) Check for Langfuse score uploads in the output"
+echo ""
+echo "⏳ Expected completion: 30-60 seconds"
+echo "🛑 Press Ctrl+C to stop if needed"
+echo "============================================"
 
 # Wait on server process
 wait "$SERVER_PID"

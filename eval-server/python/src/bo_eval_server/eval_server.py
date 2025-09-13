@@ -14,6 +14,7 @@ from loguru import logger
 from .config import Config
 from .client_manager import ClientManager, ClientProxy
 from .logger import setup_logger, log_server_event
+from .langfuse_tracer import flush
 
 
 class EvalServer:
@@ -180,6 +181,9 @@ class EvalServer:
         
         try:
             logger.info("Stopping EvalServer...")
+            
+            # Flush any pending Langfuse data
+            flush()
             
             if self._server:
                 self._server.close()

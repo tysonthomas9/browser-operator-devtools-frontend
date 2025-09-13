@@ -10,11 +10,46 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import signal
+import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+# Load .env file for configuration
+try:
+    from dotenv import load_dotenv
+    
+    # Look for .env file in multiple locations
+    env_locations = [
+        Path(__file__).parent / ".env",           # evals/.env (local to browsecomp)
+        Path(__file__).parent.parent / ".env"     # eval-server/python/.env (parent)
+    ]
+    
+    env_loaded = False
+    for env_file in env_locations:
+        if env_file.exists():
+            load_dotenv(env_file)
+            print(f"📁 Loaded configuration from: {env_file}")
+            
+            # Debug: Check what values were actually loaded
+            print(f"   DEBUG - LANGFUSE_ENABLE={repr(os.getenv('LANGFUSE_ENABLE'))}")
+            print(f"   DEBUG - LANGFUSE_HOST={repr(os.getenv('LANGFUSE_HOST'))}")
+            print(f"   DEBUG - Keys present: {bool(os.getenv('LANGFUSE_PUBLIC_KEY')) and bool(os.getenv('LANGFUSE_SECRET_KEY'))}")
+            
+            env_loaded = True
+            break
+    
+    if not env_loaded:
+        print("ℹ️  No .env file found - using environment variables if set")
+        print("   Create .env in evals/ or eval-server/python/ directory")
+        
+except ImportError:
+    print("⚠️  python-dotenv not installed - install with: pip install python-dotenv")
+    print("   Environment variables will still be used if set manually")
 
 # Add eval-server src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -23,8 +58,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from bo_eval_server import EvalServer, EvaluationStack
+from bo_eval_server.langfuse_tracer import get_tracer, create_dataset_run, score_dataset_item, score_agent_trace, create_trace
 from browsecomp_dataset import BrowsecompDataset
 from browsecomp_scorer import question_scorer, extract_answer, extract_confidence
+from enhanced_scorer import EnhancedScorer, enhanced_question_scorer
+from llm_judge import LLMJudge, llm_evaluate_response, HAS_LLM_SUPPORT
 
 
 def log_evaluation_event(logger: logging.Logger, event_type: str, data: Dict[str, Any]) -> None:
@@ -276,6 +314,219 @@ def load_browsecomp_evaluations(
     return evaluations
 
 
+# Browser launching and process management
+launched_browsers = []
+
+def launch_browser_operator(browser_path: str, server_url: str) -> Optional[subprocess.Popen]:
+    """
+    Launch a Browser Operator instance with DevTools enabled.
+    
+    Args:
+        browser_path: Path to the Browser Operator executable
+        server_url: WebSocket URL for the evaluation server
+        
+    Returns:
+        Subprocess Popen object or None if launch failed
+    """
+    try:
+        # Check if browser path exists
+        if not os.path.exists(browser_path):
+            print(f"❌ Browser path not found: {browser_path}")
+            return None
+            
+        print(f"🚀 Launching Browser Operator with DevTools: {browser_path}")
+        
+        # Launch browser with DevTools flags
+        # --auto-open-devtools-for-tabs: Automatically opens DevTools for new tabs
+        # --new-window: Creates a new browser window
+        # --remote-debugging-port=9222: Enables remote debugging for automation
+        process = subprocess.Popen(
+            [
+                browser_path, 
+                "--new-window",
+                "--auto-open-devtools-for-tabs",
+                "--remote-debugging-port=9222"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+        )
+        
+        launched_browsers.append(process)
+        print(f"✅ Browser launched with PID: {process.pid}")
+        print(f"   🔧 DevTools will open automatically for new tabs")
+        print(f"   🔌 Remote debugging enabled on port 9222")
+        
+        # Schedule AI Assistant panel opening after browser startup
+        asyncio.create_task(open_ai_assistant_panel(process.pid))
+        
+        return process
+        
+    except Exception as e:
+        print(f"❌ Failed to launch browser: {e}")
+        return None
+
+
+async def open_ai_assistant_panel(browser_pid: int):
+    """
+    Attempt to open the AI Assistant panel in Browser Operator after startup.
+    
+    Args:
+        browser_pid: Process ID of the browser instance
+    """
+    try:
+        # Wait for browser to fully start up
+        await asyncio.sleep(3)
+        
+        print(f"🤖 Attempting to open AI Assistant panel in browser {browser_pid}...")
+        
+        # Try to use Chrome DevTools Protocol to open AI Assistant panel
+        # This requires the remote debugging port to be available
+        import json
+        import aiohttp
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Get list of tabs from Chrome DevTools Protocol
+                async with session.get('http://localhost:9222/json') as resp:
+                    if resp.status == 200:
+                        tabs = await resp.json()
+                        if tabs:
+                            # Use the first available tab
+                            tab = tabs[0]
+                            ws_url = tab['webSocketDebuggerUrl']
+                            
+                            # Send Chrome DevTools command to open DevTools and AI Assistant
+                            # This is a basic approach - Browser Operator may have specific commands
+                            print(f"   📡 Connected to tab: {tab.get('title', 'Unknown')}")
+                            print(f"   🎯 DevTools should be available for evaluation setup")
+                            
+        except Exception as cdp_error:
+            print(f"   ⚠️  Chrome DevTools Protocol connection failed: {cdp_error}")
+            print(f"   💡 DevTools should still be available via --auto-open-devtools-for-tabs flag")
+        
+        # Alternative: Use AppleScript on macOS to send keystrokes
+        if os.name == 'posix' and 'darwin' in os.uname().sysname.lower():
+            try:
+                # Send Cmd+Option+I to open DevTools (standard Chrome shortcut)
+                # Then navigate to AI Assistant panel if it exists
+                applescript = '''
+                tell application "System Events"
+                    -- Ensure Browser Operator is the frontmost application
+                    set frontmost of first application process whose name contains "Browser Operator" to true
+                    delay 0.5
+                    
+                    -- Open DevTools with Cmd+Option+I
+                    keystroke "i" using {command down, option down}
+                    delay 1
+                    
+                    -- Try to click on AI Assistant panel if visible
+                    -- This is best-effort since panel layout may vary
+                end tell
+                '''
+                
+                # Execute AppleScript
+                subprocess.run(['osascript', '-e', applescript], 
+                             capture_output=True, text=True, timeout=10)
+                print(f"   🍎 Sent macOS keyboard shortcuts to open DevTools")
+                
+            except Exception as applescript_error:
+                print(f"   ⚠️  AppleScript automation failed: {applescript_error}")
+    
+    except Exception as e:
+        print(f"   ❌ Failed to open AI Assistant panel: {e}")
+
+
+async def wait_for_browser_ready(browser_pid: int, max_wait: int = 10) -> bool:
+    """
+    Wait for browser to be ready for DevTools commands.
+    
+    Args:
+        browser_pid: Process ID of the browser
+        max_wait: Maximum seconds to wait
+        
+    Returns:
+        True if browser is ready, False if timeout
+    """
+    for i in range(max_wait):
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get('http://localhost:9222/json', timeout=1) as resp:
+                    if resp.status == 200:
+                        return True
+        except:
+            pass
+        await asyncio.sleep(1)
+    return False
+
+def cleanup_browsers():
+    """Clean up all launched browser processes."""
+    for process in launched_browsers:
+        try:
+            if process.poll() is None:  # Process is still running
+                print(f"🛑 Terminating browser process {process.pid}")
+                if hasattr(os, 'killpg'):
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                else:
+                    process.terminate()
+                    
+                # Wait a bit for graceful shutdown
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    if hasattr(os, 'killpg'):
+                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                    else:
+                        process.kill()
+                        
+        except (OSError, ProcessLookupError):
+            # Process already terminated
+            pass
+            
+    launched_browsers.clear()
+
+async def auto_launch_browsers(args, stack, server_config):
+    """
+    Automatically launch browsers for each evaluation in the stack.
+    
+    Args:
+        args: Parsed command line arguments
+        stack: EvaluationStack containing evaluations
+        server_config: Server configuration dict
+    """
+    if not args.auto_launch:
+        return
+        
+    print(f"\n🤖 Auto-launch mode enabled")
+    print(f"   Browser path: {args.browser_path}")
+    print(f"   Evaluations to process: {stack.size()}")
+    
+    server_url = f"ws://{server_config['host']}:{server_config['port']}"
+    
+    # For now, launch one browser per evaluation sequentially
+    # Each browser will connect, get one evaluation, and complete it
+    for i in range(stack.size()):
+        if stack.is_empty():
+            break
+            
+        print(f"\n📋 Preparing to launch browser for evaluation {i+1}/{stack.size()}")
+        
+        # Launch browser
+        browser_process = launch_browser_operator(args.browser_path, server_url)
+        if not browser_process:
+            print(f"❌ Failed to launch browser for evaluation {i+1}")
+            continue
+            
+        # Wait a moment for the browser to start up
+        await asyncio.sleep(2)
+        
+        print(f"⏳ Browser {browser_process.pid} should connect to {server_url}")
+        print(f"   Waiting for evaluation to complete...")
+        
+        # Note: The actual evaluation will be handled by the server's handle_client function
+        # We just need to wait for the evaluation to be processed
+
 def main():
     """Main function for the browsecomp evaluation server."""
     return asyncio.run(async_main())
@@ -348,6 +599,39 @@ async def async_main():
         type=float, 
         default=3600.0, 
         help="Timeout for each evaluation in seconds (default: 3600s/60min)"
+    )
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        help="Optional name for this evaluation run (for organizing results in Langfuse)"
+    )
+    parser.add_argument(
+        "--auto-launch",
+        action="store_true",
+        help="Automatically launch Browser Operator instances for each test case"
+    )
+    parser.add_argument(
+        "--browser-path",
+        type=str,
+        default="/Applications/Browser Operator.app/Contents/MacOS/Browser Operator",
+        help="Path to Browser Operator executable (default: /Applications/Browser Operator.app/Contents/MacOS/Browser Operator)"
+    )
+    parser.add_argument(
+        "--llm-judge",
+        action="store_true",
+        help="Enable LLM-based evaluation scoring (requires API key in .env)"
+    )
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        default="gpt-4-turbo-preview",
+        help="LLM model for judging (default: gpt-4-turbo-preview)"
+    )
+    parser.add_argument(
+        "--llm-sample-rate",
+        type=float,
+        default=1.0,
+        help="Sample rate for LLM evaluation (0.0-1.0, default: 1.0)"
     )
     
     args = parser.parse_args()
@@ -466,6 +750,97 @@ async def async_main():
     print(f"✅ Stack loaded with {stack.size()} evaluations")
     print(f"🔝 Top evaluation: {stack.peek()['name'] if stack.peek() else 'None'}")
     
+    # Auto-launch timeout adjustment
+    if args.auto_launch and args.timeout < 600:  # Less than 10 minutes
+        original_timeout = args.timeout
+        args.timeout = 600.0  # 10 minutes
+        print(f"\n🕒 Auto-launch timeout adjustment:")
+        print(f"   Original timeout: {original_timeout}s ({original_timeout/60:.1f} minutes)")
+        print(f"   Adjusted timeout: {args.timeout}s ({args.timeout/60:.1f} minutes)")
+        print(f"   Reason: Browsecomp evaluations need time for web research and navigation")
+    
+    # Check Langfuse configuration status
+    print(f"\n🔧 Configuration Status:")
+    langfuse_enabled = os.getenv('LANGFUSE_ENABLE', '').lower() in ('true', '1', 'yes', 'on')
+    langfuse_host = os.getenv('LANGFUSE_HOST', '')
+    langfuse_public_key = os.getenv('LANGFUSE_PUBLIC_KEY', '')
+    langfuse_secret_key = os.getenv('LANGFUSE_SECRET_KEY', '')
+    
+    # Check LLM Judge configuration
+    llm_judge_enabled = args.llm_judge or os.getenv('LLM_JUDGE_ENABLED', '').lower() in ('true', '1', 'yes', 'on')
+    openai_api_key = os.getenv('OPENAI_API_KEY', '')
+    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY', '')
+    llm_model = args.llm_model or os.getenv('LLM_JUDGE_MODEL', 'gpt-4-turbo-preview')
+    llm_sample_rate = float(os.getenv('LLM_JUDGE_SAMPLE_RATE', args.llm_sample_rate))
+    
+    # Initialize LLM Judge if enabled
+    llm_judge = None
+    if llm_judge_enabled:
+        if not HAS_LLM_SUPPORT:
+            print(f"   🤖 LLM Judge: ❌ DISABLED (missing dependencies: pip install litellm openai)")
+            llm_judge_enabled = False
+        elif not (openai_api_key or anthropic_api_key):
+            print(f"   🤖 LLM Judge: ❌ DISABLED (no API key found in .env)")
+            llm_judge_enabled = False
+        else:
+            try:
+                llm_judge = LLMJudge(
+                    model=llm_model,
+                    cache_enabled=os.getenv('LLM_JUDGE_CACHE_ENABLED', 'true').lower() in ('true', '1'),
+                    sample_rate=llm_sample_rate,
+                    confidence_threshold=float(os.getenv('LLM_JUDGE_CONFIDENCE_THRESHOLD', '0.85')),
+                    max_retries=int(os.getenv('LLM_JUDGE_MAX_RETRIES', '3'))
+                )
+                print(f"   🤖 LLM Judge: ✅ ENABLED")
+                print(f"   🎯 Model: {llm_model}")
+                print(f"   📊 Sample Rate: {llm_sample_rate}")
+                print(f"   🔑 API Key: {'OpenAI' if openai_api_key else 'Anthropic'} ({'✅ Set' if openai_api_key or anthropic_api_key else '❌ Missing'})")
+            except Exception as e:
+                print(f"   🤖 LLM Judge: ❌ FAILED to initialize: {e}")
+                llm_judge_enabled = False
+                llm_judge = None
+    else:
+        print(f"   🤖 LLM Judge: ⏸️ DISABLED (use --llm-judge to enable)")
+    
+    if langfuse_enabled and langfuse_host and langfuse_public_key and langfuse_secret_key:
+        print(f"   📊 Langfuse Integration: ✅ ENABLED")
+        print(f"   🌐 Langfuse Host: {langfuse_host}")
+        print(f"   🔑 Public Key: {langfuse_public_key[:10]}..." if langfuse_public_key else "   🔑 Public Key: Not set")
+        print(f"   🔐 Secret Key: {'✅ Set' if langfuse_secret_key else '❌ Not set'}")
+        print(f"   📈 Evaluation scores will be uploaded to Langfuse")
+    else:
+        print(f"   📊 Langfuse Integration: ❌ DISABLED")
+        if not langfuse_enabled:
+            print(f"      • LANGFUSE_ENABLE is not 'true'")
+        if not langfuse_host:
+            print(f"      • LANGFUSE_HOST is not set")
+        if not langfuse_public_key:
+            print(f"      • LANGFUSE_PUBLIC_KEY is not set") 
+        if not langfuse_secret_key:
+            print(f"      • LANGFUSE_SECRET_KEY is not set")
+        print(f"      📝 Edit .env file to enable Langfuse integration")
+    
+    # Initialize Langfuse dataset run for server-side scoring
+    dataset_run_id = None
+    if langfuse_enabled and langfuse_host and langfuse_public_key and langfuse_secret_key:
+        try:
+            print(f"📈 Initializing Langfuse dataset for server-side scoring...")
+            dataset_name = "browsecomp-eval"
+            description = "Shared dataset for all Browsecomp evaluations - tracks performance across different runs and models"
+            dataset_run_id = create_dataset_run(dataset_name, description)
+            if dataset_run_id:
+                print(f"✅ Langfuse dataset ready: {dataset_run_id}")
+                print(f"   📊 Dataset: {dataset_name} (shared across all runs)")
+                if args.run_name:
+                    print(f"   🏷️  Run name: {args.run_name}")
+            else:
+                print(f"⚠️  Failed to initialize Langfuse dataset (will continue without)")
+        except Exception as e:
+            print(f"⚠️  Error creating Langfuse dataset run: {e}")
+            print(f"   Will continue without server-side Langfuse scoring")
+    else:
+        print(f"ℹ️  Langfuse disabled - skipping dataset run creation")
+    
     # Create server
     server = EvalServer(
         auth_key=args.auth_key,
@@ -561,16 +936,78 @@ async def async_main():
             else:
                 print(f'📊 Response for "{evaluation["name"]}": {response_text[:100]}...')
             
-            # Score the response
-            is_correct = question_scorer(response_text, true_answer)
+            # Extract data for enhanced scoring
+            messages = result.get('messages', []) if isinstance(result, dict) else []
+            tool_calls = result.get('toolCalls', []) if isinstance(result, dict) else []
+            execution_time = result.get('executionTime', 0) if isinstance(result, dict) else 0
+            
+            # Score the response with enhanced scoring system
+            enhanced_scores = enhanced_question_scorer(
+                prediction=response_text,
+                true_answer=true_answer,
+                messages=messages,
+                tool_calls=tool_calls,
+                execution_time_ms=execution_time
+            )
+            
+            # Run LLM Judge evaluation if enabled
+            llm_scores = {}
+            if llm_judge_enabled and llm_judge:
+                try:
+                    print(f'🤖 Running LLM Judge evaluation with {llm_model}...')
+                    llm_scores = await llm_judge.evaluate_comprehensive(
+                        question=evaluation['input']['message'],
+                        true_answer=true_answer,
+                        response=response_text,
+                        messages=messages,
+                        tool_calls=tool_calls,
+                        execution_time_ms=execution_time
+                    )
+                    print(f'✅ LLM Judge evaluation completed')
+                    if llm_scores.get('average_confidence', 0) < llm_judge.confidence_threshold:
+                        print(f'⚠️  Low confidence LLM evaluation (confidence: {llm_scores.get("average_confidence", 0):.2f})')
+                except Exception as e:
+                    print(f'⚠️  LLM Judge evaluation failed: {e}')
+                    llm_scores = {"error": str(e)}
+            
+            # Combine all scoring systems
+            all_scores = {**enhanced_scores, **llm_scores}
+            
+            # Extract values for backward compatibility
+            is_correct = enhanced_scores.get('correctness_binary', 0.0) == 1.0
             extracted_answer = extract_answer(response_text)
             confidence = extract_confidence(response_text)
             
-            # Print scoring results
-            print(f'🎯 Scoring Results:')
+            # Create enhanced scorer for detailed reporting
+            scorer = EnhancedScorer()
+            score_report = scorer.format_score_report(enhanced_scores)
+            print(score_report)
+            
+            # Print LLM Judge results if available
+            if llm_scores and 'error' not in llm_scores:
+                print(f'\n🤖 LLM Judge Results ({llm_model}):')
+                if 'overall_score_llm' in llm_scores:
+                    print(f'   Overall Score:      {llm_scores["overall_score_llm"]:4.1f}/10')
+                if 'quality_score_llm' in llm_scores:
+                    print(f'   Quality Score:      {llm_scores["quality_score_llm"]:4.1f}/10')
+                if 'average_confidence' in llm_scores:
+                    print(f'   Average Confidence: {llm_scores["average_confidence"]:4.1f}')
+                    
+                # Show individual dimension scores
+                for dimension in ['correctness', 'evidence_quality', 'reasoning_quality', 'task_completion', 'efficiency']:
+                    key = f'{dimension}_llm'
+                    if key in llm_scores and isinstance(llm_scores[key], dict):
+                        score = llm_scores[key].get('score', 0)
+                        confidence = llm_scores[key].get('confidence', 0)
+                        print(f'   {dimension.replace("_", " ").title()}: {score:4.1f}/10 (conf: {confidence:.2f})')
+            elif llm_scores and 'error' in llm_scores:
+                print(f'\n🤖 LLM Judge: ❌ Error - {llm_scores["error"]}')
+            
+            # Print traditional results for comparison
+            print(f'\n📋 Traditional Results:')
             print(f'   - True Answer: {true_answer}')
             print(f'   - Extracted Answer: {extracted_answer}')
-            print(f'   - Correct: {"✅ YES" if is_correct else "❌ NO"}')
+            print(f'   - Binary Correct: {"✅ YES" if is_correct else "❌ NO"}')
             print(f'   - Confidence: {confidence}%')
             
             if is_partial_result:
@@ -579,7 +1016,7 @@ async def async_main():
                 print(f'   - Attempts: {result.get("attempts", "Unknown")}')
                 print(f'   - The BrowserOperator had issues but provided a response')
             
-            # Log evaluation completion
+            # Log evaluation completion with all scores
             log_evaluation_event(logger, "evaluation_completed", {
                 "client_id": client.id,
                 "evaluation_id": evaluation_id,
@@ -592,8 +1029,163 @@ async def async_main():
                 "is_partial_result": is_partial_result,
                 "model_used": result.get('modelUsed') if isinstance(result, dict) else None,
                 "execution_time_ms": result.get('executionTime') if isinstance(result, dict) else None,
-                "tool_calls_count": len(result.get('toolCalls', [])) if isinstance(result, dict) else None
+                "tool_calls_count": len(result.get('toolCalls', [])) if isinstance(result, dict) else None,
+                # All scoring metrics
+                "all_scores": all_scores,
+                "llm_judge_enabled": llm_judge_enabled
             })
+            
+            # Upload score to Langfuse dataset if enabled
+            if dataset_run_id:
+                try:
+                    print(f'📈 Uploading server score to Langfuse dataset...')
+                    score_dataset_item(
+                        dataset_name=dataset_run_id,
+                        item_id=evaluation_id,
+                        input_data={
+                            'question': evaluation['input']['message'],
+                            'question_id': question_id,
+                            'true_answer': true_answer,
+                        },
+                        output_data={'response': response_text},
+                        scores={
+                            # Traditional scores (for backward compatibility)
+                            'correctness': 1.0 if is_correct else 0.0,
+                            'confidence': confidence / 100.0,  # Normalize to 0-1
+                            'has_partial_result': 1.0 if is_partial_result else 0.0,
+                            
+                            # Enhanced 10-point scores (rule-based)
+                            'correctness_10': enhanced_scores.get('correctness_10', 0.0),
+                            'task_completion_10': enhanced_scores.get('task_completion_10', 0.0),
+                            'evidence_quality_10': enhanced_scores.get('evidence_quality_10', 0.0),
+                            'reasoning_quality_10': enhanced_scores.get('reasoning_quality_10', 0.0),
+                            'tool_efficiency_10': enhanced_scores.get('tool_efficiency_10', 0.0),
+                            
+                            # Composite scores (rule-based)
+                            'overall_score_10': enhanced_scores.get('overall_score_10', 0.0),
+                            'quality_score_10': enhanced_scores.get('quality_score_10', 0.0),
+                            'efficiency_score_10': enhanced_scores.get('efficiency_score_10', 0.0),
+                            
+                            # LLM Judge scores (if available)
+                            **({
+                                'llm_overall_score': llm_scores.get('overall_score_llm', 0.0),
+                                'llm_quality_score': llm_scores.get('quality_score_llm', 0.0),
+                                'llm_efficiency_score': llm_scores.get('efficiency_score_llm', 0.0),
+                                'llm_confidence': llm_scores.get('average_confidence', 0.0),
+                                'llm_correctness': llm_scores.get('correctness_llm', {}).get('score', 0.0),
+                                'llm_evidence_quality': llm_scores.get('evidence_quality_llm', {}).get('score', 0.0),
+                                'llm_reasoning_quality': llm_scores.get('reasoning_quality_llm', {}).get('score', 0.0),
+                                'llm_task_completion': llm_scores.get('task_completion_llm', {}).get('score', 0.0),
+                                'llm_efficiency': llm_scores.get('efficiency_llm', {}).get('score', 0.0),
+                            } if llm_scores and 'error' not in llm_scores else {
+                                'llm_judge_enabled': llm_judge_enabled,
+                                'llm_judge_error': llm_scores.get('error', 'Not enabled') if llm_scores else 'Not enabled'
+                            })
+                        },
+                        metadata={
+                            'client_id': client.id,
+                            'evaluation_name': evaluation["name"],
+                            'model_used': result.get('modelUsed') if isinstance(result, dict) else None,
+                            'execution_time_ms': result.get('executionTime') if isinstance(result, dict) else None,
+                            'extracted_answer': extracted_answer,
+                            # Run metadata for organizing results
+                            'run_timestamp': datetime.now().isoformat(),
+                            'run_name': args.run_name or 'unnamed-run',
+                            'server_session': f"{args.host}:{args.port}",
+                            'total_questions_in_session': len(evaluations),
+                        }
+                    )
+                    print(f'✅ Successfully uploaded server score to Langfuse')
+                except Exception as e:
+                    print(f'⚠️  Failed to upload server score to Langfuse: {e}')
+            
+            # Create and score Langfuse traces for dashboard visibility
+            if dataset_run_id:
+                try:
+                    print(f'🔗 Creating Langfuse trace for evaluation...')
+                    
+                    # Extract trace_id from client result if available
+                    client_trace_id = None
+                    if isinstance(result, dict):
+                        client_trace_id = result.get('traceId')
+                    
+                    # Create a server-side trace for this evaluation
+                    server_trace_id = create_trace(
+                        name=f"Browsecomp: {evaluation['name']}",
+                        input_data={
+                            'question': evaluation['input']['message'],
+                            'question_id': question_id,
+                            'true_answer': true_answer,
+                        },
+                        metadata={
+                            'client_id': client.id,
+                            'evaluation_id': evaluation_id,
+                            'evaluation_name': evaluation['name'],
+                            'model_used': result.get('modelUsed') if isinstance(result, dict) else None,
+                            'execution_time_ms': result.get('executionTime') if isinstance(result, dict) else None,
+                        }
+                    )
+                    
+                    if server_trace_id:
+                        # Score the server trace with traditional scores
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='server_accuracy',
+                            value=1.0 if is_correct else 0.0,
+                            comment=f"Server-side scoring: {'Correct' if is_correct else 'Incorrect'}"
+                        )
+                        
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='confidence_score',
+                            value=confidence / 100.0,
+                            comment=f"Extracted confidence: {confidence}%"
+                        )
+                        
+                        # Add enhanced 10-point scores
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='overall_score_10',
+                            value=enhanced_scores.get('overall_score_10', 0.0) / 10.0,  # Normalize to 0-1
+                            comment=f"Overall 10-point score: {enhanced_scores.get('overall_score_10', 0.0):.1f}/10"
+                        )
+                        
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='quality_score_10',
+                            value=enhanced_scores.get('quality_score_10', 0.0) / 10.0,
+                            comment=f"Quality score (correctness+evidence+reasoning): {enhanced_scores.get('quality_score_10', 0.0):.1f}/10"
+                        )
+                        
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='efficiency_score_10',
+                            value=enhanced_scores.get('efficiency_score_10', 0.0) / 10.0,
+                            comment=f"Efficiency score (completion+tools): {enhanced_scores.get('efficiency_score_10', 0.0):.1f}/10"
+                        )
+                        
+                        print(f'✅ Created and scored server trace: {server_trace_id[:12]}...')
+                    
+                    # Also score client trace if available
+                    if client_trace_id:
+                        score_agent_trace(
+                            trace_id=client_trace_id,
+                            name='server_accuracy',
+                            value=1.0 if is_correct else 0.0,
+                            comment=f"Server-side scoring: {'Correct' if is_correct else 'Incorrect'}"
+                        )
+                        
+                        score_agent_trace(
+                            trace_id=client_trace_id,
+                            name='overall_score_10',
+                            value=enhanced_scores.get('overall_score_10', 0.0) / 10.0,
+                            comment=f"Overall 10-point score: {enhanced_scores.get('overall_score_10', 0.0):.1f}/10"
+                        )
+                        
+                        print(f'✅ Scored client trace: {client_trace_id[:12]}...')
+                        
+                except Exception as e:
+                    print(f'⚠️  Failed to create/score Langfuse traces: {e}')
             
             completed_evaluations.append({
                 'client_id': client.id,
@@ -628,7 +1220,40 @@ async def async_main():
                 print(f'   The client reported an error but might continue execution')
                 print(f'   Consider increasing timeout with --timeout parameter')
             
-            # Log evaluation failure
+            # Try to extract partial response from error for scoring
+            response_text = ''
+            partial_result = None
+            
+            # Attempt to extract response from RPC error if available
+            if hasattr(e, 'response') and isinstance(e.response, dict):
+                partial_result = e.response
+                response_text = partial_result.get('output', '')
+            elif hasattr(e, 'partial_response'):
+                response_text = e.partial_response
+            
+            # Score even failed evaluations if there's any response text
+            is_correct = False
+            extracted_answer = None
+            confidence = 0
+            
+            if response_text:
+                print(f'📊 Attempting to score partial response: {response_text[:100]}...')
+                try:
+                    is_correct = question_scorer(response_text, true_answer)
+                    extracted_answer = extract_answer(response_text)
+                    confidence = extract_confidence(response_text)
+                    
+                    print(f'🎯 Partial Scoring Results:')
+                    print(f'   - True Answer: {true_answer}')
+                    print(f'   - Extracted Answer: {extracted_answer}')
+                    print(f'   - Correct: {"✅ YES" if is_correct else "❌ NO"}')
+                    print(f'   - Confidence: {confidence}%')
+                except Exception as scoring_error:
+                    print(f'⚠️  Failed to score partial response: {scoring_error}')
+            else:
+                print(f'❌ No response text available for scoring')
+            
+            # Log evaluation failure with scoring info
             log_evaluation_event(logger, "evaluation_failed", {
                 "client_id": client.id,
                 "evaluation_id": evaluation_id,
@@ -636,14 +1261,116 @@ async def async_main():
                 "evaluation_name": evaluation["name"],
                 "error_message": error_msg,
                 "is_tool_execution_error": "Tool execution failed" in error_msg or "-32000" in error_msg,
-                "true_answer": evaluation['metadata']['true_answer']
+                "true_answer": evaluation['metadata']['true_answer'],
+                "is_correct": is_correct,
+                "extracted_answer": extracted_answer,
+                "confidence": confidence,
+                "had_partial_response": bool(response_text)
             })
+            
+            # Upload score to Langfuse dataset for failed evaluation if enabled
+            if dataset_run_id:
+                try:
+                    print(f'📈 Uploading failed evaluation score to Langfuse dataset...')
+                    score_dataset_item(
+                        dataset_name=dataset_run_id,
+                        item_id=evaluation_id,
+                        input_data={
+                            'question': evaluation['input']['message'],
+                            'question_id': question_id,
+                            'true_answer': true_answer,
+                        },
+                        output_data={
+                            'response': response_text,
+                            'error': error_msg,
+                            'status': 'failed'
+                        },
+                        scores={
+                            'correctness': 1.0 if is_correct else 0.0,
+                            'confidence': confidence / 100.0,  # Normalize to 0-1
+                            'evaluation_failed': 1.0,
+                            'had_partial_response': 1.0 if bool(response_text) else 0.0,
+                        },
+                        metadata={
+                            'client_id': client.id,
+                            'evaluation_name': evaluation["name"],
+                            'error_message': error_msg,
+                            'is_tool_execution_error': "Tool execution failed" in error_msg or "-32000" in error_msg,
+                            'extracted_answer': extracted_answer,
+                            # Run metadata for organizing results
+                            'run_timestamp': datetime.now().isoformat(),
+                            'run_name': args.run_name or 'unnamed-run',
+                            'server_session': f"{args.host}:{args.port}",
+                            'total_questions_in_session': len(evaluations),
+                        }
+                    )
+                    print(f'✅ Successfully uploaded failed evaluation score to Langfuse')
+                except Exception as e:
+                    print(f'⚠️  Failed to upload failed evaluation score to Langfuse: {e}')
+            
+            # Create and score Langfuse traces for failed evaluations
+            if dataset_run_id:
+                try:
+                    print(f'🔗 Creating Langfuse trace for failed evaluation...')
+                    
+                    # Create a server-side trace for this failed evaluation
+                    server_trace_id = create_trace(
+                        name=f"Browsecomp (FAILED): {evaluation['name']}",
+                        input_data={
+                            'question': evaluation['input']['message'],
+                            'question_id': question_id,
+                            'true_answer': true_answer,
+                        },
+                        metadata={
+                            'client_id': client.id,
+                            'evaluation_id': evaluation_id,
+                            'evaluation_name': evaluation['name'],
+                            'status': 'failed',
+                            'error_message': error_msg,
+                        }
+                    )
+                    
+                    if server_trace_id:
+                        # Score the failed trace
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='server_accuracy',
+                            value=1.0 if is_correct else 0.0,
+                            comment=f"Failed evaluation - Server scoring: {'Correct' if is_correct else 'Incorrect'}"
+                        )
+                        
+                        score_agent_trace(
+                            trace_id=server_trace_id,
+                            name='evaluation_failed',
+                            value=1.0,
+                            comment=f"Evaluation failed: {error_msg}"
+                        )
+                        
+                        if confidence > 0:
+                            score_agent_trace(
+                                trace_id=server_trace_id,
+                                name='confidence_score',
+                                value=confidence / 100.0,
+                                comment=f"Extracted confidence: {confidence}%"
+                            )
+                        
+                        print(f'✅ Created and scored failed trace: {server_trace_id[:12]}...')
+                        
+                except Exception as e:
+                    print(f'⚠️  Failed to create/score failed Langfuse traces: {e}')
             
             failed_evaluations.append({
                 'client_id': client.id,
                 'evaluation': evaluation,
                 'error': error_msg,
                 'question_id': question_id,
+                'scoring': {
+                    'is_correct': is_correct,
+                    'true_answer': true_answer,
+                    'extracted_answer': extracted_answer,
+                    'confidence': confidence,
+                    'had_partial_response': bool(response_text)
+                }
             })
         
         # Send completion message
@@ -724,12 +1451,42 @@ async def async_main():
                 error = item['error']
                 print(f'   • Q{question_id}: {eval_name} - {error}')
     
+    # Set up auto-launch if enabled
+    auto_launch_task = None
+    if args.auto_launch:
+        print(f"🤖 Auto-launch enabled - preparing to launch Browser Operator")
+        server_config = {
+            'host': server.config.host,
+            'port': server.config.port
+        }
+        
+        # Set up cleanup on exit
+        def signal_handler(signum, frame):
+            print(f'\n🛑 Received signal {signum}, cleaning up browsers...')
+            cleanup_browsers()
+            raise KeyboardInterrupt()
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+    
     # Start server
     try:
         print(f'\n🚀 Starting server on ws://{server.config.host}:{server.config.port}')
-        print('   Connect your BrowserOperator to start processing browsecomp questions')
+        if not args.auto_launch:
+            print('   Connect your BrowserOperator to start processing browsecomp questions')
         print('   Press Ctrl+C to stop the server')
         print('=' * 60)
+        
+        # Start server and auto-launch task concurrently
+        if args.auto_launch:
+            print(f"🔄 Starting auto-launch task...")
+            try:
+                auto_launch_task = asyncio.create_task(auto_launch_browsers(args, stack, server_config))
+                print(f"✅ Auto-launch task created successfully")
+            except Exception as e:
+                print(f"❌ Failed to create auto-launch task: {e}")
+                import traceback
+                traceback.print_exc()
         
         await server.start()
         
@@ -738,6 +1495,9 @@ async def async_main():
         
     except KeyboardInterrupt:
         print('\n🛑 Received interrupt signal, stopping server...')
+        cleanup_browsers()
+        if auto_launch_task and not auto_launch_task.done():
+            auto_launch_task.cancel()
         await server.stop()
         print('✅ Server stopped successfully')
         

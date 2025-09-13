@@ -17,8 +17,15 @@ from .logger import log_rpc_call
 
 
 class RpcError(Exception):
-    """Exception raised for RPC-related errors."""
-    pass
+    """Exception raised for RPC-related errors.
+
+    Includes the original JSON-RPC response payload when available
+    to allow callers to extract metadata (e.g., traceId) from error responses.
+    """
+
+    def __init__(self, message: str, response: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.response = response
 
 
 class RpcTimeoutError(RpcError):
@@ -122,7 +129,7 @@ class RpcClient:
             
             # Send request
             await self.websocket.send(json.dumps(request))
-            
+
             # Wait for response with timeout
             try:
                 result = await asyncio.wait_for(future, timeout=call_timeout)
@@ -198,12 +205,12 @@ class RpcClient:
         except json.JSONDecodeError as e:
             logger.warning(f"Invalid JSON in RPC message: {e}")
             return
-        
+
         # Handle JSON-RPC 2.0 responses
         if isinstance(data, dict) and "jsonrpc" in data and "id" in data:
             call_id = data["id"]
             future = self._pending_calls.get(call_id)
-            
+
             if future and not future.done():
                 if "result" in data:
                     # Successful response
@@ -212,7 +219,8 @@ class RpcClient:
                     # Error response
                     error = data["error"]
                     error_msg = f"RPC error {error.get('code', 'unknown')}: {error.get('message', 'Unknown error')}"
-                    future.set_exception(RpcError(error_msg))
+                    # Attach full response for downstream consumers to parse metadata
+                    future.set_exception(RpcError(error_msg, response=data))
                 else:
                     # Invalid response format
                     future.set_exception(RpcError("Invalid RPC response format"))
