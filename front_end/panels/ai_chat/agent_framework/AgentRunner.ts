@@ -397,7 +397,8 @@ export class AgentRunner {
     hooks: AgentRunnerHooks,
     executingAgent: ConfigurableAgentTool | null,
     parentSession?: AgentSession, // For natural nesting
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string }
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    abortSignal?: AbortSignal
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
@@ -547,6 +548,13 @@ export class AgentRunner {
     let iteration = 0; // Initialize iteration counter
 
     for (iteration = 0; iteration < maxIterations; iteration++) {
+      // Check if execution has been aborted
+      if (abortSignal?.aborted) {
+        logger.info(`${agentName} execution aborted at iteration ${iteration + 1}/${maxIterations}`);
+        const abortResult = createErrorResult('Execution was cancelled', messages, 'error');
+        return { ...abortResult, agentSession: currentSession };
+      }
+
       // Update session iteration count
       if (currentSession) {
         currentSession.iterationCount = iteration + 1;

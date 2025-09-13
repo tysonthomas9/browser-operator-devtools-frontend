@@ -1945,6 +1945,10 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Cleanup when panel is hidden
    */
   override willHide(): void {
+    // Cancel any running agent execution when the panel is hidden/reloaded
+    try {
+      this.#agentService.cancelRun();
+    } catch {}
     // Explicitly remove any event listeners to prevent memory leaks
     if (this.#boundOnMessagesChanged) {
       this.#agentService.removeEventListener(AgentEvents.MESSAGES_CHANGED, this.#boundOnMessagesChanged);

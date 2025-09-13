@@ -75,6 +75,13 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
   async execute(args: FetcherToolArgs, ctx?: LLMContext): Promise<FetcherToolResult> {
     logger.info('Executing with args', { args });
     const { urls, reasoning } = args;
+    const signal = ctx?.abortSignal;
+
+    const throwIfAborted = () => {
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted', 'AbortError');
+      }
+    };
 
     // Validate input
     if (!Array.isArray(urls) || urls.length === 0) {
@@ -91,6 +98,7 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
 
     // Process each URL sequentially
     for (const url of urlsToProcess) {
+      throwIfAborted();
       try {
         logger.info('Processing URL', { url });
         const fetchedContent = await this.fetchContentFromUrl(url, reasoning, ctx);
@@ -117,9 +125,39 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
    * Fetch and extract content from a single URL
    */
   private async fetchContentFromUrl(url: string, reasoning: string, ctx?: LLMContext): Promise<FetchedContent> {
+    const signal = ctx?.abortSignal;
+    const throwIfAborted = () => {
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted', 'AbortError');
+      }
+    };
+    const sleep = (ms: number) => new Promise<void>((resolve, reject) => {
+      if (!ms) return resolve();
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        cleanup();
+        reject(new DOMException('The operation was aborted', 'AbortError'));
+      };
+      const cleanup = () => {
+        signal?.removeEventListener('abort', onAbort);
+      };
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(timer);
+          cleanup();
+          return reject(new DOMException('The operation was aborted', 'AbortError'));
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
     try {
       // Step 1: Navigate to the URL
       logger.info('Navigating to URL', { url });
+      throwIfAborted();
       // Note: NavigateURLTool requires both url and reasoning parameters
         const navigationResult = await this.navigateURLTool.execute({
           url,
@@ -138,13 +176,15 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
       }
 
       // Wait for 1 second to ensure the page has time to load
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await sleep(1000);
+      throwIfAborted();
 
       // Get metadata from navigation result
       const metadata = navigationResult.metadata ? navigationResult.metadata : { url: '', title: '' };
 
       // Step 2: Extract markdown content using HTMLToMarkdownTool
       logger.info('Extracting content from URL', { url });
+      throwIfAborted();
       const extractionResult = await this.htmlToMarkdownTool.execute({
         instruction: 'Extract the main content focusing on article text, headings, and important information. Remove ads, navigation, and distracting elements.',
         reasoning

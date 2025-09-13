@@ -591,12 +591,13 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         const result = await withTracingContext(executionContext, async () => {
           console.log(`[TOOL EXECUTION PATH 1] Inside withTracingContext for tool: ${toolName}`);
           const apiKeyFromState = (state.context as any)?.apiKey;
-          return await selectedTool.execute(toolArgs as any, { 
+          return await selectedTool.execute(toolArgs as any, {
             apiKey: apiKeyFromState,
-            provider: this.provider, 
+            provider: this.provider,
             model: this.modelName,
             miniModel: this.miniModel,
-            nanoModel: this.nanoModel
+            nanoModel: this.nanoModel,
+            abortSignal: state.context.abortSignal
           });
         });
         console.log(`[TOOL EXECUTION PATH 1] ToolExecutorNode completed tool: ${toolName}`);
@@ -723,6 +724,10 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         }
 
       } catch (err) {
+        // Propagate cancellation so the graph can handle AbortError cleanly
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          throw err;
+        }
         resultText = `Error during tool execution: ${err instanceof Error ? err.message : String(err)}`;
         logger.error(resultText, { tool: toolName, args: toolArgs });
         isError = true;

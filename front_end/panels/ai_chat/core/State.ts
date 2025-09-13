@@ -54,6 +54,9 @@ export interface DevToolsContext {
   intermediateStepsCount?: number;
   // Tracing context for distributed tracing
   tracingContext?: TracingContext;
+  // Execution tracking for cancellation support
+  executionId?: string;
+  abortSignal?: AbortSignal;
 }
 
 /**

@@ -26,6 +26,7 @@ export interface CallCtx {
   overrideSessionId?: string,
   overrideParentSessionId?: string,
   overrideTraceId?: string,
+  abortSignal?: AbortSignal,
 }
 
 /**
@@ -504,7 +505,8 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
         sessionId: ctx.overrideSessionId,
         parentSessionId: ctx.overrideParentSessionId,
         traceId: ctx.overrideTraceId,
-      }
+      },
+      callCtx.abortSignal
     );
 
     // Return the direct result from the runner (including agentSession)
