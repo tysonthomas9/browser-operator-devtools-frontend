@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { createToolExecutorNode } from './AgentNodes.js';
+import { createAgentNode, createToolExecutorNode } from './AgentNodes.js';
 import type { AgentState } from './State.js';
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity } from '../models/ChatTypes.js';
+import { ToolSurfaceProvider } from './ToolSurfaceProvider.js';
+import '../agent_framework/ConfigurableAgentTool.js';
+import { LLMClient } from '../LLM/LLMClient.js';
 
 /* eslint-env mocha */
 
@@ -41,41 +44,41 @@ describe('AgentNodes sanitized tool name mapping', () => {
     mockLocalStorage.clear();
   });
 
-  it('resolves sanitized model tool names back to actual tool instances for execution', async () => {
-    // Original tool name contains invalid chars for LLM function calling
+  it('sanitizes function names for LLM and maps back to original tool for execution', async () => {
+    // Arrange tool and stubs
     const originalName = 'mcp:default:alpha';
-    const sanitizedName = 'mcp_default_alpha';
     const tool = new RecordingTool(originalName);
 
-    const state: AgentState = {
-      messages: [
-        {
-          entity: ChatMessageEntity.MODEL,
-          action: 'tool',
-          toolName: sanitizedName,
-          toolArgs: { x: 1 },
-          toolCallId: 'call-1',
-          isFinalAnswer: false,
-        } as any
-      ],
+    const originalSelect = ToolSurfaceProvider.select;
+    (ToolSurfaceProvider as any).select = async () => ({ tools: [tool], selectedNames: [tool.name] });
+
+    let capturedFnName = '';
+    const originalGetInstance = (LLMClient as any).getInstance;
+    (LLMClient as any).getInstance = () => ({
+      call: async (opts: any) => {
+        capturedFnName = opts.tools?.[0]?.function?.name || '';
+        return { rawResponse: {} };
+      },
+      parseResponse: () => ({ type: 'tool_call', name: capturedFnName, args: { x: 1 } }),
+    });
+
+    const initial: AgentState = {
+      messages: [ { entity: ChatMessageEntity.USER, text: 'go' } as any ],
       agentType: 'deep-research' as any,
-      context: {
-        selectedToolNames: [sanitizedName],
-        selectedTools: [tool],
-        toolNameMap: { [sanitizedName]: originalName }
-      }
+      context: {},
     } as any;
 
-    const node = createToolExecutorNode(state, 'openai', 'gpt-4', 'gpt-4-mini', 'gpt-4-mini');
-    const result = await node.invoke(state);
-    
-    // Tool execute should have been called once
-    assert.strictEqual(tool.calls, 1);
-
-    // Should append a tool result message
-    const last = result.messages[result.messages.length - 1];
-    assert.strictEqual(last.entity, ChatMessageEntity.TOOL_RESULT);
-    assert.strictEqual((last as any).toolName, sanitizedName);
-    assert.ok((last as any).resultText);
+    try {
+      // Agent node should produce a MODEL tool message with original name even if provider returns sanitized
+      const agent = createAgentNode('gpt-4', 'openai' as any, 0);
+      const afterAgent = await agent.invoke(initial);
+      const toolMsg = afterAgent.messages[afterAgent.messages.length - 1] as any;
+      assert.strictEqual(toolMsg.entity, ChatMessageEntity.MODEL);
+      assert.strictEqual(toolMsg.action, 'tool');
+      assert.strictEqual(toolMsg.toolName, originalName);
+    } finally {
+      (ToolSurfaceProvider as any).select = originalSelect;
+      (LLMClient as any).getInstance = originalGetInstance;
+    }
   });
 });

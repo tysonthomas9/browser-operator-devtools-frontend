@@ -28,7 +28,7 @@ export function getMCPConfig(): MCPConfigData {
   try {
     const enabled = localStorage.getItem(KEYS.enabled) === 'true';
     const endpoint = localStorage.getItem(KEYS.endpoint) || undefined;
-    const token = localStorage.getItem(KEYS.token) || undefined;
+    const token = sessionStorage.getItem(KEYS.token) || undefined;
     let toolAllowlist: string[] | undefined;
     const raw = localStorage.getItem(KEYS.allowlist);
     if (raw) {
@@ -52,7 +52,15 @@ export function setMCPConfig(config: MCPConfigData): void {
       localStorage.setItem(KEYS.endpoint, config.endpoint);
     }
     if (config.token !== undefined) {
-      localStorage.setItem(KEYS.token, config.token);
+      try {
+        if (config.token) {
+          sessionStorage.setItem(KEYS.token, config.token);
+        } else {
+          sessionStorage.removeItem(KEYS.token);
+        }
+      } catch (e) {
+        logger.error('Failed to persist MCP token to sessionStorage', e);
+      }
     }
     if (config.toolAllowlist) {
       localStorage.setItem(KEYS.allowlist, JSON.stringify(config.toolAllowlist));

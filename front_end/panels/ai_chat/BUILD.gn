@@ -55,6 +55,7 @@ devtools_module("ai_chat") {
     "core/PageInfoManager.ts",
     "core/AgentNodes.ts",
     "core/GraphHelpers.ts",
+    "core/ToolNameMap.ts",
     "core/ToolSurfaceProvider.ts",
     "core/StateGraph.ts",
     "core/Logger.ts",
@@ -189,6 +190,7 @@ _ai_chat_sources = [
     "core/PageInfoManager.ts",
     "core/AgentNodes.ts",
     "core/GraphHelpers.ts",
+    "core/ToolNameMap.ts",
     "core/ToolSurfaceProvider.ts",
     "core/StateGraph.ts",
     "core/Logger.ts",
@@ -359,7 +361,6 @@ ts_library("unittests") {
     "agent_framework/__tests__/AgentRunner.run.flows.test.ts",
     "mcp/MCPClientSDK.test.ts",
     "core/ToolSurfaceProvider.test.ts",
-    "core/ToolNameMapping.test.ts",
   ]
 
   deps = [

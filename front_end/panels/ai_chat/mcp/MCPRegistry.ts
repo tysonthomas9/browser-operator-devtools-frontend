@@ -1,5 +1,6 @@
 import { createLogger } from '../core/Logger.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import * as ToolNameMap from '../core/ToolNameMap.js';
 import type { MCPToolDef, MCPServer } from '../../../third_party/mcp-sdk/mcp-sdk.js';
 import { MCPClient } from '../../../third_party/mcp-sdk/mcp-sdk.js';
 import { getMCPConfig } from './MCPConfig.js';
@@ -57,6 +58,8 @@ class RegistryImpl {
     this.registeredTools = [];
     this.lastError = undefined;
     this.lastErrorType = undefined;
+    // Reset mappings on reconnect
+    ToolNameMap.clear();
 
     if (!cfg.enabled) {
       logger.info('MCP disabled');
@@ -110,6 +113,8 @@ class RegistryImpl {
 
       for (const def of tools) {
         const namespaced = `mcp:${srv.id}:${def.name}`;
+        // Create or reuse a stable sanitized mapping for LLM function names
+        ToolNameMap.addMapping(namespaced);
         if (allow.size > 0 && !allow.has(namespaced) && !allow.has(def.name)) {
           continue;
         }
@@ -148,6 +153,10 @@ class RegistryImpl {
       lastDisconnected: this.lastDisconnected,
     };
   }
+
+  getSanitizedFunctionName(original: string): string { return ToolNameMap.getSanitized(original); }
+
+  resolveOriginalFunctionName(sanitized: string): string | undefined { return ToolNameMap.resolveOriginal(sanitized); }
 }
 
 export const MCPRegistry = new RegistryImpl();

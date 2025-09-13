@@ -31,8 +31,8 @@ export class MCPToolAdapter implements Tool<Record<string, unknown>, unknown> {
 
   async execute(args: Record<string, unknown>): Promise<unknown> {
     const sanitized = this.sanitize(args);
-    logger.info('Executing MCP tool', { name: this.name, serverId: this.serverId });
-    return this.client.callTool(this.serverId, this.def.name, sanitized, { timeoutMs: 30000 });
+    logger.info('Executing MCP tool', { name: this.name, serverId: this.serverId, args: sanitized });
+    return this.client.callTool(this.serverId, this.def.name, args, { timeoutMs: 30000 });
   }
 
   // Expose metadata for discovery/search

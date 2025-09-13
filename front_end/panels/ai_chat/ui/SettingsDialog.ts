@@ -529,17 +529,8 @@ export class SettingsDialog {
     providerHint.textContent = i18nString(UIStrings.providerHint);
     providerSection.appendChild(providerHint);
     
-    // Determine current provider: prefer the provider for the currently selected model if available
-    const storedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    let currentProvider = storedProvider as 'openai' | 'litellm' | 'groq' | 'openrouter';
-    try {
-      const selectedModelOption = modelOptions.find(opt => opt.value === selectedModel);
-      if (selectedModelOption && selectedModelOption.type) {
-        currentProvider = selectedModelOption.type as 'openai' | 'litellm' | 'groq' | 'openrouter';
-      }
-    } catch (e) {
-      // Fallback silently to storedProvider
-    }
+    // Use the stored provider from localStorage
+    const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter';
     
     // Create provider selection dropdown
     const providerSelect = document.createElement('select');
@@ -1423,10 +1414,14 @@ export class SettingsDialog {
       const defaults = DEFAULT_PROVIDER_MODELS[provider] || DEFAULT_PROVIDER_MODELS.openai;
       const defaultModel = modelType === 'mini' ? defaults.mini : defaults.nano;
       
-      // Return default if it exists in provider models, otherwise return current model
-      return defaultModel && providerModels.some(model => model.value === defaultModel) 
-        ? defaultModel 
-        : currentModel;
+      // Return default if it exists in provider models
+      if (defaultModel && providerModels.some(model => model.value === defaultModel)) {
+        return defaultModel;
+      }
+
+      // If no valid model found, return empty string to indicate no selection
+      // The UI should handle this by showing a placeholder or the first available option
+      return '';
     }
     
     // Function to update Groq model selectors
@@ -2568,22 +2563,21 @@ export class SettingsDialog {
       return date.toLocaleString();
     };
 
-    const formatMCPError = (error: string, errorType?: string): string => {
-      if (!errorType) return error;
-      
+    const formatMCPError = (error: string, errorType?: string): {message: string, hint?: string} => {
+      if (!errorType) return {message: error};
       switch (errorType) {
         case 'connection':
-          return `Connection failed: ${error}<br><span style="color: var(--color-text-secondary); font-size: 12px;">Check if the MCP server is running and the endpoint URL is correct.</span>`;
+          return {message: `Connection failed: ${error}`, hint: 'Check if the MCP server is running and the endpoint URL is correct.'};
         case 'authentication':
-          return `Authentication failed: ${error}<br><span style="color: var(--color-text-secondary); font-size: 12px;">Verify your auth token is correct and has not expired.</span>`;
+          return {message: `Authentication failed: ${error}`, hint: 'Verify your auth token is correct and has not expired.'};
         case 'configuration':
-          return `Configuration error: ${error}<br><span style="color: var(--color-text-secondary); font-size: 12px;">Check your endpoint URL format (should be ws:// or wss://).</span>`;
+          return {message: `Configuration error: ${error}`, hint: 'Check your endpoint URL format (should be ws:// or wss://).'};
         case 'network':
-          return `Network error: ${error}<br><span style="color: var(--color-text-secondary); font-size: 12px;">Check your internet connection and firewall settings.</span>`;
+          return {message: `Network error: ${error}`, hint: 'Check your internet connection and firewall settings.'};
         case 'server_error':
-          return `Server error: ${error}<br><span style="color: var(--color-text-secondary); font-size: 12px;">The MCP server encountered an internal error. Contact the server administrator.</span>`;
+          return {message: `Server error: ${error}`, hint: 'The MCP server encountered an internal error. Contact the server administrator.'};
         default:
-          return error;
+          return {message: error};
       }
     };
 
@@ -2593,7 +2587,7 @@ export class SettingsDialog {
         mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
         mcpStatusText.textContent = 'Disabled';
         mcpStatusText.style.color = 'var(--color-text-disabled)';
-        mcpStatusDetails.innerHTML = '';
+        mcpStatusDetails.textContent = '';
         return;
       }
       const anyConnected = status.servers.some(s => s.connected);
@@ -2603,27 +2597,57 @@ export class SettingsDialog {
         mcpStatusText.textContent = `Connected (${toolCount} tools)`;
         mcpStatusText.style.color = 'var(--color-accent-green)';
         
-        let detailsHtml = '';
+        // Safely build details content without using innerHTML
+        mcpStatusDetails.textContent = '';
         if (status.lastConnected) {
-          detailsHtml += `Last connected: ${formatTimestamp(status.lastConnected)}<br>`;
+          const line = document.createElement('div');
+          line.textContent = `Last connected: ${formatTimestamp(status.lastConnected)}`;
+          mcpStatusDetails.appendChild(line);
         }
         if (status.lastError) {
-          detailsHtml += `<span style="color: var(--color-error-text)">${formatMCPError(status.lastError, status.lastErrorType)}</span>`;
+          const {message, hint} = formatMCPError(status.lastError, status.lastErrorType);
+          const errLine = document.createElement('div');
+          const errSpan = document.createElement('span');
+          errSpan.style.color = 'var(--color-error-text)';
+          errSpan.textContent = message;
+          errLine.appendChild(errSpan);
+          mcpStatusDetails.appendChild(errLine);
+          if (hint) {
+            const hintLine = document.createElement('div');
+            hintLine.style.color = 'var(--color-text-secondary)';
+            hintLine.style.fontSize = '12px';
+            hintLine.textContent = hint;
+            mcpStatusDetails.appendChild(hintLine);
+          }
         }
-        mcpStatusDetails.innerHTML = detailsHtml;
       } else {
         mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
         mcpStatusText.textContent = 'Not connected';
         mcpStatusText.style.color = 'var(--color-text-disabled)';
         
-        let detailsHtml = '';
+        // Safely build details content without using innerHTML
+        mcpStatusDetails.textContent = '';
         if (status.lastDisconnected) {
-          detailsHtml += `Last disconnected: ${formatTimestamp(status.lastDisconnected)}<br>`;
+          const line = document.createElement('div');
+          line.textContent = `Last disconnected: ${formatTimestamp(status.lastDisconnected)}`;
+          mcpStatusDetails.appendChild(line);
         }
         if (status.lastError) {
-          detailsHtml += `<span style="color: var(--color-error-text)">${formatMCPError(status.lastError, status.lastErrorType)}</span>`;
+          const {message, hint} = formatMCPError(status.lastError, status.lastErrorType);
+          const errLine = document.createElement('div');
+          const errSpan = document.createElement('span');
+          errSpan.style.color = 'var(--color-error-text)';
+          errSpan.textContent = message;
+          errLine.appendChild(errSpan);
+          mcpStatusDetails.appendChild(errLine);
+          if (hint) {
+            const hintLine = document.createElement('div');
+            hintLine.style.color = 'var(--color-text-secondary)';
+            hintLine.style.fontSize = '12px';
+            hintLine.textContent = hint;
+            mcpStatusDetails.appendChild(hintLine);
+          }
         }
-        mcpStatusDetails.innerHTML = detailsHtml;
       }
     };
     updateMCPStatus();
