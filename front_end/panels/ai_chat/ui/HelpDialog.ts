@@ -37,7 +37,7 @@ const UIStrings = {
   /**
    *@description Beta version warning
    */
-  betaVersionWarning: 'Beta Version: This is an beta version of the Browser Operator - AI Assistant feature. Do not use it for production or sensitive data.',
+  betaVersionWarning: 'Beta Version: This is a beta version of the Browser Operator - AI Assistant feature. Do not use it for production or sensitive data.',
   /**
    *@description Data sharing notice
    */

@@ -3070,7 +3070,7 @@ export class SettingsDialog {
     disclaimerText.classList.add('settings-disclaimer');
     disclaimerText.innerHTML = `
       <p class="disclaimer-warning">
-        <strong>Beta Version:</strong> This is an beta version of the Browser Operator - AI Assistant feature.
+        <strong>Beta Version:</strong> This is a beta version of the Browser Operator - AI Assistant feature.
       </p>
       <p class="disclaimer-note">
         <strong>Data Sharing:</strong> When using this feature, your browser data and conversation content will be sent to the AI model for processing.
