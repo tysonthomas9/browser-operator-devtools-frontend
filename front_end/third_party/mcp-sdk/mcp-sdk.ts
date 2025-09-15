@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { Client as MCPSDKClient } from './package/dist/client/index.js';
-import { SSEClientTransport } from './package/dist/client/sse.js';
-import type { Transport } from './package/dist/shared/transport.js';
-import type { Request, RequestId } from './package/dist/types.js';
+import { Client as MCPSDKClient } from './dist/esm/client/index.js';
+import { SSEClientTransport } from './dist/esm/client/sse.js';
+import { StreamableHTTPClientTransport } from './dist/esm/client/streamableHttp.js';
+import type { Transport } from './dist/esm/shared/transport.js';
+import { JSONRPCMessageSchema, type JSONRPCMessage } from './dist/esm/types.js';
 
 // Simple logger for this module - we can't use the DevTools logger from third_party
 const logger = {
@@ -34,51 +35,6 @@ interface Connection {
   transport: Transport;
 }
 
-// Custom transport for DevTools that uses fetch with eventsource-parser for SSE handling
-class DevToolsStreamableTransport implements Transport {
-  private url: URL;
-  private token?: string;
-  private abortController: AbortController | null = null;
-  
-  // Transport interface callbacks
-  onclose?: () => void;
-  onerror?: (error: Error) => void;
-  onmessage?: (message: Request, extra?: any) => void;
-  sessionId?: string;
-
-  constructor(endpoint: string, token?: string) {
-    this.url = new URL(endpoint);
-    this.token = token;
-    
-    // Convert SSE endpoints to streamable HTTP endpoints
-    if (this.url.pathname.endsWith('/sse')) {
-      this.url.pathname = this.url.pathname.replace('/sse', '/mcp');
-    }
-  }
-
-  async start(): Promise<void> {
-    logger.info('Starting DevTools transport', { endpoint: this.url.toString() });
-    // Transport initialization handled by SDK
-  }
-
-  async send(message: Request, options?: any): Promise<void> {
-    logger.debug('Sending message via DevTools transport', { message });
-    // In practice, this would send the message via fetch POST
-    // For now, throw to indicate this fallback transport is not fully implemented
-    throw new Error('DevToolsStreamableTransport.send() not implemented - use SDK transport instead');
-  }
-
-  async close(): Promise<void> {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-    
-    if (this.onclose) {
-      this.onclose();
-    }
-  }
-}
 
 export class MCPClientSDK {
   private connections = new Map<string, Connection>();
@@ -86,17 +42,13 @@ export class MCPClientSDK {
   async connect(server: MCPServer): Promise<void> {
     logger.info('Connecting to MCP server using SDK', { endpoint: server.endpoint });
 
-    // Create transport - prefer streamable HTTP for better browser compatibility
+    // Create transport - prefer Streamable HTTP; fallback to SSE if needed
     let transport: Transport;
-    
-    try {
-      // Use SSE transport for connecting to MCP servers
-      transport = new SSEClientTransport(new URL(server.endpoint));
-    } catch (error) {
-      // Fallback to our custom transport if SDK transport fails
-      logger.warn('SDK transport failed, using custom transport', { error });
-      transport = new DevToolsStreamableTransport(server.endpoint, server.token);
-    }
+    transport = new StreamableHTTPClientTransport(new URL(server.endpoint), {
+      requestInit: server.token ? {
+        headers: { 'Authorization': `Bearer ${server.token}` }
+      } : undefined,
+    });
 
     // Create SDK client
     const client = new MCPSDKClient(
@@ -123,8 +75,24 @@ export class MCPClientSDK {
       logger.info('Connected to MCP server via SDK', { serverId: server.id });
       
     } catch (error) {
-      logger.error('Failed to connect via SDK', { error, endpoint: server.endpoint });
-      throw error;
+      // Try SSE fallback if Streamable HTTP connect fails
+      logger.warn('Streamable HTTP connect failed, retrying with SSE', { endpoint: server.endpoint, error });
+      try {
+        const sseTransport = new SSEClientTransport(new URL(server.endpoint));
+        await client.connect(sseTransport);
+
+        const connection: Connection = {
+          server,
+          connected: true,
+          client,
+          transport: sseTransport,
+        };
+        this.connections.set(server.id, connection);
+        logger.info('Connected to MCP server via SSE fallback', { serverId: server.id });
+      } catch (fallbackError) {
+        logger.error('Failed to connect via both Streamable HTTP and SSE', { endpoint: server.endpoint, error: fallbackError });
+        throw fallbackError;
+      }
     }
   }
 

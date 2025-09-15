@@ -55,7 +55,7 @@ describe('MCPClientSDK', () => {
 
     const HACKER_NEWS_SERVER: MCPServer = {
       id: 'local-hn-sdk',
-      endpoint: 'http://localhost:5001/sse',
+      endpoint: 'http://localhost:5001/mcp',
     };
 
     it('connects and lists tools', async function() {
