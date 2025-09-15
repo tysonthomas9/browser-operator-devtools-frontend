@@ -111,8 +111,8 @@ function scoreTool(query: string, agentType: string | null | undefined, tool: To
 
 export const ToolSurfaceProvider = {
   async select(state: AgentState, baseTools: Tool<any, any>[], opts?: ToolSelectionOptions): Promise<{ tools: Tool<any, any>[]; selectedNames: string[] }> {
-    const { maxToolsPerTurn = 20, maxMcpPerTurn = 8 } = opts || {};
     const cfg = getMCPConfig();
+    const { maxToolsPerTurn = cfg.maxToolsPerTurn || 20, maxMcpPerTurn = cfg.maxMcpPerTurn || 8 } = opts || {};
     const mode = cfg.toolMode || 'router';
 
     // DEBUG: Log current MCP configuration and tool selection parameters
@@ -153,7 +153,7 @@ export const ToolSurfaceProvider = {
         mcpToolsCount: mcpTools.length,
         mcpToolNames: mcpTools.map(t => t.name)
       });
-      resultTools = uniqByName([...resultTools, ...mcpTools]).slice(0, maxToolsPerTurn);
+      resultTools = uniqByName([...resultTools, ...mcpTools]);
       console.log('[TOOL_SELECTION_DEBUG] Final result (ALL mode):', {
         toolCount: resultTools.length,
         toolNames: resultTools.map(t => t.name)

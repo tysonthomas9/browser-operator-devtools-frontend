@@ -149,7 +149,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
         
         // Get tools for the current agent type
         const baseTools = BaseOrchestratorAgent.getAgentTools(state.selectedAgentType ?? '') as any;
-        const selection = await ToolSurfaceProvider.select(state, baseTools, { maxToolsPerTurn: 20, maxMcpPerTurn: 8 });
+        const selection = await ToolSurfaceProvider.select(state, baseTools);
         // Persist selection in context so ToolExecutorNode can resolve the same set
         if (!state.context) { (state as any).context = {}; }
         (state.context as any).selectedToolNames = selection.selectedNames;
