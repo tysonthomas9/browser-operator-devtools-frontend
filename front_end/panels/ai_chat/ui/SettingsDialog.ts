@@ -10,6 +10,7 @@ import { LLMClient } from '../LLM/LLMClient.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
 import { getMCPConfig, setMCPConfig, isMCPEnabled } from '../mcp/MCPConfig.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
+import { MCPConnectionsDialog } from './mcp/MCPConnectionsDialog.js';
 
 import { DEFAULT_PROVIDER_MODELS } from './AIChatPanel.js';
 import './model_selector/ModelSelector.js';
@@ -365,25 +366,21 @@ const UIStrings = {
    */
   mcpEnabledHint: 'Enable MCP client to discover and call tools via Model Context Protocol',
   /**
-   *@description MCP endpoint label
+   *@description MCP connections header label
    */
-  mcpEndpoint: 'MCP Server Endpoint',
+  mcpConnectionsHeader: 'Connections',
   /**
-   *@description MCP endpoint hint
+   *@description MCP connections hint text
    */
-  mcpEndpointHint: 'HTTPS SSE or WebSocket endpoint (e.g., https://host/mcp or ws://localhost:9000)',
+  mcpConnectionsHint: 'Configure one or more MCP servers. OAuth flows use PKCE automatically.',
   /**
-   *@description MCP token label
+   *@description MCP manage connections button text
    */
-  mcpToken: 'Auth Token (optional)',
+  mcpManageConnections: 'Manage connections',
   /**
-   *@description MCP token hint
+   *@description MCP refresh connections button text
    */
-  mcpTokenHint: 'If your MCP server requires authentication, provide a token here',
-  /**
-   *@description MCP connect button
-   */
-  mcpConnectRefresh: 'Connect / Refresh Tools',
+  mcpRefreshConnections: 'Reconnect all',
   /**
    *@description MCP discovered tools label
    */
@@ -2639,6 +2636,20 @@ export class SettingsDialog {
         
         // Safely build details content without using innerHTML
         mcpStatusDetails.textContent = '';
+        if (status.servers.length > 0) {
+          const serversHeader = document.createElement('div');
+          serversHeader.style.fontWeight = '500';
+          serversHeader.style.marginBottom = '4px';
+          serversHeader.textContent = 'Servers';
+          mcpStatusDetails.appendChild(serversHeader);
+
+          status.servers.forEach(server => {
+            const serverLine = document.createElement('div');
+            serverLine.style.color = server.connected ? 'var(--color-text-secondary)' : 'var(--color-text-disabled)';
+            serverLine.textContent = `${server.name || server.id} — ${server.connected ? 'Connected' : 'Disconnected'} · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
+            mcpStatusDetails.appendChild(serverLine);
+          });
+        }
         if (status.lastConnected) {
           const line = document.createElement('div');
           line.textContent = `Last connected: ${formatTimestamp(status.lastConnected)}`;
@@ -2667,6 +2678,20 @@ export class SettingsDialog {
         
         // Safely build details content without using innerHTML
         mcpStatusDetails.textContent = '';
+        if (status.servers.length > 0) {
+          const serversHeader = document.createElement('div');
+          serversHeader.style.fontWeight = '500';
+          serversHeader.style.marginBottom = '4px';
+          serversHeader.textContent = 'Servers';
+          mcpStatusDetails.appendChild(serversHeader);
+
+          status.servers.forEach(server => {
+            const serverLine = document.createElement('div');
+            serverLine.style.color = 'var(--color-text-disabled)';
+            serverLine.textContent = `${server.name || server.id} — Disconnected · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
+            mcpStatusDetails.appendChild(serverLine);
+          });
+        }
         if (status.lastDisconnected) {
           const line = document.createElement('div');
           line.textContent = `Last disconnected: ${formatTimestamp(status.lastDisconnected)}`;
@@ -2726,180 +2751,73 @@ export class SettingsDialog {
     };
     updateDisconnectButton();
 
-    // MCP config inputs (visible when enabled)
-    const mcpConfigContainer = document.createElement('div');
-    mcpConfigContainer.className = 'mcp-config-container';
-    mcpConfigContainer.style.display = mcpEnabledCheckbox.checked ? 'block' : 'none';
-    mcpSection.appendChild(mcpConfigContainer);
+    // Connections management
+    const mcpConnectionsLabel = document.createElement('div');
+    mcpConnectionsLabel.className = 'settings-label';
+    mcpConnectionsLabel.textContent = i18nString(UIStrings.mcpConnectionsHeader);
+    mcpSection.appendChild(mcpConnectionsLabel);
 
-    // Endpoint
-    const mcpEndpointLabel = document.createElement('div');
-    mcpEndpointLabel.className = 'settings-label';
-    mcpEndpointLabel.textContent = i18nString(UIStrings.mcpEndpoint);
-    mcpConfigContainer.appendChild(mcpEndpointLabel);
+    const mcpConnectionsHint = document.createElement('div');
+    mcpConnectionsHint.className = 'settings-hint';
+    mcpConnectionsHint.textContent = i18nString(UIStrings.mcpConnectionsHint);
+    mcpSection.appendChild(mcpConnectionsHint);
 
-    const mcpEndpointHint = document.createElement('div');
-    mcpEndpointHint.className = 'settings-hint';
-    mcpEndpointHint.textContent = i18nString(UIStrings.mcpEndpointHint);
-    mcpConfigContainer.appendChild(mcpEndpointHint);
+    const mcpConnectionsActions = document.createElement('div');
+    mcpConnectionsActions.className = 'mcp-connections-actions';
+    mcpConnectionsActions.style.display = 'flex';
+    mcpConnectionsActions.style.gap = '8px';
+    mcpConnectionsActions.style.marginBottom = '12px';
+    mcpSection.appendChild(mcpConnectionsActions);
 
-    const mcpEndpointInput = document.createElement('input');
-    mcpEndpointInput.type = 'text';
-    mcpEndpointInput.className = 'settings-input';
-    mcpEndpointInput.placeholder = 'ws://localhost:9000';
-    mcpEndpointInput.value = currentMCPConfig.endpoint || '';
-    mcpConfigContainer.appendChild(mcpEndpointInput);
-
-    // Auth method
-    const mcpAuthTypeLabel = document.createElement('div');
-    mcpAuthTypeLabel.className = 'settings-label';
-    mcpAuthTypeLabel.textContent = i18nString(UIStrings.mcpAuthType);
-    mcpConfigContainer.appendChild(mcpAuthTypeLabel);
-
-    const mcpAuthTypeHint = document.createElement('div');
-    mcpAuthTypeHint.className = 'settings-hint';
-    mcpAuthTypeHint.textContent = i18nString(UIStrings.mcpAuthTypeHint);
-    mcpConfigContainer.appendChild(mcpAuthTypeHint);
-
-    const mcpAuthTypeSelect = document.createElement('select');
-    mcpAuthTypeSelect.className = 'settings-select';
-    const bearerOpt = document.createElement('option');
-    bearerOpt.value = 'bearer';
-    bearerOpt.textContent = i18nString(UIStrings.mcpAuthBearer);
-    const oauthOpt = document.createElement('option');
-    oauthOpt.value = 'oauth';
-    oauthOpt.textContent = i18nString(UIStrings.mcpAuthOAuth);
-    mcpAuthTypeSelect.appendChild(bearerOpt);
-    mcpAuthTypeSelect.appendChild(oauthOpt);
-    mcpAuthTypeSelect.value = (currentMCPConfig.authType || 'bearer');
-    mcpConfigContainer.appendChild(mcpAuthTypeSelect);
-
-    // OAuth fields (shown when OAuth is selected)
-    const oauthClientIdLabel = document.createElement('div');
-    oauthClientIdLabel.className = 'settings-label';
-    oauthClientIdLabel.textContent = i18nString(UIStrings.mcpOAuthClientId);
-    mcpConfigContainer.appendChild(oauthClientIdLabel);
-
-    const oauthClientIdHint = document.createElement('div');
-    oauthClientIdHint.className = 'settings-hint';
-    oauthClientIdHint.textContent = i18nString(UIStrings.mcpOAuthClientIdHint);
-    mcpConfigContainer.appendChild(oauthClientIdHint);
-
-    const oauthClientIdInput = document.createElement('input');
-    oauthClientIdInput.type = 'text';
-    oauthClientIdInput.className = 'settings-input';
-    oauthClientIdInput.placeholder = 'client_id';
-    oauthClientIdInput.value = currentMCPConfig.oauthClientId || '';
-    mcpConfigContainer.appendChild(oauthClientIdInput);
-
-    const oauthRedirectLabel = document.createElement('div');
-    oauthRedirectLabel.className = 'settings-label';
-    oauthRedirectLabel.textContent = i18nString(UIStrings.mcpOAuthRedirect);
-    mcpConfigContainer.appendChild(oauthRedirectLabel);
-
-    const oauthRedirectHint = document.createElement('div');
-    oauthRedirectHint.className = 'settings-hint';
-    oauthRedirectHint.textContent = i18nString(UIStrings.mcpOAuthRedirectHint);
-    mcpConfigContainer.appendChild(oauthRedirectHint);
-
-    const oauthRedirectInput = document.createElement('input');
-    oauthRedirectInput.type = 'text';
-    oauthRedirectInput.className = 'settings-input';
-    oauthRedirectInput.placeholder = 'https://localhost:3000/callback';
-    oauthRedirectInput.value = currentMCPConfig.oauthRedirectUrl || '';
-    mcpConfigContainer.appendChild(oauthRedirectInput);
-
-    const oauthScopeLabel = document.createElement('div');
-    oauthScopeLabel.className = 'settings-label';
-    oauthScopeLabel.textContent = i18nString(UIStrings.mcpOAuthScope);
-    mcpConfigContainer.appendChild(oauthScopeLabel);
-
-    const oauthScopeHint = document.createElement('div');
-    oauthScopeHint.className = 'settings-hint';
-    oauthScopeHint.textContent = i18nString(UIStrings.mcpOAuthScopeHint);
-    mcpConfigContainer.appendChild(oauthScopeHint);
-
-    const oauthScopeInput = document.createElement('input');
-    oauthScopeInput.type = 'text';
-    oauthScopeInput.className = 'settings-input';
-    oauthScopeInput.placeholder = 'e.g. openid profile';
-    oauthScopeInput.value = currentMCPConfig.oauthScope || '';
-    mcpConfigContainer.appendChild(oauthScopeInput);
-
-    // Token
-    const mcpTokenLabel = document.createElement('div');
-    mcpTokenLabel.className = 'settings-label';
-    mcpTokenLabel.textContent = i18nString(UIStrings.mcpToken);
-    mcpConfigContainer.appendChild(mcpTokenLabel);
-
-    const mcpTokenHint = document.createElement('div');
-    mcpTokenHint.className = 'settings-hint';
-    mcpTokenHint.textContent = i18nString(UIStrings.mcpTokenHint);
-    mcpConfigContainer.appendChild(mcpTokenHint);
-
-    const mcpTokenInput = document.createElement('input');
-    mcpTokenInput.type = 'password';
-    mcpTokenInput.className = 'settings-input';
-    mcpTokenInput.placeholder = 'Optional';
-    mcpTokenInput.value = currentMCPConfig.token || '';
-    mcpConfigContainer.appendChild(mcpTokenInput);
-
-    const updateAuthVisibility = () => {
-      const useOAuth = mcpAuthTypeSelect.value === 'oauth';
-      // Bearer token inputs
-      mcpTokenLabel.style.display = useOAuth ? 'none' : 'block';
-      mcpTokenHint.style.display = useOAuth ? 'none' : 'block';
-      mcpTokenInput.style.display = useOAuth ? 'none' : 'block';
-      // OAuth inputs
-      oauthClientIdLabel.style.display = useOAuth ? 'block' : 'none';
-      oauthClientIdHint.style.display = useOAuth ? 'block' : 'none';
-      oauthClientIdInput.style.display = useOAuth ? 'block' : 'none';
-      oauthRedirectLabel.style.display = useOAuth ? 'block' : 'none';
-      oauthRedirectHint.style.display = useOAuth ? 'block' : 'none';
-      oauthRedirectInput.style.display = useOAuth ? 'block' : 'none';
-      oauthScopeLabel.style.display = useOAuth ? 'block' : 'none';
-      oauthScopeHint.style.display = useOAuth ? 'block' : 'none';
-      oauthScopeInput.style.display = useOAuth ? 'block' : 'none';
-      mcpConnectButton.textContent = useOAuth ? 'Connect / Authorize' : i18nString(UIStrings.mcpConnectRefresh);
-    };
-
-    mcpAuthTypeSelect.addEventListener('change', updateAuthVisibility);
-
-    // Connect/Refresh button
-    const mcpConnectButton = document.createElement('button');
-    mcpConnectButton.className = 'settings-button';
-    mcpConnectButton.textContent = i18nString(UIStrings.mcpConnectRefresh);
-    mcpConnectButton.addEventListener('click', async () => {
-      // Save config then init/refresh
-      const useOAuth = mcpAuthTypeSelect.value === 'oauth';
-      setMCPConfig({
-        enabled: mcpEnabledCheckbox.checked,
-        endpoint: mcpEndpointInput.value.trim(),
-        token: useOAuth ? undefined : (mcpTokenInput.value.trim() || undefined),
-        authType: useOAuth ? 'oauth' : 'bearer',
-        oauthClientId: useOAuth ? oauthClientIdInput.value.trim() || undefined : undefined,
-        oauthRedirectUrl: useOAuth ? oauthRedirectInput.value.trim() || undefined : undefined,
-        oauthScope: useOAuth ? oauthScopeInput.value.trim() || undefined : undefined,
+    const manageConnectionsButton = document.createElement('button');
+    manageConnectionsButton.className = 'settings-button';
+    manageConnectionsButton.textContent = i18nString(UIStrings.mcpManageConnections);
+    manageConnectionsButton.addEventListener('click', () => {
+      MCPConnectionsDialog.show({
+        onSave: async () => {
+          try {
+            await MCPRegistry.init(true);
+            await MCPRegistry.refresh();
+          } catch (err) {
+            logger.error('Failed to refresh MCP connections after save', err);
+          } finally {
+            updateMCPStatus();
+            updateDisconnectButton();
+            updateToolsList();
+            onSettingsSaved();
+          }
+        },
       });
+    });
+    mcpConnectionsActions.appendChild(manageConnectionsButton);
+
+    const refreshConnectionsButton = document.createElement('button');
+    refreshConnectionsButton.className = 'settings-button';
+    refreshConnectionsButton.textContent = i18nString(UIStrings.mcpRefreshConnections);
+    refreshConnectionsButton.addEventListener('click', async () => {
       try {
         await MCPRegistry.init(true);
         await MCPRegistry.refresh();
       } catch (err) {
-        logger.error('MCP connect/refresh failed', err);
+        logger.error('Failed to refresh MCP connections', err);
       } finally {
         updateMCPStatus();
         updateDisconnectButton();
         updateToolsList();
-        onSettingsSaved();
       }
     });
-    mcpConfigContainer.appendChild(mcpConnectButton);
+    mcpConnectionsActions.appendChild(refreshConnectionsButton);
 
-    // Initialize visibility based on stored auth type
-    updateAuthVisibility();
-
-    // Autostart checkbox
-    // Autostart UI removed: MCP auto-connect is always enabled by the panel
+    // MCP config inputs (visible when enabled)
+    const mcpConfigContainer = document.createElement('div');
+    mcpConfigContainer.className = 'mcp-config-container';
+    const updateConfigVisibility = () => {
+      const visible = mcpEnabledCheckbox.checked;
+      mcpConnectionsActions.style.display = visible ? 'flex' : 'none';
+      mcpConfigContainer.style.display = visible ? 'block' : 'none';
+    };
+    updateConfigVisibility();
+    mcpSection.appendChild(mcpConfigContainer);
 
     // Tool mode selection
     const mcpToolModeLabel = document.createElement('div');
@@ -2938,10 +2856,7 @@ export class SettingsDialog {
 
     // Handle tool mode changes
     mcpToolModeSelect.addEventListener('change', () => {
-      setMCPConfig({
-        ...getMCPConfig(),
-        toolMode: mcpToolModeSelect.value as 'all' | 'router' | 'meta',
-      });
+      setMCPConfig({ toolMode: mcpToolModeSelect.value as 'all' | 'router' | 'meta' });
       onSettingsSaved();
     });
 
@@ -2987,7 +2902,6 @@ export class SettingsDialog {
       const maxTools = Math.max(1, Math.min(100, parseInt(mcpMaxToolsInput.value, 10) || 20));
       const maxMcp = Math.max(1, Math.min(50, parseInt(mcpMaxMcpInput.value, 10) || 8));
       setMCPConfig({
-        ...getMCPConfig(),
         maxToolsPerTurn: maxTools,
         maxMcpPerTurn: maxMcp,
       });
@@ -3019,7 +2933,7 @@ export class SettingsDialog {
     const updateToolsList = () => {
       const status = MCPRegistry.getStatus();
       mcpToolsList.innerHTML = '';
-      
+
       if (!status.enabled || status.registeredToolNames.length === 0) {
         const noToolsMessage = document.createElement('div');
         noToolsMessage.className = 'mcp-no-tools';
@@ -3028,7 +2942,7 @@ export class SettingsDialog {
         return;
       }
 
-      const currentAllowlist = new Set(currentMCPConfig.toolAllowlist || []);
+      const currentAllowlist = new Set(getMCPConfig().toolAllowlist || []);
 
       status.registeredToolNames.forEach(toolName => {
         const toolItem = document.createElement('div');
@@ -3049,19 +2963,15 @@ export class SettingsDialog {
 
         // Update allowlist when checkbox changes
         toolCheckbox.addEventListener('change', () => {
-          const currentConfig = getMCPConfig();
-          const allowlist = new Set(currentConfig.toolAllowlist || []);
-          
+          const allowlist = new Set(getMCPConfig().toolAllowlist || []);
+
           if (toolCheckbox.checked) {
             allowlist.add(toolName);
           } else {
             allowlist.delete(toolName);
           }
 
-          setMCPConfig({
-            ...currentConfig,
-            toolAllowlist: Array.from(allowlist),
-          });
+          setMCPConfig({ toolAllowlist: Array.from(allowlist) });
         });
 
         mcpToolsList.appendChild(toolItem);
@@ -3075,14 +2985,8 @@ export class SettingsDialog {
 
     // Toggle visibility on enable/disable
     mcpEnabledCheckbox.addEventListener('change', async () => {
-      const useOAuth = mcpAuthTypeSelect.value === 'oauth';
-      setMCPConfig({
-        enabled: mcpEnabledCheckbox.checked,
-        endpoint: mcpEndpointInput.value.trim(),
-        token: useOAuth ? undefined : (mcpTokenInput.value.trim() || undefined),
-        authType: useOAuth ? 'oauth' : 'bearer',
-      });
-      mcpConfigContainer.style.display = mcpEnabledCheckbox.checked ? 'block' : 'none';
+      setMCPConfig({ enabled: mcpEnabledCheckbox.checked });
+      updateConfigVisibility();
       try {
         await MCPRegistry.init(true);
         await MCPRegistry.refresh();

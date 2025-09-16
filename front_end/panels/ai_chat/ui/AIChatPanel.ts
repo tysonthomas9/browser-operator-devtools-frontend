@@ -90,6 +90,7 @@ import * as Snackbars from '../../../ui/components/snackbars/snackbars.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { getMCPConfig } from '../mcp/MCPConfig.js';
 import { onMCPConfigChange } from '../mcp/MCPConfig.js';
+import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js';
 
 const {html} = Lit;
 
@@ -163,6 +164,10 @@ const UIStrings = {
    */
   help: 'Help',
   /**
+   *@description AI chat UI tooltip text for the MCP connectors catalog button.
+   */
+  mcpConnectors: 'MCP Connectors',
+  /**
    *@description AI chat UI tooltip text for the settings button (gear icon).
    */
   settings: 'Settings',
@@ -216,6 +221,7 @@ interface ToolbarViewInput {
   onHistoryClick: (event: MouseEvent) => void;
   onDeleteClick: () => void;
   onHelpClick: () => void;
+  onMCPConnectorsClick: () => void;
   onSettingsClick: () => void;
   onEvaluationTestClick: () => void;
   onBookmarkClick: () => void;
@@ -289,6 +295,13 @@ function toolbarView(input: ToolbarViewInput): Lit.LitTemplate {
           .jslogContext=${'ai-chat.help'}
           .variant=${Buttons.Button.Variant.TOOLBAR}
           @click=${input.onHelpClick}></devtools-button>
+        <devtools-button
+          title=${i18nString(UIStrings.mcpConnectors)}
+          aria-label=${i18nString(UIStrings.mcpConnectors)}
+          .iconName=${'extension'}
+          .jslogContext=${'ai-chat.mcp-connectors'}
+          .variant=${Buttons.Button.Variant.TOOLBAR}
+          @click=${input.onMCPConnectorsClick}></devtools-button>
         <devtools-button
             title="Close Chat Window"
             aria-label="Close Chat Window"
@@ -1990,6 +2003,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       onHistoryClick: this.#onHistoryClick.bind(this),
       onDeleteClick: this.#onDeleteClick.bind(this),
       onHelpClick: this.#onHelpClick.bind(this),
+      onMCPConnectorsClick: this.#onMCPConnectorsClick.bind(this),
       onSettingsClick: this.#onSettingsClick.bind(this),
       onEvaluationTestClick: this.#onEvaluationTestClick.bind(this),
       onBookmarkClick: this.#onBookmarkClick.bind(this),
@@ -2083,6 +2097,20 @@ export class AIChatPanel extends UI.Panel.Panel {
   #onHelpClick(): void {
     // Open external getting started docs in a new tab
     UI.UIUtils.openInNewTab('https://browseroperator.io/docs/getting-started/');
+  }
+
+  #onMCPConnectorsClick(): void {
+    MCPConnectorsCatalogDialog.show({
+      onClose: async () => {
+        // Refresh MCP registry when catalog is closed in case new connectors were added
+        try {
+          await MCPRegistry.init(true);
+          logger.info('MCP registry refreshed after catalog closed');
+        } catch (error) {
+          logger.error('Failed to refresh MCP registry after catalog closed', error);
+        }
+      }
+    });
   }
 
   /**

@@ -29,8 +29,10 @@ function uniqByName(tools: Tool<any, any>[]): Tool<any, any>[] {
   return out;
 }
 
-function getAllMcpTools(): Tool<any, any>[] {
+async function getAllMcpTools(): Promise<Tool<any, any>[]> {
   try {
+    // Ensure tools are registered before getting status
+    await MCPRegistry.ensureToolsRegistered();
     const status = MCPRegistry.getStatus();
     console.log('[TOOL_SELECTION_DEBUG] MCPRegistry status:', {
       enabled: status.enabled,
@@ -148,7 +150,7 @@ export const ToolSurfaceProvider = {
 
     if (mode === 'all') {
       console.log('[TOOL_SELECTION_DEBUG] Using ALL mode');
-      const mcpTools = getAllMcpTools();
+      const mcpTools = await getAllMcpTools();
       console.log('[TOOL_SELECTION_DEBUG] MCP tools found:', {
         mcpToolsCount: mcpTools.length,
         mcpToolNames: mcpTools.map(t => t.name)
@@ -183,7 +185,7 @@ export const ToolSurfaceProvider = {
 
     // Router mode (heuristic pre-call selection)
     console.log('[TOOL_SELECTION_DEBUG] Using ROUTER mode');
-    const mcpTools = getAllMcpTools();
+    const mcpTools = await getAllMcpTools();
     console.log('[TOOL_SELECTION_DEBUG] MCP tools available for scoring:', {
       mcpToolsCount: mcpTools.length,
       mcpToolNames: mcpTools.map(t => t.name)

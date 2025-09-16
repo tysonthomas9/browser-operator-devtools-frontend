@@ -275,7 +275,6 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   private static readonly STORAGE_PREFIX = 'mcp_oauth';
   private static readonly SERVER_SETTINGS_KEY = 'ai_chat_mcp_server_settings';
 
-  private readonly sessionStorage: StorageLike = createStorage('session');
   private readonly persistentStorage: StorageLike = createStorage('local');
 
   private readonly tokensKey: string;
@@ -317,7 +316,7 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
 
   state(): string {
     const state = this.randomState();
-    this.sessionStorage.setItem(this.stateKey, state);
+    this.persistentStorage.setItem(this.stateKey, state);
     return state;
   }
 
@@ -362,7 +361,7 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
-    const raw = this.sessionStorage.getItem(this.tokensKey);
+    const raw = this.persistentStorage.getItem(this.tokensKey);
     if (!raw) {
       return undefined;
     }
@@ -370,22 +369,23 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
       return JSON.parse(raw) as OAuthTokens;
     } catch (error) {
       logger.warn('Clearing malformed stored tokens', { serverId: this.server.id, error });
-      this.sessionStorage.removeItem(this.tokensKey);
+      this.persistentStorage.removeItem(this.tokensKey);
       return undefined;
     }
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    this.sessionStorage.setItem(this.tokensKey, JSON.stringify(tokens));
-    this.sessionStorage.removeItem(this.verifierKey);
+    const serialized = JSON.stringify(tokens);
+    this.persistentStorage.setItem(this.tokensKey, serialized);
+    this.persistentStorage.removeItem(this.verifierKey);
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
-    this.sessionStorage.setItem(this.verifierKey, verifier);
+    this.persistentStorage.setItem(this.verifierKey, verifier);
   }
 
   async codeVerifier(): Promise<string> {
-    const verifier = this.sessionStorage.getItem(this.verifierKey);
+    const verifier = this.persistentStorage.getItem(this.verifierKey);
     if (!verifier) {
       throw new Error('Missing PKCE code verifier');
     }
@@ -395,7 +395,7 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
     const originalUrl = this.currentPageUrl();
     if (originalUrl) {
-      this.sessionStorage.setItem(this.originalUrlKey, originalUrl);
+      this.persistentStorage.setItem(this.originalUrlKey, originalUrl);
     }
     await this.navigate(String(authorizationUrl));
   }
@@ -493,22 +493,22 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
     logger.info('Invalidating OAuth credentials', { serverId: this.server.id, scope });
     switch (scope) {
       case 'all':
-        this.sessionStorage.removeItem(this.tokensKey);
-        this.sessionStorage.removeItem(this.stateKey);
-        this.sessionStorage.removeItem(this.originalUrlKey);
-        this.sessionStorage.removeItem(this.verifierKey);
+        this.persistentStorage.removeItem(this.tokensKey);
+        this.persistentStorage.removeItem(this.stateKey);
+        this.persistentStorage.removeItem(this.originalUrlKey);
+        this.persistentStorage.removeItem(this.verifierKey);
         this.persistentStorage.removeItem(this.clientInfoKey);
         break;
       case 'client':
         this.persistentStorage.removeItem(this.clientInfoKey);
         break;
       case 'tokens':
-        this.sessionStorage.removeItem(this.tokensKey);
-        this.sessionStorage.removeItem(this.stateKey);
-        this.sessionStorage.removeItem(this.originalUrlKey);
+        this.persistentStorage.removeItem(this.tokensKey);
+        this.persistentStorage.removeItem(this.stateKey);
+        this.persistentStorage.removeItem(this.originalUrlKey);
         break;
       case 'verifier':
-        this.sessionStorage.removeItem(this.verifierKey);
+        this.persistentStorage.removeItem(this.verifierKey);
         break;
     }
   }
@@ -568,8 +568,8 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   }
 
   private async returnToOriginalUrl(): Promise<void> {
-    const url = this.sessionStorage.getItem(this.originalUrlKey);
-    this.sessionStorage.removeItem(this.originalUrlKey);
+    const url = this.persistentStorage.getItem(this.originalUrlKey);
+    this.persistentStorage.removeItem(this.originalUrlKey);
     if (url) {
       try {
         await this.navigate(url);
@@ -602,11 +602,11 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   }
 
   private validateState(returnedState?: string): void {
-    const expected = this.sessionStorage.getItem(this.stateKey);
+    const expected = this.persistentStorage.getItem(this.stateKey);
     if (expected && returnedState && expected !== returnedState) {
       throw new Error('oauth_invalid_state');
     }
-    this.sessionStorage.removeItem(this.stateKey);
+    this.persistentStorage.removeItem(this.stateKey);
   }
 
   private parseAuthorizationResponse(url: string): AuthorizationParams {

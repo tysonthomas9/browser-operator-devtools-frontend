@@ -173,9 +173,16 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
             logger.warn('Failed to update generation observation with tools list', err);
           }
         }
-        
+
+        // Build mapping from original tool names to sanitized names for message conversion
+        const originalToSanitized: Record<string, string> = {};
+        tools.forEach(tool => {
+          const sanitized = ToolNameMap.getSanitized(tool.name);
+          originalToSanitized[tool.name] = sanitized;
+        });
+
         // Convert ChatMessage[] to LLMMessage[]
-        const llmMessages = this.convertChatMessagesToLLMMessages(state.messages);
+        const llmMessages = this.convertChatMessagesToLLMMessages(state.messages, originalToSanitized);
         
         // Create error handler for retry logic
         const errorHandler = AgentErrorHandler.createErrorHandler({
@@ -249,7 +256,10 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
         let newModelMessage: ModelChatMessage;
         if (parsedAction.type === 'tool_call') {
           const toolCallId = crypto.randomUUID(); // Generate unique ID for OpenAI format
-          const resolvedToolName = ToolNameMap.resolveOriginal(parsedAction.name) || parsedAction.name;
+          const sanitizedToolName = ToolNameMap.getSanitized(parsedAction.name);
+          const resolvedToolName = ToolNameMap.resolveOriginal(parsedAction.name)
+            || ToolNameMap.resolveOriginal(sanitizedToolName)
+            || parsedAction.name;
           
           // Create tool-call event observation
           const tracingContext = state.context?.tracingContext;
@@ -456,7 +466,33 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
     tools = [] as unknown as ReturnType<typeof getTools>;
   }
   const toolMap = new Map<string, ReturnType<typeof getTools>[number]>();
-  (tools as any[]).forEach((tool: any) => toolMap.set(tool.name, tool));
+  (tools as any[]).forEach((tool: any) => {
+    // Map original name
+    toolMap.set(tool.name, tool);
+
+    // Map sanitized name
+    const sanitized = ToolNameMap.getSanitized(tool.name);
+    if (sanitized && sanitized !== tool.name) {
+      toolMap.set(sanitized, tool);
+    }
+
+    // Also try to resolve any existing mapping from ToolNameMap
+    const resolvedOriginal = ToolNameMap.resolveOriginal(sanitized);
+    if (resolvedOriginal && resolvedOriginal !== tool.name && resolvedOriginal !== sanitized) {
+      toolMap.set(resolvedOriginal, tool);
+    }
+
+    // Debug logging for MCP tools
+    if (tool.name.includes('mcp:')) {
+      logger.debug('ToolExecutorNode: Mapped MCP tool', {
+        original: tool.name,
+        sanitized: sanitized,
+        resolvedOriginal: resolvedOriginal
+      });
+    }
+  });
+
+  logger.debug('ToolExecutorNode: Created toolMap with keys', Array.from(toolMap.keys()));
 
   const toolExecutorNode = new class ToolExecutorNode implements Runnable<AgentState, AgentState> {
     private toolMap: Map<string, ReturnType<typeof getTools>[number]>;
@@ -494,8 +530,75 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
       // Initialize messages array with current state
       const messages = [...state.messages];
 
-      const selectedTool = this.toolMap.get(toolName);
+      const sanitizedToolName = ToolNameMap.getSanitized(toolName);
+      const resolvedOriginalName = ToolNameMap.resolveOriginal(toolName) || ToolNameMap.resolveOriginal(sanitizedToolName);
+
+      // Extract tool name for smart naming (declared here for reuse in fallback)
+      let extractedToolName: string | null = null;
+      if (toolName.startsWith('mcp:') && toolName.includes(':')) {
+        // Extract tool name from "mcp:server_id:tool_name" format
+        const parts = toolName.split(':');
+        if (parts.length >= 3) {
+          extractedToolName = parts.slice(2).join(':'); // Handle tool names with colons
+        }
+      } else if (toolName.includes('mcp_')) {
+        // Handle sanitized format "mcp_server_id_tool_name"
+        const mcpPrefix = toolName.match(/^mcp_[^_]+_(.+)$/);
+        if (mcpPrefix) {
+          extractedToolName = mcpPrefix[1].replace(/_/g, ':'); // Convert back underscores in tool name
+        }
+      }
+
+      // Debug logging for tool resolution
+      logger.debug('ToolExecutorNode: Resolving tool', {
+        requested: toolName,
+        sanitized: sanitizedToolName,
+        resolved: resolvedOriginalName,
+        availableTools: Array.from(this.toolMap.keys())
+      });
+
+      // Try multiple resolution strategies
+      let selectedTool = this.toolMap.get(toolName)
+        || (resolvedOriginalName ? this.toolMap.get(resolvedOriginalName) : undefined)
+        || this.toolMap.get(sanitizedToolName);
+
+      // Last resort: try to get tool directly from ToolRegistry
       if (!selectedTool) {
+        logger.debug('ToolExecutorNode: Trying direct ToolRegistry lookup as fallback');
+
+        // Try all possible name variants
+        const namesToTry = [
+          toolName,
+          sanitizedToolName,
+          resolvedOriginalName,
+          extractedToolName
+        ].filter(Boolean) as string[];
+
+        for (const name of namesToTry) {
+          try {
+            const registryTool = ToolRegistry.getRegisteredTool(name as any);
+            if (registryTool) {
+              selectedTool = registryTool;
+              logger.debug('ToolExecutorNode: Found tool via direct registry lookup', {
+                requested: toolName,
+                foundAs: name,
+                toolType: registryTool.constructor.name
+              });
+              break;
+            }
+          } catch (error) {
+            // Ignore registry lookup errors
+          }
+        }
+      }
+
+      if (!selectedTool) {
+        logger.error('ToolExecutorNode: Tool not found', {
+          requested: toolName,
+          sanitized: sanitizedToolName,
+          resolved: resolvedOriginalName,
+          availableTools: Array.from(this.toolMap.keys())
+        });
         throw new Error(`Tool ${toolName} not found`);
       }
 

@@ -2,14 +2,21 @@ import { createLogger } from '../core/Logger.js';
 
 const logger = createLogger('MCPConfig');
 
-export interface MCPConfigData {
+export interface MCPProviderConfig {
+  id: string;
+  name?: string;
+  endpoint: string;
+  authType: 'bearer' | 'oauth';
   enabled: boolean;
-  endpoint?: string; // MVP: single endpoint; Phase 2 can support multiple
   token?: string;
-  authType?: 'bearer' | 'oauth';
   oauthClientId?: string;
   oauthRedirectUrl?: string;
   oauthScope?: string;
+}
+
+export interface MCPConfigData {
+  enabled: boolean;
+  providers: MCPProviderConfig[];
   toolAllowlist?: string[];
   autostart?: boolean;
   toolMode?: 'all' | 'router' | 'meta';
@@ -17,12 +24,12 @@ export interface MCPConfigData {
   maxMcpPerTurn?: number;
 }
 
+export type MCPConfigUpdate = Partial<Omit<MCPConfigData, 'providers'>>;
+
 const KEYS = {
   enabled: 'ai_chat_mcp_enabled',
-  endpoint: 'ai_chat_mcp_endpoint',
-  authType: 'ai_chat_mcp_auth_type',
-  serverSettings: 'ai_chat_mcp_server_settings',
-  tokenMap: 'ai_chat_mcp_tokens_by_server',
+  providers: 'ai_chat_mcp_providers',
+  tokenMap: 'ai_chat_mcp_tokens_by_provider',
   allowlist: 'ai_chat_mcp_tool_allowlist',
   autostart: 'ai_chat_mcp_autostart',
   toolMode: 'ai_chat_mcp_tool_mode',
@@ -30,71 +37,80 @@ const KEYS = {
   maxMcpPerTurn: 'ai_chat_mcp_max_mcp_per_turn',
 } as const;
 
-interface StoredServerSettings {
+interface StoredProvider {
+  id: string;
+  name?: string;
+  endpoint: string;
+  authType: 'bearer' | 'oauth';
+  enabled?: boolean;
   oauthClientId?: string;
-  oauthClientSecret?: string;
   oauthRedirectUrl?: string;
   oauthScope?: string;
 }
 
-type ServerSettingsMap = Record<string, StoredServerSettings>;
 type TokenMap = Record<string, string>;
 
-function stableHash(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; ++i) {
-    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+function sanitizeProvider(provider: StoredProvider, index: number): StoredProvider | null {
+  if (!provider || typeof provider !== 'object') {
+    return null;
   }
-  return Math.abs(hash).toString(36);
+  const id = typeof provider.id === 'string' && provider.id.trim() ? provider.id.trim() : undefined;
+  const endpoint = typeof provider.endpoint === 'string' ? provider.endpoint.trim() : '';
+  const authType = provider.authType === 'oauth' ? 'oauth' : 'bearer';
+  if (!id || !endpoint) {
+    return null;
+  }
+  return {
+    id,
+    name: typeof provider.name === 'string' ? provider.name.trim() || undefined : undefined,
+    endpoint,
+    authType,
+    enabled: provider.enabled !== false,
+    oauthClientId: typeof provider.oauthClientId === 'string' ? provider.oauthClientId.trim() || undefined : undefined,
+    oauthRedirectUrl: typeof provider.oauthRedirectUrl === 'string' ? provider.oauthRedirectUrl.trim() || undefined : undefined,
+    oauthScope: typeof provider.oauthScope === 'string' ? provider.oauthScope.trim() || undefined : undefined,
+  };
 }
 
-function buildServerId(endpoint: string): string {
+function loadProviders(): StoredProvider[] {
   try {
-    const url = new URL(endpoint);
-    const hostPart = url.host.replace(/[^a-z0-9]+/gi, '-');
-    const pathPart = url.pathname.replace(/[^a-z0-9]+/gi, '-');
-    const searchPart = url.search
-      ? url.search.replace(/[^a-z0-9]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-      : '';
-    const combined = `${hostPart}${pathPart ? `-${pathPart}` : ''}${searchPart ? `-${searchPart}` : ''}`
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .toLowerCase();
-    if (combined) {
-      return combined;
-    }
-  } catch {
-    // fall through to hashed id
-  }
-  return `srv-${stableHash(endpoint)}`;
-}
-
-function loadServerSettings(): ServerSettingsMap {
-  try {
-    const raw = localStorage.getItem(KEYS.serverSettings);
+    const raw = localStorage.getItem(KEYS.providers);
     if (!raw) {
-      return {};
+      return [];
     }
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
-      return parsed as ServerSettingsMap;
+    if (!Array.isArray(parsed)) {
+      return [];
     }
+    const seen = new Set<string>();
+    const result: StoredProvider[] = [];
+    for (let i = 0; i < parsed.length; ++i) {
+      const sanitized = sanitizeProvider(parsed[i] as StoredProvider, i);
+      if (!sanitized) {
+        continue;
+      }
+      if (seen.has(sanitized.id)) {
+        continue;
+      }
+      seen.add(sanitized.id);
+      result.push(sanitized);
+    }
+    return result;
   } catch (err) {
-    logger.warn('Failed to parse MCP server settings', err);
+    logger.warn('Failed to parse MCP providers', err);
+    return [];
   }
-  localStorage.removeItem(KEYS.serverSettings);
-  return {};
 }
 
-function saveServerSettings(settings: ServerSettingsMap): void {
+function saveProvidersInternal(providers: StoredProvider[]): void {
   try {
-    if (Object.keys(settings).length === 0) {
-      localStorage.removeItem(KEYS.serverSettings);
+    if (!providers.length) {
+      localStorage.removeItem(KEYS.providers);
     } else {
-      localStorage.setItem(KEYS.serverSettings, JSON.stringify(settings));
+      localStorage.setItem(KEYS.providers, JSON.stringify(providers));
     }
   } catch (err) {
-    logger.error('Failed to persist MCP server settings', err);
+    logger.error('Failed to persist MCP providers', err);
   }
 }
 
@@ -127,88 +143,170 @@ function saveTokenMap(tokenMap: TokenMap): void {
   }
 }
 
+function sanitizeIdBase(input: string): string {
+  let sanitized = input.trim().toLowerCase();
+  sanitized = sanitized.replace(/[^a-z0-9_-]+/g, '-');
+  sanitized = sanitized.replace(/-+/g, '-');
+  sanitized = sanitized.replace(/^[-_]+|[-_]+$/g, '');
+  return sanitized || 'mcp';
+}
+
+function ensureMcpPrefix(id: string): string {
+  return id.startsWith('mcp-') ? id : `mcp-${id}`;
+}
+
+function extractDomainBase(host: string): string {
+  const cleanedHost = host.replace(/\.+$/, '').toLowerCase();
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(cleanedHost)) {
+    return cleanedHost;
+  }
+  const parts = cleanedHost.split('.').filter(Boolean);
+  if (parts.length === 0) {
+    return host;
+  }
+  if (parts.length === 1) {
+    return parts[0];
+  }
+
+  const commonSecondLevel = new Set(['co', 'com', 'net', 'org', 'gov', 'edu', 'ac']);
+  const topLevel = parts[parts.length - 1];
+  const secondLevel = parts[parts.length - 2];
+
+  // Handle common country-code second-level domains like *.co.uk
+  if (topLevel.length === 2 && parts.length >= 3 && commonSecondLevel.has(secondLevel)) {
+    return parts[parts.length - 3];
+  }
+
+  const commonTlds = new Set(['com', 'org', 'net', 'gov', 'edu', 'io', 'ai', 'app', 'dev', 'cloud', 'info', 'biz', 'co']);
+  if (commonTlds.has(topLevel) && parts.length >= 2) {
+    return secondLevel;
+  }
+
+  return secondLevel;
+}
+
+export function generateMCPProviderId(provider?: { id?: string; name?: string; endpoint?: string }): string {
+  // Prefer explicit ID if provided
+  const explicitId = provider?.id?.trim();
+  if (explicitId) {
+    return ensureMcpPrefix(sanitizeIdBase(explicitId));
+  }
+
+  const name = provider?.name?.trim();
+  if (name) {
+    return ensureMcpPrefix(sanitizeIdBase(name));
+  }
+
+  const endpoint = provider?.endpoint?.trim();
+  if (endpoint) {
+    try {
+      const host = new URL(endpoint).hostname;
+      if (host) {
+        return ensureMcpPrefix(sanitizeIdBase(extractDomainBase(host)));
+      }
+    } catch {
+      // Fall through to using the raw endpoint if URL parsing fails
+      return ensureMcpPrefix(sanitizeIdBase(endpoint));
+    }
+  }
+
+  // Fallback: generate a random ID if neither name nor endpoint is available yet
+  const fallback = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return ensureMcpPrefix(sanitizeIdBase(fallback));
+}
+
+export function getMCPProviders(): MCPProviderConfig[] {
+  const providers = loadProviders();
+  const tokenMap = loadTokenMap();
+  return providers.map(provider => ({
+    ...provider,
+    enabled: provider.enabled !== false,
+    token: tokenMap[provider.id],
+  }));
+}
+
+export function saveMCPProviders(providers: MCPProviderConfig[]): void {
+  const sanitizedProviders: StoredProvider[] = [];
+  const newTokenMap: TokenMap = {};
+
+  const seenIds = new Set<string>();
+
+  for (const provider of providers) {
+    const id = generateMCPProviderId(provider);
+    const endpoint = provider.endpoint?.trim();
+    if (!endpoint) {
+      continue;
+    }
+    const authType: 'bearer' | 'oauth' = provider.authType === 'oauth' ? 'oauth' : 'bearer';
+
+    if (seenIds.has(id)) {
+      throw new Error(`Duplicate MCP connection identifier: ${id}. Please use unique names or endpoints.`);
+    }
+    seenIds.add(id);
+
+    sanitizedProviders.push({
+      id,
+      name: provider.name?.trim() || undefined,
+      endpoint,
+      authType,
+      enabled: provider.enabled !== false,
+      oauthClientId: provider.oauthClientId?.trim() || undefined,
+      oauthRedirectUrl: provider.oauthRedirectUrl?.trim() || undefined,
+      oauthScope: provider.oauthScope?.trim() || undefined,
+    });
+
+    if (authType === 'bearer' && provider.token) {
+      newTokenMap[id] = provider.token;
+    }
+  }
+
+  saveProvidersInternal(sanitizedProviders);
+  saveTokenMap(newTokenMap);
+  dispatchMCPConfigChanged();
+}
+
 export function getMCPConfig(): MCPConfigData {
   try {
     const enabled = localStorage.getItem(KEYS.enabled) === 'true';
-    const endpoint = localStorage.getItem(KEYS.endpoint) || undefined;
-    const serverId = endpoint ? buildServerId(endpoint) : undefined;
-
-    const tokenMap = loadTokenMap();
-    const serverSettings = serverId ? loadServerSettings()[serverId] : undefined;
-
-    const token = serverId ? tokenMap[serverId] : undefined;
-    const authType = (localStorage.getItem(KEYS.authType) as MCPConfigData['authType']) || 'bearer';
-    const oauthClientId = serverSettings?.oauthClientId;
-    const oauthRedirectUrl = serverSettings?.oauthRedirectUrl;
-    const oauthScope = serverSettings?.oauthScope;
+    const providers = getMCPProviders();
 
     let toolAllowlist: string[] | undefined;
-    const raw = localStorage.getItem(KEYS.allowlist);
-    if (raw) {
-      try { toolAllowlist = JSON.parse(raw); } catch { toolAllowlist = undefined; }
+    const rawAllowlist = localStorage.getItem(KEYS.allowlist);
+    if (rawAllowlist) {
+      try {
+        const parsed = JSON.parse(rawAllowlist);
+        if (Array.isArray(parsed)) {
+          toolAllowlist = parsed.filter(item => typeof item === 'string');
+        }
+      } catch {
+        toolAllowlist = undefined;
+      }
     }
+
     const autostart = localStorage.getItem(KEYS.autostart) === 'true';
     const toolMode = (localStorage.getItem(KEYS.toolMode) as MCPConfigData['toolMode']) || 'router';
     const maxToolsPerTurn = parseInt(localStorage.getItem(KEYS.maxToolsPerTurn) || '20', 10);
     const maxMcpPerTurn = parseInt(localStorage.getItem(KEYS.maxMcpPerTurn) || '8', 10);
-    return { enabled, endpoint, token, authType, oauthClientId, oauthRedirectUrl, oauthScope, toolAllowlist, autostart, toolMode, maxToolsPerTurn, maxMcpPerTurn };
+
+    return {
+      enabled,
+      providers,
+      toolAllowlist,
+      autostart,
+      toolMode,
+      maxToolsPerTurn,
+      maxMcpPerTurn,
+    };
   } catch (err) {
     logger.error('Failed to load MCP config', err);
-    return { enabled: false };
+    return { enabled: false, providers: [] };
   }
 }
 
-export function setMCPConfig(config: MCPConfigData): void {
+export function setMCPConfig(config: MCPConfigUpdate): void {
   try {
-    localStorage.setItem(KEYS.enabled, String(!!config.enabled));
-    if (config.endpoint !== undefined) {
-      if (config.endpoint) {
-        localStorage.setItem(KEYS.endpoint, config.endpoint);
-      } else {
-        localStorage.removeItem(KEYS.endpoint);
-      }
-    }
-
-    const endpoint = config.endpoint !== undefined ? config.endpoint : (localStorage.getItem(KEYS.endpoint) || undefined);
-    const serverId = endpoint ? buildServerId(endpoint) : undefined;
-    const tokenMap = loadTokenMap();
-
-    if (serverId) {
-      const serverSettings = loadServerSettings();
-      const entry: StoredServerSettings = { ...serverSettings[serverId] };
-      const applySetting = (key: keyof StoredServerSettings, value: string | undefined) => {
-        if (value !== undefined) {
-          if (value) {
-            entry[key] = value;
-          } else {
-            delete entry[key];
-          }
-        }
-      };
-
-      applySetting('oauthClientId', config.oauthClientId);
-      applySetting('oauthRedirectUrl', config.oauthRedirectUrl);
-      applySetting('oauthScope', config.oauthScope);
-
-      if (Object.keys(entry).length > 0) {
-        serverSettings[serverId] = entry;
-      } else {
-        delete serverSettings[serverId];
-      }
-      saveServerSettings(serverSettings);
-    }
-
-    if (serverId && config.token !== undefined) {
-      if (config.token) {
-        tokenMap[serverId] = config.token;
-      } else {
-        delete tokenMap[serverId];
-      }
-      saveTokenMap(tokenMap);
-    }
-
-    if (config.authType !== undefined) {
-      localStorage.setItem(KEYS.authType, config.authType);
+    if (config.enabled !== undefined) {
+      localStorage.setItem(KEYS.enabled, String(!!config.enabled));
     }
     if (config.toolAllowlist) {
       localStorage.setItem(KEYS.allowlist, JSON.stringify(config.toolAllowlist));

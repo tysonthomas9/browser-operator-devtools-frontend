@@ -129,6 +129,8 @@ devtools_module("ai_chat") {
     "mcp/MCPToolAdapter.ts",
     "mcp/MCPRegistry.ts",
     "mcp/MCPMetaTools.ts",
+    "ui/mcp/MCPConnectionsDialog.ts",
+    "ui/mcp/MCPConnectorsCatalogDialog.ts",
   ]
 
   deps = [
@@ -178,6 +180,8 @@ _ai_chat_sources = [
     "ui/PromptEditDialog.ts",
     "ui/SettingsDialog.ts",
     "ui/EvaluationDialog.ts",
+    "ui/mcp/MCPConnectionsDialog.ts",
+    "ui/mcp/MCPConnectorsCatalogDialog.ts",
     "ai_chat_impl.ts",
     "models/ChatTypes.ts",
     "core/Graph.ts",
@@ -363,7 +367,11 @@ ts_library("unittests") {
     "agent_framework/__tests__/AgentRunner.computeToolResultText.test.ts",
     "agent_framework/__tests__/AgentRunner.run.flows.test.ts",
     "mcp/MCPClientSDK.test.ts",
+    "mcp/MCPToolRegistration.test.ts",
+    "mcp/MCPIntegration.test.ts",
     "core/ToolSurfaceProvider.test.ts",
+    "core/ToolNameMap.test.ts",
+    "core/ToolExecutorNode.test.ts",
   ]
 
   deps = [
