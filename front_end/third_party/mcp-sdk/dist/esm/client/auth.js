@@ -166,10 +166,37 @@ export async function auth(provider, options) {
     catch (error) {
         // Handle recoverable error types by invalidating credentials and retrying
         if (error instanceof InvalidClientError || error instanceof UnauthorizedClientError) {
+            try {
+                console.warn('[MCPClientSDK][OAuth] invalid client during auth; clearing all credentials and retrying', {
+                    name: error.name,
+                    message: error.message,
+                });
+            }
+            catch {}
+            try {
+                // Optional hook for providers to log or persist detailed reason
+                if (typeof (provider === null || provider === void 0 ? void 0 : provider.onAuthError) === 'function') {
+                    provider.onAuthError(error, { action: 'invalidate', scope: 'all' });
+                }
+            }
+            catch {}
             await ((_a = provider.invalidateCredentials) === null || _a === void 0 ? void 0 : _a.call(provider, 'all'));
             return await authInternal(provider, options);
         }
         else if (error instanceof InvalidGrantError) {
+            try {
+                console.warn('[MCPClientSDK][OAuth] invalid grant during auth; clearing tokens and retrying', {
+                    name: error.name,
+                    message: error.message,
+                });
+            }
+            catch {}
+            try {
+                if (typeof (provider === null || provider === void 0 ? void 0 : provider.onAuthError) === 'function') {
+                    provider.onAuthError(error, { action: 'invalidate', scope: 'tokens' });
+                }
+            }
+            catch {}
             await ((_b = provider.invalidateCredentials) === null || _b === void 0 ? void 0 : _b.call(provider, 'tokens'));
             return await authInternal(provider, options);
         }
@@ -641,7 +668,16 @@ export async function exchangeAuthorization(authorizationServerUrl, { metadata, 
         body: params,
     });
     if (!response.ok) {
-        throw await parseErrorResponse(response);
+        const err = await parseErrorResponse(response);
+        try {
+            console.warn('[MCPClientSDK][OAuth] token exchange failed', {
+                status: response.status,
+                name: err.name,
+                message: err.message,
+            });
+        }
+        catch {}
+        throw err;
     }
     return OAuthTokensSchema.parse(await response.json());
 }
@@ -697,7 +733,16 @@ export async function refreshAuthorization(authorizationServerUrl, { metadata, c
         body: params,
     });
     if (!response.ok) {
-        throw await parseErrorResponse(response);
+        const err = await parseErrorResponse(response);
+        try {
+            console.warn('[MCPClientSDK][OAuth] token refresh failed', {
+                status: response.status,
+                name: err.name,
+                message: err.message,
+            });
+        }
+        catch {}
+        throw err;
     }
     return OAuthTokensSchema.parse({ refresh_token: refreshToken, ...(await response.json()) });
 }
@@ -723,7 +768,16 @@ export async function registerClient(authorizationServerUrl, { metadata, clientM
         body: JSON.stringify(clientMetadata),
     });
     if (!response.ok) {
-        throw await parseErrorResponse(response);
+        const err = await parseErrorResponse(response);
+        try {
+            console.warn('[MCPClientSDK][OAuth] dynamic client registration failed', {
+                status: response.status,
+                name: err.name,
+                message: err.message,
+            });
+        }
+        catch {}
+        throw err;
     }
     return OAuthClientInformationFullSchema.parse(await response.json());
 }

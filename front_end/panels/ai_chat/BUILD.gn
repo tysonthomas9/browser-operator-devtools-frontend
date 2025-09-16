@@ -139,6 +139,7 @@ devtools_module("ai_chat") {
     "../../generated:protocol",
     "../../models/logs:bundle",
     "../../third_party/mcp-sdk:bundle",
+    "../../third_party/mcp-sdk:bundle_v2",
     "../../ui/components/helpers:bundle",
     "../../ui/components/markdown_view:bundle",
     "../../ui/components/snackbars:bundle",

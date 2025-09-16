@@ -1,12 +1,41 @@
 import { createLogger } from '../core/Logger.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import * as ToolNameMap from '../core/ToolNameMap.js';
-import type { MCPToolDef, MCPServer } from '../../../third_party/mcp-sdk/mcp-sdk.js';
-import { MCPClient } from '../../../third_party/mcp-sdk/mcp-sdk.js';
+import type { MCPToolDef, MCPServer } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
+import { MCPClient } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
 import { getMCPConfig } from './MCPConfig.js';
 import { MCPToolAdapter } from './MCPToolAdapter.js';
 
 const logger = createLogger('MCPRegistry');
+
+function stableHash(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; ++i) {
+    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function buildServerId(endpoint: string): string {
+  try {
+    const url = new URL(endpoint);
+    const hostPart = url.host.replace(/[^a-z0-9]+/gi, '-');
+    const pathPart = url.pathname.replace(/[^a-z0-9]+/gi, '-');
+    const searchPart = url.search
+      ? url.search.replace(/[^a-z0-9]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+      : '';
+    const combined = `${hostPart}${pathPart ? `-${pathPart}` : ''}${searchPart ? `-${searchPart}` : ''}`
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+    if (combined) {
+      return combined;
+    }
+  } catch {
+    // fall through to hashed id
+  }
+  return `srv-${stableHash(endpoint)}`;
+}
 
 export interface MCPRegistryStatus {
   enabled: boolean;
@@ -53,7 +82,7 @@ class RegistryImpl {
     this.lastErrorType = this.categorizeError(error);
   }
 
-  async init(): Promise<void> {
+  async init(interactive: boolean = false): Promise<void> {
     const cfg = getMCPConfig();
     this.registeredTools = [];
     this.lastError = undefined;
@@ -70,12 +99,41 @@ class RegistryImpl {
       return;
     }
 
+    const serverId = buildServerId(cfg.endpoint);
     const server: MCPServer = {
-      id: 'default',
+      id: serverId,
       endpoint: cfg.endpoint,
-      token: cfg.token,
+      token: cfg.authType === 'bearer' ? cfg.token : undefined,
+      oauth: cfg.authType === 'oauth' ? {
+        clientId: cfg.oauthClientId,
+        scope: cfg.oauthScope,
+        redirectUri: cfg.oauthRedirectUrl,
+      } : undefined,
     };
+
+    for (const existing of this.servers) {
+      if (existing.id !== serverId) {
+        try {
+          this.client.disconnect(existing.id);
+        } catch (error) {
+          logger.warn('Failed to disconnect previous MCP server', { serverId: existing.id, error });
+        }
+      }
+    }
+
     this.servers = [server];
+
+    // If OAuth is selected, avoid initiating login automatically on startup.
+    // Only attempt OAuth connect when explicitly requested (interactive=true)
+    if (cfg.authType === 'oauth' && !cfg.token) {
+      const hasOAuthTokens = (() => {
+        try { return !!sessionStorage.getItem(`mcp_oauth:${server.id}:tokens`); } catch { return false; }
+      })();
+      if (!interactive && !hasOAuthTokens) {
+        logger.info('Skipping OAuth auto-connect on startup; awaiting user action');
+        return;
+      }
+    }
 
     try {
       await this.client.connect(server);

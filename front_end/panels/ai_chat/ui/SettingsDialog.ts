@@ -433,6 +433,46 @@ const UIStrings = {
    *@description MCP max MCP tools per turn hint
    */
   mcpMaxMcpPerTurnHint: 'Maximum number of MCP tools to include in tool selection (default: 8)',
+  /**
+   *@description MCP auth type label
+   */
+  mcpAuthType: 'Authentication Method',
+  /**
+   *@description MCP auth type hint
+   */
+  mcpAuthTypeHint: 'Choose how to authenticate with your MCP server',
+  /**
+   *@description MCP bearer option
+   */
+  mcpAuthBearer: 'Bearer token',
+  /**
+   *@description MCP OAuth option
+   */
+  mcpAuthOAuth: 'OAuth (redirect to provider)',
+  /**
+   *@description MCP OAuth client ID label
+   */
+  mcpOAuthClientId: 'OAuth Client ID',
+  /**
+   *@description MCP OAuth client ID hint
+   */
+  mcpOAuthClientIdHint: 'Pre-registered public client ID for this MCP server (no secret).',
+  /**
+   *@description MCP OAuth redirect URL label
+   */
+  mcpOAuthRedirect: 'OAuth Redirect URL',
+  /**
+   *@description MCP OAuth redirect URL hint
+   */
+  mcpOAuthRedirectHint: 'Must match the redirect URI registered with the provider (default: https://localhost:3000/callback).',
+  /**
+   *@description MCP OAuth scope label
+   */
+  mcpOAuthScope: 'OAuth Scope (optional)',
+  /**
+   *@description MCP OAuth scope hint
+   */
+  mcpOAuthScopeHint: 'Provider-specific scopes, space-separated. Leave empty if unsure.',
 };
 
 const str_ = i18n.i18n.registerUIStrings('panels/ai_chat/ui/SettingsDialog.ts', UIStrings);
@@ -2496,8 +2536,8 @@ export class SettingsDialog {
     // ---- MCP Integration Section ----
     const mcpSection = document.createElement('div');
     mcpSection.className = 'settings-section mcp-section';
-    // Hide MCP UI: auto-connect is always on; settings are not user-configurable
-    mcpSection.style.display = 'none';
+    // Make MCP UI visible so users can configure OAuth/bearer and connect
+    mcpSection.style.display = 'block';
     contentDiv.appendChild(mcpSection);
 
     const mcpSectionTitle = document.createElement('h3');
@@ -2710,6 +2750,82 @@ export class SettingsDialog {
     mcpEndpointInput.value = currentMCPConfig.endpoint || '';
     mcpConfigContainer.appendChild(mcpEndpointInput);
 
+    // Auth method
+    const mcpAuthTypeLabel = document.createElement('div');
+    mcpAuthTypeLabel.className = 'settings-label';
+    mcpAuthTypeLabel.textContent = i18nString(UIStrings.mcpAuthType);
+    mcpConfigContainer.appendChild(mcpAuthTypeLabel);
+
+    const mcpAuthTypeHint = document.createElement('div');
+    mcpAuthTypeHint.className = 'settings-hint';
+    mcpAuthTypeHint.textContent = i18nString(UIStrings.mcpAuthTypeHint);
+    mcpConfigContainer.appendChild(mcpAuthTypeHint);
+
+    const mcpAuthTypeSelect = document.createElement('select');
+    mcpAuthTypeSelect.className = 'settings-select';
+    const bearerOpt = document.createElement('option');
+    bearerOpt.value = 'bearer';
+    bearerOpt.textContent = i18nString(UIStrings.mcpAuthBearer);
+    const oauthOpt = document.createElement('option');
+    oauthOpt.value = 'oauth';
+    oauthOpt.textContent = i18nString(UIStrings.mcpAuthOAuth);
+    mcpAuthTypeSelect.appendChild(bearerOpt);
+    mcpAuthTypeSelect.appendChild(oauthOpt);
+    mcpAuthTypeSelect.value = (currentMCPConfig.authType || 'bearer');
+    mcpConfigContainer.appendChild(mcpAuthTypeSelect);
+
+    // OAuth fields (shown when OAuth is selected)
+    const oauthClientIdLabel = document.createElement('div');
+    oauthClientIdLabel.className = 'settings-label';
+    oauthClientIdLabel.textContent = i18nString(UIStrings.mcpOAuthClientId);
+    mcpConfigContainer.appendChild(oauthClientIdLabel);
+
+    const oauthClientIdHint = document.createElement('div');
+    oauthClientIdHint.className = 'settings-hint';
+    oauthClientIdHint.textContent = i18nString(UIStrings.mcpOAuthClientIdHint);
+    mcpConfigContainer.appendChild(oauthClientIdHint);
+
+    const oauthClientIdInput = document.createElement('input');
+    oauthClientIdInput.type = 'text';
+    oauthClientIdInput.className = 'settings-input';
+    oauthClientIdInput.placeholder = 'client_id';
+    oauthClientIdInput.value = currentMCPConfig.oauthClientId || '';
+    mcpConfigContainer.appendChild(oauthClientIdInput);
+
+    const oauthRedirectLabel = document.createElement('div');
+    oauthRedirectLabel.className = 'settings-label';
+    oauthRedirectLabel.textContent = i18nString(UIStrings.mcpOAuthRedirect);
+    mcpConfigContainer.appendChild(oauthRedirectLabel);
+
+    const oauthRedirectHint = document.createElement('div');
+    oauthRedirectHint.className = 'settings-hint';
+    oauthRedirectHint.textContent = i18nString(UIStrings.mcpOAuthRedirectHint);
+    mcpConfigContainer.appendChild(oauthRedirectHint);
+
+    const oauthRedirectInput = document.createElement('input');
+    oauthRedirectInput.type = 'text';
+    oauthRedirectInput.className = 'settings-input';
+    oauthRedirectInput.placeholder = 'https://localhost:3000/callback';
+    oauthRedirectInput.value = currentMCPConfig.oauthRedirectUrl || '';
+    mcpConfigContainer.appendChild(oauthRedirectInput);
+
+    const oauthScopeLabel = document.createElement('div');
+    oauthScopeLabel.className = 'settings-label';
+    oauthScopeLabel.textContent = i18nString(UIStrings.mcpOAuthScope);
+    mcpConfigContainer.appendChild(oauthScopeLabel);
+
+    const oauthScopeHint = document.createElement('div');
+    oauthScopeHint.className = 'settings-hint';
+    oauthScopeHint.textContent = i18nString(UIStrings.mcpOAuthScopeHint);
+    mcpConfigContainer.appendChild(oauthScopeHint);
+
+    const oauthScopeInput = document.createElement('input');
+    oauthScopeInput.type = 'text';
+    oauthScopeInput.className = 'settings-input';
+    oauthScopeInput.placeholder = 'e.g. openid profile';
+    oauthScopeInput.value = currentMCPConfig.oauthScope || '';
+    mcpConfigContainer.appendChild(oauthScopeInput);
+
     // Token
     const mcpTokenLabel = document.createElement('div');
     mcpTokenLabel.className = 'settings-label';
@@ -2728,19 +2844,45 @@ export class SettingsDialog {
     mcpTokenInput.value = currentMCPConfig.token || '';
     mcpConfigContainer.appendChild(mcpTokenInput);
 
+    const updateAuthVisibility = () => {
+      const useOAuth = mcpAuthTypeSelect.value === 'oauth';
+      // Bearer token inputs
+      mcpTokenLabel.style.display = useOAuth ? 'none' : 'block';
+      mcpTokenHint.style.display = useOAuth ? 'none' : 'block';
+      mcpTokenInput.style.display = useOAuth ? 'none' : 'block';
+      // OAuth inputs
+      oauthClientIdLabel.style.display = useOAuth ? 'block' : 'none';
+      oauthClientIdHint.style.display = useOAuth ? 'block' : 'none';
+      oauthClientIdInput.style.display = useOAuth ? 'block' : 'none';
+      oauthRedirectLabel.style.display = useOAuth ? 'block' : 'none';
+      oauthRedirectHint.style.display = useOAuth ? 'block' : 'none';
+      oauthRedirectInput.style.display = useOAuth ? 'block' : 'none';
+      oauthScopeLabel.style.display = useOAuth ? 'block' : 'none';
+      oauthScopeHint.style.display = useOAuth ? 'block' : 'none';
+      oauthScopeInput.style.display = useOAuth ? 'block' : 'none';
+      mcpConnectButton.textContent = useOAuth ? 'Connect / Authorize' : i18nString(UIStrings.mcpConnectRefresh);
+    };
+
+    mcpAuthTypeSelect.addEventListener('change', updateAuthVisibility);
+
     // Connect/Refresh button
     const mcpConnectButton = document.createElement('button');
     mcpConnectButton.className = 'settings-button';
     mcpConnectButton.textContent = i18nString(UIStrings.mcpConnectRefresh);
     mcpConnectButton.addEventListener('click', async () => {
       // Save config then init/refresh
+      const useOAuth = mcpAuthTypeSelect.value === 'oauth';
       setMCPConfig({
         enabled: mcpEnabledCheckbox.checked,
         endpoint: mcpEndpointInput.value.trim(),
-        token: mcpTokenInput.value.trim() || undefined,
+        token: useOAuth ? undefined : (mcpTokenInput.value.trim() || undefined),
+        authType: useOAuth ? 'oauth' : 'bearer',
+        oauthClientId: useOAuth ? oauthClientIdInput.value.trim() || undefined : undefined,
+        oauthRedirectUrl: useOAuth ? oauthRedirectInput.value.trim() || undefined : undefined,
+        oauthScope: useOAuth ? oauthScopeInput.value.trim() || undefined : undefined,
       });
       try {
-        await MCPRegistry.init();
+        await MCPRegistry.init(true);
         await MCPRegistry.refresh();
       } catch (err) {
         logger.error('MCP connect/refresh failed', err);
@@ -2752,6 +2894,9 @@ export class SettingsDialog {
       }
     });
     mcpConfigContainer.appendChild(mcpConnectButton);
+
+    // Initialize visibility based on stored auth type
+    updateAuthVisibility();
 
     // Autostart checkbox
     // Autostart UI removed: MCP auto-connect is always enabled by the panel
@@ -2930,14 +3075,16 @@ export class SettingsDialog {
 
     // Toggle visibility on enable/disable
     mcpEnabledCheckbox.addEventListener('change', async () => {
+      const useOAuth = mcpAuthTypeSelect.value === 'oauth';
       setMCPConfig({
         enabled: mcpEnabledCheckbox.checked,
         endpoint: mcpEndpointInput.value.trim(),
-        token: mcpTokenInput.value.trim() || undefined,
+        token: useOAuth ? undefined : (mcpTokenInput.value.trim() || undefined),
+        authType: useOAuth ? 'oauth' : 'bearer',
       });
       mcpConfigContainer.style.display = mcpEnabledCheckbox.checked ? 'block' : 'none';
       try {
-        await MCPRegistry.init();
+        await MCPRegistry.init(true);
         await MCPRegistry.refresh();
       } catch (err) {
         logger.error('MCP toggle failed', err);

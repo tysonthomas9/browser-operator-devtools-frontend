@@ -794,8 +794,9 @@ export class AIChatPanel extends UI.Panel.Panel {
   #setupMCPIntegration(): void {
     const initAndRefresh = async () => {
       try {
-        // Always attempt to connect to MCP on startup
-        await MCPRegistry.init();
+        // Attempt to connect to MCP on startup. For OAuth, this will not trigger login
+        // until the user explicitly clicks Connect in Settings.
+        await MCPRegistry.init(false);
         await MCPRegistry.refresh();
         const status = MCPRegistry.getStatus();
         logger.info('MCP auto-connect completed', status);

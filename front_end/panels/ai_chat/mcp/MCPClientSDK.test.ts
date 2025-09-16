@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { MCPClientSDK } from '../../../third_party/mcp-sdk/mcp-sdk.js';
-import type { MCPServer } from '../../../third_party/mcp-sdk/mcp-sdk.js';
+import { MCPClientSDKv2 } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
+import type { MCPServer } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
 
 describe('MCPClientSDK', () => {
-  let client: MCPClientSDK;
+  let client: MCPClientSDKv2;
 
   beforeEach(() => {
-    client = new MCPClientSDK();
+    client = new MCPClientSDKv2();
   });
 
   afterEach(() => {
@@ -22,7 +22,7 @@ describe('MCPClientSDK', () => {
   });
 
   it('can be instantiated', () => {
-    assert.ok(client instanceof MCPClientSDK);
+    assert.ok(client instanceof MCPClientSDKv2);
   });
 
   it('reports not connected initially', () => {

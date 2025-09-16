@@ -64,7 +64,26 @@ devtools_pre_built("mcp-sdk") {
 devtools_entrypoint("bundle") {
   entrypoint = "mcp-sdk.ts"
 
-  deps = [ ":mcp-sdk" ]
+  deps = [ ":mcp-sdk",
+    # Required by MCPOAuthProvider for navigation & URL monitoring
+    "../../core/sdk:bundle",
+    "../../core/platform:bundle",
+  ]
+
+  visibility = [
+    "../../panels/ai_chat/*",
+  ]
+
+  visibility += devtools_third_party_visibility
+}
+
+devtools_entrypoint("bundle_v2") {
+  entrypoint = "mcp-sdk-v2.ts"
+
+  deps = [ ":mcp-sdk",
+    "../../core/sdk:bundle",
+    "../../core/platform:bundle",
+  ]
 
   visibility = [
     "../../panels/ai_chat/*",
