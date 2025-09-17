@@ -1,6 +1,7 @@
 // Copyright 2025 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+// Cache break: 2025-09-17T22:47:00Z - Add AUTOMATED_MODE bypass for createAgentGraph API key validation
 
 import * as Common from '../../../core/common/common.js';
 import * as i18n from '../../../core/i18n/i18n.js';
@@ -20,7 +21,9 @@ import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
 import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
+import { BUILD_CONFIG } from './BuildConfig.js';
 
+// Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
 
 /**
@@ -186,8 +189,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       // Check if the configuration requires an API key
       const requiresApiKey = this.#doesCurrentConfigRequireApiKey();
       
-      // If API key is required but not provided, throw error
-      if (requiresApiKey && !apiKey) {
+      // If API key is required but not provided, throw error (unless in AUTOMATED_MODE)
+      if (requiresApiKey && !apiKey && !BUILD_CONFIG.AUTOMATED_MODE) {
         const provider = this.#configManager.getProvider();
         let providerName = 'OpenAI';
         if (provider === 'litellm') {
@@ -329,13 +332,20 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   async sendMessage(text: string, imageInput?: ImageInputData, selectedAgentType?: string | null): Promise<ChatMessage> {
     // Check if the current configuration requires an API key
     const requiresApiKey = this.#doesCurrentConfigRequireApiKey();
-    
-    if (requiresApiKey && !this.#apiKey) {
+
+    if (requiresApiKey && !this.#apiKey && !BUILD_CONFIG.AUTOMATED_MODE) {
       throw new Error('API key not set. Please set the API key in settings.');
     }
 
     if (!text.trim()) {
       throw new Error('Empty message. Please enter some text.');
+    }
+
+    // In AUTOMATED_MODE, ensure the graph is initialized even without API key
+    if (BUILD_CONFIG.AUTOMATED_MODE && !this.#graph) {
+      const config = this.#configManager.getConfiguration();
+      // Initialize with empty API key in AUTOMATED_MODE - will be overridden by request
+      await this.initialize('', config.mainModel, config.miniModel || '', config.nanoModel || '');
     }
 
     // Create a user message

@@ -197,6 +197,13 @@ export class EvalServer extends EventEmitter {
   }
 
   /**
+   * Get the client manager instance
+   */
+  getClientManager() {
+    return this.clientManager;
+  }
+
+  /**
    * Handle new WebSocket connections
    */
   handleConnection(ws, request) {

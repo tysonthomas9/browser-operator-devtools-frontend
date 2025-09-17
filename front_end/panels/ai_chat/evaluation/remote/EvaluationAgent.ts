@@ -1,6 +1,7 @@
 // Copyright 2025 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+// Cache break: 2025-09-17T17:38:00Z - Fixed API key validation
 
 import { BUILD_CONFIG } from '../../core/BuildConfig.js';
 import { WebSocketRPCClient } from '../../common/WebSocketRPCClient.js';
@@ -342,16 +343,36 @@ export class EvaluationAgent {
 
     // CRITICAL FIX: Set configuration override early for any model configuration provided
     // This allows API keys from request body to be available for UI-level validation
+    logger.info('DEBUG: Checking for model configuration override', {
+      evaluationId: params.evaluationId,
+      hasModel: !!params.model,
+      model: params.model
+    });
+
     if (params.model && (params.model.main_model || params.model.provider || params.model.api_key)) {
       const configManager = LLMConfigurationManager.getInstance();
 
-      // Extract configuration from nested model structure
+      // Extract configuration from nested model structure - handle both flat and nested formats
       const mainModel = params.model.main_model as any;
+
+      // For nested format: main_model: { provider: "openai", model: "gpt-4", api_key: "key" }
+      // For flat format: { provider: "openai", main_model: "gpt-4", api_key: "key" }
       const provider = mainModel?.provider || params.model.provider || 'openai';
       const apiKey = mainModel?.api_key || params.model.api_key;
       const modelName = mainModel?.model || mainModel || params.model.main_model;
       const miniModel = (params.model.mini_model as any)?.model || params.model.mini_model;
       const nanoModel = (params.model.nano_model as any)?.model || params.model.nano_model;
+
+      logger.info('DEBUG: Extracted model configuration', {
+        evaluationId: params.evaluationId,
+        mainModel,
+        provider,
+        hasApiKey: !!apiKey,
+        apiKeyLength: apiKey?.length,
+        modelName,
+        miniModel,
+        nanoModel
+      });
 
       if (apiKey) {
         logger.info('Setting early configuration override for evaluation', {
@@ -369,7 +390,25 @@ export class EvaluationAgent {
           nanoModel: nanoModel || miniModel || modelName
         });
         hasSetEarlyOverride = true;
+
+        logger.info('DEBUG: Early override set successfully', {
+          evaluationId: params.evaluationId
+        });
+      } else {
+        logger.warn('DEBUG: No API key found in model configuration', {
+          evaluationId: params.evaluationId,
+          mainModel,
+          provider
+        });
       }
+    } else {
+      logger.warn('DEBUG: No model configuration found for override', {
+        evaluationId: params.evaluationId,
+        hasModel: !!params.model,
+        hasMainModel: !!(params.model?.main_model),
+        hasProvider: !!(params.model?.provider),
+        hasApiKey: !!(params.model?.api_key)
+      });
     }
 
     // Track active evaluation
@@ -495,6 +534,10 @@ export class EvaluationAgent {
         this.sendStatus(params.evaluationId, 'running', 0.5, 'Processing chat request...');
         
         // Merge model configuration - prefer params.model over params.input model fields
+        // Also check for early override configuration from LLMConfigurationManager
+        const configManager = LLMConfigurationManager.getInstance();
+        const overrideConfig = configManager.getConfiguration();
+
         const mergedInput = {
           ...params.input,
           ...(params.model && {
@@ -504,8 +547,26 @@ export class EvaluationAgent {
             nano_model: (params.model.nano_model as any)?.model || params.model.nano_model,
             provider: (params.model.main_model as any)?.provider || params.model.provider,
             api_key: (params.model.main_model as any)?.api_key || (params.model as any).api_key
+          }),
+          // Apply early override configuration if available
+          ...(overrideConfig && {
+            provider: overrideConfig.provider || ((params.model?.main_model as any)?.provider || params.model?.provider),
+            api_key: overrideConfig.apiKey || ((params.model?.main_model as any)?.api_key || (params.model as any)?.api_key),
+            main_model: overrideConfig.mainModel || ((params.model?.main_model as any)?.model || params.model?.main_model),
+            mini_model: overrideConfig.miniModel || ((params.model?.mini_model as any)?.model || params.model?.mini_model),
+            nano_model: overrideConfig.nanoModel || ((params.model?.nano_model as any)?.model || params.model?.nano_model)
           })
         };
+
+        logger.info('DEBUG: Created merged input for chat evaluation', {
+          evaluationId: params.evaluationId,
+          hasOverrideConfig: !!overrideConfig,
+          overrideConfig,
+          mergedInput: {
+            ...mergedInput,
+            api_key: mergedInput.api_key ? `${mergedInput.api_key.substring(0, 10)}...` : undefined
+          }
+        });
         
         toolResult = await this.executeChatEvaluation(
           mergedInput,
