@@ -8,7 +8,7 @@ import { getEvaluationConfig, setEvaluationConfig, isEvaluationEnabled, connectT
 import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
-import { getMCPConfig, setMCPConfig, isMCPEnabled } from '../mcp/MCPConfig.js';
+import { getMCPConfig, setMCPConfig, isMCPEnabled, hasStoredAuthErrors, getStoredAuthErrors, clearStoredAuthError } from '../mcp/MCPConfig.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { MCPConnectionsDialog } from './mcp/MCPConnectionsDialog.js';
 
@@ -2567,6 +2567,23 @@ export class SettingsDialog {
     mcpEnabledCheckbox.id = 'mcp-enabled';
     mcpEnabledCheckbox.className = 'mcp-checkbox';
     mcpEnabledCheckbox.checked = isMCPEnabled();
+
+    // Check for authentication errors and disable toggle if needed
+    const authErrors = getStoredAuthErrors();
+    const hasAuthErrors = authErrors.length > 0;
+    if (hasAuthErrors) {
+      mcpEnabledCheckbox.disabled = true;
+      mcpEnabledCheckbox.style.opacity = '0.5';
+
+      // Create tooltip text showing which servers need re-authentication
+      const serverNames = authErrors.map(error => {
+        const provider = currentMCPConfig.providers.find(p => p.id === error.serverId);
+        return provider?.name || provider?.id || error.serverId;
+      }).join(', ');
+
+      mcpEnabledCheckbox.title = `Re-authentication required for: ${serverNames}`;
+    }
+
     mcpEnabledContainer.appendChild(mcpEnabledCheckbox);
 
     const mcpEnabledLabel = document.createElement('label');
@@ -2630,10 +2647,37 @@ export class SettingsDialog {
       }
     };
 
+    const updateMCPToggleState = () => {
+      const authErrors = getStoredAuthErrors();
+      const hasAuthErrors = authErrors.length > 0;
+
+      if (hasAuthErrors) {
+        mcpEnabledCheckbox.disabled = true;
+        mcpEnabledCheckbox.style.opacity = '0.5';
+
+        // Create tooltip text showing which servers need re-authentication
+        const serverNames = authErrors.map(error => {
+          const provider = currentMCPConfig.providers.find(p => p.id === error.serverId);
+          return provider?.name || provider?.id || error.serverId;
+        }).join(', ');
+
+        mcpEnabledCheckbox.title = `Re-authentication required for: ${serverNames}`;
+      } else {
+        mcpEnabledCheckbox.disabled = false;
+        mcpEnabledCheckbox.style.opacity = '1';
+        mcpEnabledCheckbox.title = '';
+      }
+    };
+
     const updateMCPStatus = () => {
       const status = MCPRegistry.getStatus();
+      updateMCPToggleState();
 
       const appendServerRow = (server: typeof status.servers[number], isConnected: boolean) => {
+        // Get auth errors once for this server
+        const authErrors = getStoredAuthErrors();
+        const serverAuthError = authErrors.find(error => error.serverId === server.id);
+
         const row = document.createElement('div');
         row.style.display = 'flex';
         row.style.alignItems = 'center';
@@ -2642,7 +2686,25 @@ export class SettingsDialog {
 
         const label = document.createElement('span');
         label.style.color = isConnected ? 'var(--color-text-secondary)' : 'var(--color-text-disabled)';
-        label.textContent = `${server.name || server.id} — ${isConnected ? 'Connected' : 'Disconnected'} · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
+        // Enhanced status display with authentication error details
+        let statusText = `${server.name || server.id} — `;
+
+        if (isConnected) {
+          statusText += 'Connected';
+        } else {
+          // Check for stored authentication errors
+
+          if (serverAuthError) {
+            statusText += 'Authentication Required';
+            label.style.color = 'var(--color-error)';
+          } else {
+            statusText += 'Disconnected';
+          }
+        }
+
+        statusText += ` · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
+
+        label.textContent = statusText;
         row.appendChild(label);
 
         const needsReconnect = server.authType === 'oauth' && !isConnected;
@@ -2657,6 +2719,8 @@ export class SettingsDialog {
             reconnectButton.textContent = i18nString(UIStrings.mcpReconnectInProgress);
             try {
               await MCPRegistry.reconnect(server.id);
+              // Clear stored authentication error on successful reconnection
+              clearStoredAuthError(server.id);
             } catch (err) {
               logger.error('Failed to reconnect MCP server', { serverId: server.id, error: err });
               reconnectButton.disabled = false;
@@ -2672,6 +2736,22 @@ export class SettingsDialog {
         }
 
         mcpStatusDetails.appendChild(row);
+
+        // Add authentication error details if present
+        if (serverAuthError) {
+          const errorDetails = document.createElement('div');
+          errorDetails.className = 'settings-hint';
+          errorDetails.style.color = 'var(--color-error)';
+          errorDetails.style.fontSize = '12px';
+          errorDetails.style.marginTop = '2px';
+          errorDetails.style.marginLeft = '16px';
+          errorDetails.style.marginBottom = '4px';
+
+          const timestamp = new Date(serverAuthError.timestamp).toLocaleString();
+          errorDetails.textContent = `Last error (${timestamp}): ${serverAuthError.message}`;
+
+          mcpStatusDetails.appendChild(errorDetails);
+        }
       };
 
       if (!status.enabled) {
@@ -2683,10 +2763,19 @@ export class SettingsDialog {
       }
       const anyConnected = status.servers.some(s => s.connected);
       const toolCount = status.registeredToolNames.length;
+      const authErrors = getStoredAuthErrors();
+      const hasAuthErrors = authErrors.length > 0;
+
       if (anyConnected) {
-        mcpStatusDot.style.backgroundColor = 'var(--color-accent-green)';
-        mcpStatusText.textContent = `Connected (${toolCount} tools)`;
-        mcpStatusText.style.color = 'var(--color-accent-green)';
+        if (hasAuthErrors) {
+          mcpStatusDot.style.backgroundColor = 'var(--color-warning)';
+          mcpStatusText.textContent = `Connected with issues (${toolCount} tools)`;
+          mcpStatusText.style.color = 'var(--color-warning)';
+        } else {
+          mcpStatusDot.style.backgroundColor = 'var(--color-accent-green)';
+          mcpStatusText.textContent = `Connected (${toolCount} tools)`;
+          mcpStatusText.style.color = 'var(--color-accent-green)';
+        }
         
         // Safely build details content without using innerHTML
         mcpStatusDetails.textContent = '';
@@ -2721,9 +2810,15 @@ export class SettingsDialog {
           }
         }
       } else {
-        mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
-        mcpStatusText.textContent = 'Not connected';
-        mcpStatusText.style.color = 'var(--color-text-disabled)';
+        if (hasAuthErrors) {
+          mcpStatusDot.style.backgroundColor = 'var(--color-error)';
+          mcpStatusText.textContent = 'Authentication required';
+          mcpStatusText.style.color = 'var(--color-error)';
+        } else {
+          mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
+          mcpStatusText.textContent = 'Not connected';
+          mcpStatusText.style.color = 'var(--color-text-disabled)';
+        }
         
         // Safely build details content without using innerHTML
         mcpStatusDetails.textContent = '';

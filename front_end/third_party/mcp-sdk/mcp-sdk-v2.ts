@@ -31,6 +31,7 @@ export interface MCPServer {
   endpoint: string;
   token?: string;
   oauth?: MCPServerOAuthConfig;
+  interactive?: boolean;
 }
 
 export interface MCPToolDef {
@@ -88,6 +89,7 @@ export class MCPClientSDKv2 {
         clientId: server.oauth?.clientId,
         clientSecret: server.oauth?.clientSecret,
         metadata: server.oauth?.metadata,
+        interactive: server.interactive ?? true,
       },
     );
 
@@ -291,6 +293,7 @@ interface PKCEOAuthProviderInit {
   clientId?: string;
   clientSecret?: string;
   metadata?: Partial<AuthorizationServerMetadata>;
+  interactive?: boolean;
 }
 
 interface ServerDescriptor {
@@ -314,6 +317,10 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   private readonly verifierKey: string;
   private readonly stateKey: string;
   private readonly originalUrlKey: string;
+  private readonly authErrorKey: string;
+  private readonly authErrorTimestampKey: string;
+  private readonly authErrorTypeKey: string;
+  private readonly tokenExpirationKey: string;
 
   private cleanupCallback: (() => void) | null = null;
 
@@ -324,6 +331,10 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
     this.verifierKey = `${prefix}code_verifier`;
     this.stateKey = `${prefix}state`;
     this.originalUrlKey = `${prefix}original_url`;
+    this.authErrorKey = `${prefix}last_auth_error`;
+    this.authErrorTimestampKey = `${prefix}auth_error_timestamp`;
+    this.authErrorTypeKey = `${prefix}auth_error_type`;
+    this.tokenExpirationKey = `${prefix}token_expiration`;
   }
 
   get redirectUrl(): string | URL {
@@ -410,6 +421,12 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
     const serialized = JSON.stringify(tokens);
     this.persistentStorage.setItem(this.tokensKey, serialized);
     this.persistentStorage.removeItem(this.verifierKey);
+
+    // Store token expiration time for proactive refresh
+    this.storeTokenExpiration(tokens);
+
+    // Clear any stored authentication errors since we have fresh tokens
+    this.clearStoredAuthError();
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -433,6 +450,15 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
   }
 
   async waitForAuthorizationCode(): Promise<string> {
+    // In non-interactive mode, check for existing tokens before proceeding with OAuth flow
+    if (!this.init.interactive) {
+      const existingTokens = await this.tokens();
+      if (!existingTokens) {
+        logger.info('Non-interactive mode: no OAuth tokens available, skipping authorization', { serverId: this.server.id });
+        throw new Error('OAuth authentication required - no tokens available in non-interactive mode');
+      }
+    }
+
     if (this.cleanupCallback) {
       this.cleanupCallback();
       this.cleanupCallback = null;
@@ -530,6 +556,10 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
         this.persistentStorage.removeItem(this.originalUrlKey);
         this.persistentStorage.removeItem(this.verifierKey);
         this.persistentStorage.removeItem(this.clientInfoKey);
+        this.persistentStorage.removeItem(this.authErrorKey);
+        this.persistentStorage.removeItem(this.authErrorTimestampKey);
+        this.persistentStorage.removeItem(this.authErrorTypeKey);
+        this.persistentStorage.removeItem(this.tokenExpirationKey);
         break;
       case 'client':
         this.persistentStorage.removeItem(this.clientInfoKey);
@@ -538,6 +568,7 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
         this.persistentStorage.removeItem(this.tokensKey);
         this.persistentStorage.removeItem(this.stateKey);
         this.persistentStorage.removeItem(this.originalUrlKey);
+        this.persistentStorage.removeItem(this.tokenExpirationKey);
         break;
       case 'verifier':
         this.persistentStorage.removeItem(this.verifierKey);
@@ -545,14 +576,243 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
     }
   }
 
+  private categorizeAuthError(error: unknown): 'authentication' | 'network' | 'configuration' | 'server_error' | 'unknown' {
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+    // Check for SSE-specific error context
+    if (error instanceof Error && 'context' in error) {
+      const context = (error as any).context;
+
+      // OAuth-related failures
+      if (context?.authState === 'oauth_required' || context?.httpStatus === 401) {
+        return 'authentication';
+      }
+
+      // Network/connection failures with specific status codes
+      if (context?.httpStatus === 404) {
+        return 'configuration';  // Endpoint not found
+      }
+      if (context?.httpStatus === 403) {
+        return 'authentication';  // Forbidden - likely auth issue
+      }
+      if (context?.httpStatus >= 500) {
+        return 'server_error';
+      }
+
+      // CORS or connection timeouts
+      if (context?.readyState === 2) {  // EventSource CLOSED state
+        return 'network';
+      }
+    }
+
+    // Check for CORS errors (common with SSE)
+    if (message.includes('cors') || message.includes('cross-origin') || message.includes('fetch')) {
+      return 'network';
+    }
+
+    // SSE-specific errors
+    if (message.includes('sse error') || message.includes('eventsource')) {
+      if (message.includes('oauth') || message.includes('401') || message.includes('unauthorized')) {
+        return 'authentication';
+      }
+      return 'network';
+    }
+
+    // OAuth-specific errors
+    if (message.includes('unauthorized') || message.includes('authentication') || message.includes('auth') ||
+        message.includes('token') || message.includes('invalid_grant') || message.includes('access_denied')) {
+      return 'authentication';
+    }
+    if (message.includes('network') || message.includes('timeout') || message.includes('connection reset') || message.includes('econnreset')) {
+      return 'network';
+    }
+    if (message.includes('connection') || message.includes('connect') || message.includes('econnrefused') || message.includes('websocket')) {
+      return 'network';
+    }
+    if (message.includes('invalid') || message.includes('malformed') || message.includes('endpoint') || message.includes('url')) {
+      return 'configuration';
+    }
+    if (message.includes('server error') || message.includes('internal error') || message.includes('500') || message.includes('503')) {
+      return 'server_error';
+    }
+    return 'unknown';
+  }
+
   onAuthError(error: unknown, info?: { action?: string; scope?: string }): void {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorType = this.categorizeAuthError(error);
+    const timestamp = Date.now();
+
+    // Store error details before any potential credential invalidation
+    try {
+      this.persistentStorage.setItem(this.authErrorKey, errorMessage);
+      this.persistentStorage.setItem(this.authErrorTimestampKey, String(timestamp));
+      this.persistentStorage.setItem(this.authErrorTypeKey, errorType);
+    } catch (storageError) {
+      logger.warn('Failed to store authentication error details', {
+        serverId: this.server.id,
+        storageError
+      });
+    }
+
+    // Only clear tokens for actual authentication errors, not network/server errors
+    if (errorType === 'authentication') {
+      logger.info('Clearing tokens due to authentication error', {
+        serverId: this.server.id,
+        errorType,
+        errorMessage
+      });
+      this.invalidateCredentials('tokens');
+    } else {
+      logger.info('Preserving tokens for retryable error', {
+        serverId: this.server.id,
+        errorType,
+        errorMessage
+      });
+    }
+
     logger.warn('OAuth error reported by SDK', {
       serverId: this.server.id,
       action: info?.action,
       scope: info?.scope,
       name: (error as Error | undefined)?.name,
-      message: (error as Error | undefined)?.message,
+      message: errorMessage,
+      errorType,
+      timestamp: new Date(timestamp).toISOString(),
+      tokensCleared: errorType === 'authentication',
     });
+  }
+
+  /**
+   * Get stored authentication error details for this server
+   */
+  getStoredAuthError(): { message: string; type: string; timestamp: number } | null {
+    try {
+      const message = this.persistentStorage.getItem(this.authErrorKey);
+      const timestampStr = this.persistentStorage.getItem(this.authErrorTimestampKey);
+      const type = this.persistentStorage.getItem(this.authErrorTypeKey);
+
+      if (message && timestampStr && type) {
+        const timestamp = parseInt(timestampStr, 10);
+        if (!isNaN(timestamp)) {
+          return { message, type, timestamp };
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to retrieve stored authentication error', {
+        serverId: this.server.id,
+        error
+      });
+    }
+    return null;
+  }
+
+  /**
+   * Clear stored authentication error details for this server
+   */
+  clearStoredAuthError(): void {
+    try {
+      this.persistentStorage.removeItem(this.authErrorKey);
+      this.persistentStorage.removeItem(this.authErrorTimestampKey);
+      this.persistentStorage.removeItem(this.authErrorTypeKey);
+    } catch (error) {
+      logger.warn('Failed to clear stored authentication error', {
+        serverId: this.server.id,
+        error
+      });
+    }
+  }
+
+  /**
+   * Store token expiration time for proactive refresh
+   */
+  private storeTokenExpiration(tokens: OAuthTokens): void {
+    try {
+      // Calculate expiration time based on expires_in (in seconds)
+      let expirationTime: number | null = null;
+
+      if (tokens.expires_in && typeof tokens.expires_in === 'number') {
+        // Convert expires_in (seconds) to milliseconds and add to current time
+        expirationTime = Date.now() + (tokens.expires_in * 1000);
+      } else if (tokens.expires_at) {
+        // Use expires_at if available (should be a timestamp)
+        expirationTime = typeof tokens.expires_at === 'number' ? tokens.expires_at * 1000 : Date.parse(tokens.expires_at as string);
+      }
+
+      if (expirationTime) {
+        this.persistentStorage.setItem(this.tokenExpirationKey, String(expirationTime));
+        logger.debug('Stored token expiration time', {
+          serverId: this.server.id,
+          expirationTime: new Date(expirationTime).toISOString()
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to store token expiration time', {
+        serverId: this.server.id,
+        error
+      });
+    }
+  }
+
+  /**
+   * Get stored token expiration time
+   */
+  getTokenExpirationTime(): Date | null {
+    try {
+      const expirationStr = this.persistentStorage.getItem(this.tokenExpirationKey);
+      if (expirationStr) {
+        const expirationTime = parseInt(expirationStr, 10);
+        if (!isNaN(expirationTime)) {
+          return new Date(expirationTime);
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to retrieve token expiration time', {
+        serverId: this.server.id,
+        error
+      });
+    }
+    return null;
+  }
+
+  /**
+   * Check if tokens should be refreshed proactively
+   * @param thresholdMs - Refresh tokens this many milliseconds before expiration
+   */
+  shouldRefreshToken(thresholdMs: number = 5 * 60 * 1000): boolean {
+    const expirationTime = this.getTokenExpirationTime();
+    if (!expirationTime) {
+      return false; // No expiration time stored, can't determine
+    }
+
+    const now = Date.now();
+    const timeUntilExpiration = expirationTime.getTime() - now;
+
+    return timeUntilExpiration <= thresholdMs && timeUntilExpiration > 0;
+  }
+
+  /**
+   * Refresh tokens proactively in the background
+   */
+  async refreshTokenProactively(): Promise<boolean> {
+    try {
+      // This method would need to be implemented based on the MCP SDK's token refresh mechanism
+      // For now, we'll log that proactive refresh was attempted
+      logger.info('Attempting proactive token refresh', {
+        serverId: this.server.id,
+        currentExpiration: this.getTokenExpirationTime()?.toISOString()
+      });
+
+      // The actual token refresh would depend on the MCP SDK implementation
+      // This is a placeholder for the refresh logic
+      return false; // Return false until actual refresh mechanism is implemented
+    } catch (error) {
+      logger.error('Failed to refresh tokens proactively', {
+        serverId: this.server.id,
+        error
+      });
+      return false;
+    }
   }
 
   private resolveRedirectUri(): string {

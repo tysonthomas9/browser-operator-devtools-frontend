@@ -20,6 +20,23 @@ export interface ConnectionResult {
   connected: boolean;
   error?: Error;
   errorType?: 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown';
+  retryAttempts?: number;
+}
+
+interface RetryConfig {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+  jitterMs: number;
+}
+
+export interface ConnectionEvent {
+  timestamp: Date;
+  serverId: string;
+  eventType: 'connected' | 'disconnected' | 'auth_error' | 'retry_attempt' | 'connection_failed';
+  details?: string;
+  retryAttempt?: number;
 }
 
 export interface MCPRegistryStatus {
@@ -30,6 +47,7 @@ export interface MCPRegistryStatus {
   lastErrorType?: 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown';
   lastConnected?: Date;
   lastDisconnected?: Date;
+  connectionEvents: ConnectionEvent[];
 }
 
 class RegistryImpl {
@@ -40,6 +58,19 @@ class RegistryImpl {
   private lastErrorType?: 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown';
   private lastConnected?: Date;
   private lastDisconnected?: Date;
+  private connectionEvents: ConnectionEvent[] = [];
+  private readonly maxConnectionEvents = 50; // Keep last 50 events
+
+  private getRetryConfig(): RetryConfig {
+    const cfg = getMCPConfig();
+    return {
+      maxRetries: cfg.maxConnectionRetries || 3,
+      baseDelayMs: cfg.retryDelayMs || 1000,
+      maxDelayMs: Math.max((cfg.retryDelayMs || 1000) * 10, 10000), // 10x base delay or 10s minimum
+      backoffMultiplier: 2,
+      jitterMs: 500,
+    };
+  }
 
   private categorizeError(error: unknown): 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown' {
     const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
@@ -107,12 +138,246 @@ class RegistryImpl {
     this.lastErrorType = this.categorizeError(error);
   }
 
+  /**
+   * Check if an error type is worth retrying
+   */
+  private shouldRetryError(errorType: string): boolean {
+    // Only retry network errors and server errors, not authentication or configuration errors
+    return errorType === 'network' || errorType === 'server_error' || errorType === 'connection';
+  }
+
+  /**
+   * Calculate delay for retry attempt with exponential backoff and jitter
+   */
+  private calculateRetryDelay(attempt: number, config: RetryConfig): number {
+    const exponentialDelay = config.baseDelayMs * Math.pow(config.backoffMultiplier, attempt);
+    const jitter = Math.random() * config.jitterMs;
+    return Math.min(exponentialDelay + jitter, config.maxDelayMs);
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Track a connection event
+   */
+  private trackConnectionEvent(event: Omit<ConnectionEvent, 'timestamp'>): void {
+    const connectionEvent: ConnectionEvent = {
+      ...event,
+      timestamp: new Date(),
+    };
+
+    this.connectionEvents.push(connectionEvent);
+
+    // Keep only the last N events
+    if (this.connectionEvents.length > this.maxConnectionEvents) {
+      this.connectionEvents = this.connectionEvents.slice(-this.maxConnectionEvents);
+    }
+
+    // Also persist to localStorage for persistence across sessions
+    this.saveConnectionEvents();
+
+    logger.debug('Connection event tracked', connectionEvent);
+  }
+
+  /**
+   * Save connection events to localStorage
+   */
+  private saveConnectionEvents(): void {
+    try {
+      const serialized = this.connectionEvents.map(event => ({
+        ...event,
+        timestamp: event.timestamp.toISOString(),
+      }));
+      localStorage.setItem('ai_chat_mcp_connection_events', JSON.stringify(serialized));
+    } catch (error) {
+      logger.warn('Failed to save connection events', error);
+    }
+  }
+
+  /**
+   * Load connection events from localStorage
+   */
+  private loadConnectionEvents(): void {
+    try {
+      const raw = localStorage.getItem('ai_chat_mcp_connection_events');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          this.connectionEvents = parsed.map(event => ({
+            ...event,
+            timestamp: new Date(event.timestamp),
+          })).slice(-this.maxConnectionEvents); // Ensure we don't exceed max
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to load connection events', error);
+      this.connectionEvents = [];
+    }
+  }
+
+  /**
+   * Get connection events for display
+   */
+  getConnectionEvents(): ConnectionEvent[] {
+    return [...this.connectionEvents].reverse(); // Most recent first
+  }
+
+  /**
+   * Clear stored authentication error for a specific server
+   */
+  private clearStoredAuthErrorForServer(serverId: string): void {
+    try {
+      const prefix = `mcp_oauth:${serverId}:`;
+      localStorage.removeItem(`${prefix}last_auth_error`);
+      localStorage.removeItem(`${prefix}auth_error_timestamp`);
+      localStorage.removeItem(`${prefix}auth_error_type`);
+    } catch (err) {
+      logger.warn('Failed to clear stored auth error', { serverId, err });
+    }
+  }
+
+  /**
+   * Attempt to connect to a server with retry logic
+   */
+  private async connectWithRetry(server: RegistryServer, config?: RetryConfig, interactive: boolean = true): Promise<ConnectionResult> {
+    const retryConfig = config || this.getRetryConfig();
+    let lastError: unknown;
+    let retryAttempts = 0;
+
+    for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+      try {
+        await this.client.connect({ ...server, interactive });
+        this.lastConnected = new Date();
+
+        logger.info('MCP connected', {
+          serverId: server.id,
+          endpoint: server.endpoint,
+          attempt: attempt + 1,
+          retryAttempts
+        });
+
+        // Clear any stored authentication errors on successful connection
+        this.clearStoredAuthErrorForServer(server.id);
+
+        // Track successful connection
+        this.trackConnectionEvent({
+          serverId: server.id,
+          eventType: 'connected',
+          details: `Connected on attempt ${attempt + 1}`,
+          retryAttempt: attempt,
+        });
+
+        return {
+          serverId: server.id,
+          name: server.name,
+          endpoint: server.endpoint,
+          connected: true,
+          retryAttempts,
+        };
+      } catch (error) {
+        lastError = error;
+        retryAttempts = attempt;
+        const errorType = this.categorizeError(error);
+
+        // Enhanced logging with error details
+        const logContext: any = {
+          serverId: server.id,
+          endpoint: server.endpoint,
+          authType: server.authType,
+          attempt: attempt + 1,
+          errorType
+        };
+        if (error instanceof Error && 'context' in error) {
+          const context = (error as any).context;
+          logContext.errorContext = context;
+        }
+
+        logger.warn('MCP connect attempt failed', { ...logContext, error });
+
+        // Track authentication errors specifically
+        if (errorType === 'authentication') {
+          this.trackConnectionEvent({
+            serverId: server.id,
+            eventType: 'auth_error',
+            details: error instanceof Error ? error.message : String(error),
+            retryAttempt: attempt,
+          });
+        } else {
+          // Track retry attempts for other errors
+          this.trackConnectionEvent({
+            serverId: server.id,
+            eventType: 'retry_attempt',
+            details: `${errorType}: ${error instanceof Error ? error.message : String(error)}`,
+            retryAttempt: attempt,
+          });
+        }
+
+        // Don't retry for authentication or configuration errors
+        if (!this.shouldRetryError(errorType)) {
+          logger.info('MCP connection error not retryable', {
+            serverId: server.id,
+            errorType,
+            finalAttempt: attempt + 1
+          });
+          break;
+        }
+
+        // Don't sleep after the last attempt
+        if (attempt < retryConfig.maxRetries) {
+          const delay = this.calculateRetryDelay(attempt, retryConfig);
+          logger.info('MCP connection retry scheduled', {
+            serverId: server.id,
+            attempt: attempt + 1,
+            nextAttemptIn: `${delay}ms`
+          });
+          await this.sleep(delay);
+        }
+      }
+    }
+
+    // All attempts failed
+    this.setError(lastError);
+
+    logger.error('MCP connect failed after all retries', {
+      serverId: server.id,
+      endpoint: server.endpoint,
+      totalAttempts: retryAttempts + 1,
+      error: lastError
+    });
+
+    // Track final connection failure
+    this.trackConnectionEvent({
+      serverId: server.id,
+      eventType: 'connection_failed',
+      details: `Failed after ${retryAttempts + 1} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+      retryAttempt: retryAttempts,
+    });
+
+    return {
+      serverId: server.id,
+      name: server.name,
+      endpoint: server.endpoint,
+      connected: false,
+      error: lastError instanceof Error ? lastError : new Error(String(lastError)),
+      errorType: this.categorizeError(lastError),
+      retryAttempts,
+    };
+  }
+
   async init(interactive: boolean = false): Promise<ConnectionResult[]> {
     const cfg = getMCPConfig();
     this.registeredTools = [];
     this.lastError = undefined;
     this.lastErrorType = undefined;
     ToolNameMap.clear();
+
+    // Load connection events from previous sessions
+    this.loadConnectionEvents();
 
     if (!cfg.enabled) {
       logger.info('MCP disabled');
@@ -149,65 +414,14 @@ class RegistryImpl {
       } : undefined,
     }));
 
-    if (!interactive) {
-      const requiresInteraction = this.servers
-        .filter(server => server.authType === 'oauth')
-        .some(server => {
-          try {
-            const storage = window.localStorage;
-            return !storage.getItem(`mcp_oauth:${server.id}:tokens`);
-          } catch {
-            return true;
-          }
-        });
-      if (requiresInteraction) {
-        logger.info('Skipping OAuth auto-connect on startup; awaiting user action');
-        return this.servers.map(server => ({
-          serverId: server.id,
-          name: server.name,
-          endpoint: server.endpoint,
-          connected: false,
-          error: new Error('OAuth authentication required'),
-          errorType: 'authentication' as const,
-        }));
-      }
-    }
+    // In non-interactive mode, let the OAuth provider handle token checks internally
+    // This allows auto-connection with refresh tokens while avoiding popups for new auth
 
     const results: ConnectionResult[] = [];
 
     for (const server of this.servers) {
-      try {
-        await this.client.connect(server);
-        this.lastConnected = new Date();
-        logger.info('MCP connected', { serverId: server.id, endpoint: server.endpoint });
-
-        results.push({
-          serverId: server.id,
-          name: server.name,
-          endpoint: server.endpoint,
-          connected: true,
-        });
-      } catch (error) {
-        this.setError(error);
-
-        // Enhanced logging with error details
-        const logContext: any = { serverId: server.id, endpoint: server.endpoint, authType: server.authType };
-        if (error instanceof Error && 'context' in error) {
-          const context = (error as any).context;
-          logContext.errorContext = context;
-        }
-
-        logger.error('MCP connect failed', { ...logContext, error });
-
-        results.push({
-          serverId: server.id,
-          name: server.name,
-          endpoint: server.endpoint,
-          connected: false,
-          error: error instanceof Error ? error : new Error(String(error)),
-          errorType: this.categorizeError(error),
-        });
-      }
+      const result = await this.connectWithRetry(server, undefined, interactive);
+      results.push(result);
     }
 
     return results;
@@ -320,10 +534,14 @@ class RegistryImpl {
     }
 
     try {
-      await this.client.connect(server);
+      await this.client.connect({ ...server, interactive: true });
       this.lastConnected = new Date();
       this.lastError = undefined;
       this.lastErrorType = undefined;
+
+      // Clear stored authentication errors on successful reconnection
+      this.clearStoredAuthErrorForServer(serverId);
+
       await this.refresh();
       logger.info('MCP server reconnected', { serverId });
     } catch (error) {
@@ -337,6 +555,12 @@ class RegistryImpl {
     for (const srv of this.servers) {
       try {
         this.client.disconnect(srv.id);
+        // Track disconnection
+        this.trackConnectionEvent({
+          serverId: srv.id,
+          eventType: 'disconnected',
+          details: 'Manual disconnect',
+        });
       } catch {
         // ignore errors during cleanup
       }
@@ -387,6 +611,7 @@ class RegistryImpl {
       lastErrorType: this.lastErrorType,
       lastConnected: this.lastConnected,
       lastDisconnected: this.lastDisconnected,
+      connectionEvents: this.getConnectionEvents(),
     };
   }
 

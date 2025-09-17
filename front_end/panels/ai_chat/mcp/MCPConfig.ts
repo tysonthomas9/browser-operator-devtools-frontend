@@ -22,6 +22,10 @@ export interface MCPConfigData {
   toolMode?: 'all' | 'router' | 'meta';
   maxToolsPerTurn?: number;
   maxMcpPerTurn?: number;
+  autoRefreshTokens?: boolean;
+  maxConnectionRetries?: number;
+  retryDelayMs?: number;
+  proactiveRefreshThresholdMs?: number;
 }
 
 export type MCPConfigUpdate = Partial<Omit<MCPConfigData, 'providers'>>;
@@ -35,6 +39,10 @@ const KEYS = {
   toolMode: 'ai_chat_mcp_tool_mode',
   maxToolsPerTurn: 'ai_chat_mcp_max_tools_per_turn',
   maxMcpPerTurn: 'ai_chat_mcp_max_mcp_per_turn',
+  autoRefreshTokens: 'ai_chat_mcp_auto_refresh_tokens',
+  maxConnectionRetries: 'ai_chat_mcp_max_connection_retries',
+  retryDelayMs: 'ai_chat_mcp_retry_delay_ms',
+  proactiveRefreshThresholdMs: 'ai_chat_mcp_proactive_refresh_threshold_ms',
 } as const;
 
 interface StoredProvider {
@@ -288,6 +296,12 @@ export function getMCPConfig(): MCPConfigData {
     const maxToolsPerTurn = parseInt(localStorage.getItem(KEYS.maxToolsPerTurn) || '50', 10);
     const maxMcpPerTurn = parseInt(localStorage.getItem(KEYS.maxMcpPerTurn) || '50', 10);
 
+    // New auto-refresh and retry configuration options with defaults
+    const autoRefreshTokens = localStorage.getItem(KEYS.autoRefreshTokens) !== 'false'; // Default: true
+    const maxConnectionRetries = parseInt(localStorage.getItem(KEYS.maxConnectionRetries) || '3', 10);
+    const retryDelayMs = parseInt(localStorage.getItem(KEYS.retryDelayMs) || '1000', 10);
+    const proactiveRefreshThresholdMs = parseInt(localStorage.getItem(KEYS.proactiveRefreshThresholdMs) || '300000', 10); // 5 minutes
+
     return {
       enabled,
       providers,
@@ -296,6 +310,10 @@ export function getMCPConfig(): MCPConfigData {
       toolMode,
       maxToolsPerTurn,
       maxMcpPerTurn,
+      autoRefreshTokens,
+      maxConnectionRetries,
+      retryDelayMs,
+      proactiveRefreshThresholdMs,
     };
   } catch (err) {
     logger.error('Failed to load MCP config', err);
@@ -323,6 +341,18 @@ export function setMCPConfig(config: MCPConfigUpdate): void {
     if (config.maxMcpPerTurn !== undefined) {
       localStorage.setItem(KEYS.maxMcpPerTurn, String(config.maxMcpPerTurn));
     }
+    if (config.autoRefreshTokens !== undefined) {
+      localStorage.setItem(KEYS.autoRefreshTokens, String(!!config.autoRefreshTokens));
+    }
+    if (config.maxConnectionRetries !== undefined) {
+      localStorage.setItem(KEYS.maxConnectionRetries, String(config.maxConnectionRetries));
+    }
+    if (config.retryDelayMs !== undefined) {
+      localStorage.setItem(KEYS.retryDelayMs, String(config.retryDelayMs));
+    }
+    if (config.proactiveRefreshThresholdMs !== undefined) {
+      localStorage.setItem(KEYS.proactiveRefreshThresholdMs, String(config.proactiveRefreshThresholdMs));
+    }
   } catch (err) {
     logger.error('Failed to save MCP config', err);
   } finally {
@@ -346,4 +376,70 @@ function dispatchMCPConfigChanged(): void {
   } catch (err) {
     logger.warn('Failed to dispatch MCP config change event', err);
   }
+}
+
+/**
+ * Interface for stored authentication error details
+ */
+export interface StoredAuthError {
+  message: string;
+  type: 'authentication' | 'network' | 'configuration' | 'server_error' | 'unknown';
+  timestamp: number;
+  serverId: string;
+}
+
+/**
+ * Get stored authentication errors for all MCP providers
+ */
+export function getStoredAuthErrors(): StoredAuthError[] {
+  const errors: StoredAuthError[] = [];
+  const providers = getMCPProviders();
+
+  for (const provider of providers) {
+    if (provider.authType === 'oauth') {
+      try {
+        const prefix = `mcp_oauth:${provider.id}:`;
+        const message = localStorage.getItem(`${prefix}last_auth_error`);
+        const timestampStr = localStorage.getItem(`${prefix}auth_error_timestamp`);
+        const type = localStorage.getItem(`${prefix}auth_error_type`);
+
+        if (message && timestampStr && type) {
+          const timestamp = parseInt(timestampStr, 10);
+          if (!isNaN(timestamp)) {
+            errors.push({
+              message,
+              type: type as StoredAuthError['type'],
+              timestamp,
+              serverId: provider.id,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to retrieve stored auth error for provider', { providerId: provider.id, err });
+      }
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Clear stored authentication error for a specific provider
+ */
+export function clearStoredAuthError(serverId: string): void {
+  try {
+    const prefix = `mcp_oauth:${serverId}:`;
+    localStorage.removeItem(`${prefix}last_auth_error`);
+    localStorage.removeItem(`${prefix}auth_error_timestamp`);
+    localStorage.removeItem(`${prefix}auth_error_type`);
+  } catch (err) {
+    logger.warn('Failed to clear stored auth error', { serverId, err });
+  }
+}
+
+/**
+ * Check if any OAuth providers have stored authentication errors
+ */
+export function hasStoredAuthErrors(): boolean {
+  return getStoredAuthErrors().length > 0;
 }
