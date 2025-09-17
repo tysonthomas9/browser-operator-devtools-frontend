@@ -2,25 +2,25 @@ import * as i18n from '../../../../core/i18n/i18n.js';
 import * as UI from '../../../../ui/legacy/legacy.js';
 import * as Snackbars from '../../../../ui/components/snackbars/snackbars.js';
 import { createLogger } from '../../core/Logger.js';
-import { MCPRegistry } from '../../mcp/MCPRegistry.js';
+import { MCPRegistry, type ConnectionResult } from '../../mcp/MCPRegistry.js';
 import { getMCPProviders, saveMCPProviders, type MCPProviderConfig } from '../../mcp/MCPConfig.js';
 import { MCPConnectionsDialog } from './MCPConnectionsDialog.js';
 
 const logger = createLogger('MCPConnectorsCatalogDialog');
 
 const LOGO_URLS = {
-  sentry: new URL('../../../../Images/mcp/sentry.svg', import.meta.url).toString(),
-  atlassian: new URL('../../../../Images/mcp/atlassian.svg', import.meta.url).toString(),
-  linear: new URL('../../../../Images/mcp/linear.svg', import.meta.url).toString(),
-  notion: new URL('../../../../Images/mcp/notion.svg', import.meta.url).toString(),
-  slack: new URL('../../../../Images/mcp/slack.svg', import.meta.url).toString(),
-  github: new URL('../../../../Images/mcp/github.svg', import.meta.url).toString(),
-  asana: new URL('../../../../Images/mcp/asana.svg', import.meta.url).toString(),
-  intercom: new URL('../../../../Images/mcp/intercom.svg', import.meta.url).toString(),
-  'google-drive': new URL('../../../../Images/mcp/google-drive.svg', import.meta.url).toString(),
-  huggingface: new URL('../../../../Images/mcp/huggingface.svg', import.meta.url).toString(),
-  'google-sheets': new URL('../../../../Images/mcp/google-sheets.svg', import.meta.url).toString(),
-  socket: new URL('../../../../Images/mcp/socket.svg', import.meta.url).toString(),
+  sentry: new URL('../../../../Images/sentry-mcp.svg', import.meta.url).toString(),
+  atlassian: new URL('../../../../Images/atlassian-mcp.svg', import.meta.url).toString(),
+  linear: new URL('../../../../Images/linear-mcp.svg', import.meta.url).toString(),
+  notion: new URL('../../../../Images/notion-mcp.svg', import.meta.url).toString(),
+  slack: new URL('../../../../Images/slack-mcp.svg', import.meta.url).toString(),
+  github: new URL('../../../../Images/github-mcp.svg', import.meta.url).toString(),
+  asana: new URL('../../../../Images/asana-mcp.svg', import.meta.url).toString(),
+  intercom: new URL('../../../../Images/intercom-mcp.svg', import.meta.url).toString(),
+  'google-drive': new URL('../../../../Images/google-drive-mcp.svg', import.meta.url).toString(),
+  huggingface: new URL('../../../../Images/huggingface-mcp.svg', import.meta.url).toString(),
+  'google-sheets': new URL('../../../../Images/google-sheets-mcp.svg', import.meta.url).toString(),
+  socket: new URL('../../../../Images/socket-mcp.svg', import.meta.url).toString(),
 } as const;
 
 type MCPConnectorLogoId = keyof typeof LOGO_URLS;
@@ -37,10 +37,22 @@ const UIStrings = {
   manageConnectionsAction: 'Manage',
   successMessage: 'Added {PH1} connector.',
   alreadyExists: 'This connector is already configured.',
-  connecting: 'Connecting…',
+  connecting: 'Connecting',
   oauthInProgress: 'Complete the {PH1} sign-in in the opened tab.',
   connectionFailed: 'Unable to add {PH1}. Please try again.',
   connectionFailedWithReason: 'Unable to add {PH1}: {PH2}',
+  connectionError: 'Connection failed',
+  viewDetails: 'View Details',
+  hideDetails: 'Hide Details',
+  errorTypeAuthentication: 'Authentication Required',
+  errorTypeConfiguration: 'Configuration Error',
+  errorTypeNetwork: 'Network Error',
+  errorTypeServerError: 'Server Error',
+  errorTypeConnection: 'Connection Error',
+  errorTypeUnknown: 'Unknown Error',
+  connected: 'Connected',
+  retry: 'Retry',
+  clearError: 'Clear',
   noResultsFound: 'No connectors found',
   expand: 'Expand',
   collapse: 'Collapse',
@@ -61,6 +73,43 @@ interface MCPConnector {
 
 const MCP_CONNECTORS: MCPConnector[] = [
   {
+    id: 'invideo',
+    name: 'invideo',
+    description: 'Build video creation capabilities into your applications',
+  logo: 'socket', // fallback generic icon
+    endpoint: 'https://mcp.invideo.io/sse',
+    authType: 'oauth',
+    category: 'Media'
+  },
+  {
+    id: 'canva',
+    name: 'Canva',
+    description: 'Browse, summarize, autofill, and even generate new Canva designs directly from Claude',
+  logo: 'socket', // fallback generic icon
+    endpoint: 'https://mcp.canva.com/mcp',
+    authType: 'oauth',
+    category: 'Design'
+  },
+  // {
+  //   id: 'monday',
+  //   name: 'Monday',
+  //   description: 'Manage monday.com boards by creating items, updating columns, assigning owners, setting timelines, adding CRM activities, and writing summaries',
+  // logo: 'socket', // fallback generic icon
+  //   endpoint: 'https://mcp.monday.com/sse',
+  //   authType: 'oauth',
+  //   category: 'Project Management'
+  // },
+  {
+    id: 'jam',
+    name: 'Jam',
+    description: 'Debug faster with AI agents that can access Jam recordings like video, console logs, network requests, and errors',
+  logo: 'socket', // fallback generic icon
+    endpoint: 'https://mcp.jam.dev/mcp',
+    authType: 'oauth',
+    category: 'Debugging'
+  },
+  // ...existing connectors...
+  {
     id: 'sentry',
     name: 'Sentry',
     description: 'Error monitoring & debugging production issues',
@@ -70,20 +119,11 @@ const MCP_CONNECTORS: MCPConnector[] = [
     category: 'Development'
   },
   {
-    id: 'atlassian',
-    name: 'Atlassian',
-    description: 'Jira tickets & Confluence documentation',
-    logo: 'atlassian',
-    endpoint: 'https://mcp.atlassian.com/v1/sse',
-    authType: 'oauth',
-    category: 'Project Management'
-  },
-  {
     id: 'linear',
     name: 'Linear',
     description: 'Issue tracking & project management',
     logo: 'linear',
-    endpoint: 'https://mcp.linear.app/sse',
+    endpoint: 'https://mcp.linear.app/mcp',
     authType: 'oauth',
     category: 'Project Management'
   },
@@ -97,33 +137,6 @@ const MCP_CONNECTORS: MCPConnector[] = [
     category: 'Documentation'
   },
   {
-    id: 'slack',
-    name: 'Slack',
-    description: 'Team communication & collaboration',
-    logo: 'slack',
-    endpoint: 'https://mcp.slack.com/v1/sse',
-    authType: 'oauth',
-    category: 'Communication'
-  },
-  {
-    id: 'github',
-    name: 'GitHub',
-    description: 'Code repositories & project management',
-    logo: 'github',
-    endpoint: 'https://mcp.github.com/v1',
-    authType: 'oauth',
-    category: 'Development'
-  },
-  {
-    id: 'asana',
-    name: 'Asana',
-    description: 'Task & project management platform',
-    logo: 'asana',
-    endpoint: 'https://mcp.asana.com/sse',
-    authType: 'oauth',
-    category: 'Project Management'
-  },
-  {
     id: 'intercom',
     name: 'Intercom',
     description: 'Customer support & conversations',
@@ -131,15 +144,6 @@ const MCP_CONNECTORS: MCPConnector[] = [
     endpoint: 'https://mcp.intercom.com/mcp',
     authType: 'oauth',
     category: 'Communication'
-  },
-  {
-    id: 'google-drive',
-    name: 'Google Drive',
-    description: 'File storage & document management',
-    logo: 'google-drive',
-    endpoint: 'https://mcp.googleapis.com/drive/v1',
-    authType: 'oauth',
-    category: 'Storage'
   },
   {
     id: 'huggingface',
@@ -150,24 +154,6 @@ const MCP_CONNECTORS: MCPConnector[] = [
     authType: 'oauth',
     category: 'AI/ML'
   },
-  {
-    id: 'google-sheets',
-    name: 'Google Sheets',
-    description: 'Spreadsheet data & analysis',
-    logo: 'google-sheets',
-    endpoint: 'https://mcp.googleapis.com/sheets/v1',
-    authType: 'oauth',
-    category: 'Data'
-  },
-  {
-    id: 'socket',
-    name: 'Socket',
-    description: 'Security analysis for dependencies',
-    logo: 'socket',
-    endpoint: 'https://mcp.socket.dev/',
-    authType: 'oauth',
-    category: 'Security'
-  }
 ];
 
 interface MCPConnectorsCatalogDialogOptions {
@@ -186,6 +172,10 @@ export class MCPConnectorsCatalogDialog {
   #searchQuery = '';
   #collapsedCategories = new Set<string>();
   #connectorsContainer: HTMLElement | null = null;
+  #statusElement: HTMLElement | null = null;
+  #connectionErrors = new Map<string, { message: string; type?: string; details?: any }>();
+  #connectingConnectorId: string | null = null;
+  #errorResetTimeouts = new Map<string, number>();
 
   constructor(options: MCPConnectorsCatalogDialogOptions) {
     this.#options = options;
@@ -347,6 +337,10 @@ export class MCPConnectorsCatalogDialog {
         background: var(--color-background-elevation-1);
         opacity: 0.8;
       }
+      .mcp-connector-item.error {
+        background: var(--color-background-elevation-1);
+        border-left: 3px solid var(--color-error);
+      }
       .mcp-connector-logo {
         width: 24px;
         height: 24px;
@@ -381,6 +375,9 @@ export class MCPConnectorsCatalogDialog {
       .mcp-connector-toggle {
         margin-left: 12px;
         flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
       .mcp-toggle-switch {
         position: relative;
@@ -415,10 +412,25 @@ export class MCPConnectorsCatalogDialog {
       .mcp-toggle-switch.enabled::after {
         transform: translateX(16px);
       }
+      .mcp-toggle-switch.error {
+        background: var(--color-error);
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .mcp-toggle-switch.error::after {
+        background: #ffdddd;
+      }
+      .mcp-toggle-switch.disabled {
+        background: var(--color-details-hairline);
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .mcp-toggle-switch.disabled::after {
+        background: var(--color-background-elevation-1);
+      }
       .mcp-connector-status {
         display: flex;
         align-items: center;
-        margin-left: 8px;
         font-size: 12px;
         color: var(--color-text-secondary);
       }
@@ -428,6 +440,108 @@ export class MCPConnectorsCatalogDialog {
         border-radius: 50%;
         background: var(--color-primary);
         margin-right: 4px;
+        cursor: help;
+      }
+      .mcp-status-dot.error {
+        background: var(--color-error);
+      }
+      .mcp-connector-error {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: var(--color-error-container);
+        border: 1px solid var(--color-error);
+        border-radius: 4px;
+        font-size: 12px;
+        color: var(--color-error-text);
+        line-height: 1.3;
+      }
+      .mcp-error-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .mcp-error-type {
+        font-weight: 600;
+        color: var(--color-error);
+      }
+      .mcp-error-message {
+        margin-bottom: 6px;
+      }
+      .mcp-error-details {
+        background: var(--color-background-elevation-1);
+        border: 1px solid var(--color-details-hairline);
+        border-radius: 3px;
+        padding: 6px 8px;
+        margin: 6px 0;
+        font-family: monospace;
+        font-size: 11px;
+        color: var(--color-text-secondary);
+        max-height: 100px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .mcp-error-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .mcp-error-toggle {
+        background: none;
+        border: none;
+        color: var(--color-error);
+        font-size: 11px;
+        cursor: pointer;
+        text-decoration: underline;
+        padding: 0;
+      }
+      .mcp-error-toggle:hover {
+        color: var(--color-error-variant);
+      }
+      .mcp-error-retry-button, .mcp-error-clear-button {
+        padding: 4px 8px;
+        font-size: 11px;
+        border-radius: 3px;
+        cursor: pointer;
+        border: none;
+        font-weight: 500;
+        transition: all 0.2s ease;
+      }
+      .mcp-error-retry-button {
+        background: var(--color-error);
+        color: var(--color-text-inverted);
+      }
+      .mcp-error-retry-button:hover {
+        background: var(--color-error-variant);
+      }
+      .mcp-error-clear-button {
+        background: var(--color-background);
+        color: var(--color-text-secondary);
+        border: 1px solid var(--color-details-hairline);
+      }
+      .mcp-error-clear-button:hover {
+        background: var(--color-background-elevation-1);
+      }
+      .mcp-loading-indicator {
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        color: var(--color-text-secondary);
+        cursor: help;
+      }
+      .mcp-loading-indicator::after {
+        content: '...';
+        animation: mcp-loading-dots 1.5s steps(4, end) infinite;
+      }
+      @keyframes mcp-loading-dots {
+        0%, 20% { content: ''; }
+        40% { content: '.'; }
+        60% { content: '..'; }
+        80%, 100% { content: '...'; }
+      }
+      .mcp-connector-item.globally-disabled {
+        opacity: 0.6;
+        pointer-events: none;
       }
       .mcp-no-results {
         text-align: center;
@@ -524,11 +638,10 @@ export class MCPConnectorsCatalogDialog {
     statusSection.className = 'mcp-catalog-status';
     content.appendChild(statusSection);
 
-    const connectedCount = this.#existingProviders.length;
-    const totalCount = MCP_CONNECTORS.length;
     const statusText = document.createElement('span');
     statusText.className = 'mcp-catalog-status-count';
-    statusText.textContent = i18nString(UIStrings.connectionsStatus, {PH1: connectedCount.toString(), PH2: totalCount.toString()});
+    this.#statusElement = statusText;
+    this.updateConnectionStatus();
     statusSection.appendChild(statusText);
 
     const description = document.createElement('span');
@@ -600,6 +713,228 @@ export class MCPConnectorsCatalogDialog {
     });
   }
 
+  private updateConnectionStatus(): void {
+    if (!this.#statusElement) {
+      return;
+    }
+
+    const connectedCount = this.#existingProviders.length;
+    const totalCount = MCP_CONNECTORS.length;
+    this.#statusElement.textContent = i18nString(UIStrings.connectionsStatus, {
+      PH1: connectedCount.toString(),
+      PH2: totalCount.toString()
+    });
+  }
+
+  private showConnectorError(connector: MCPConnector, error: string | Error, item: HTMLElement, toggle: HTMLButtonElement): void {
+    // Extract error details
+    let errorMessage = error instanceof Error ? error.message : error;
+    let errorType = 'unknown';
+    let errorDetails = null;
+
+    if (error instanceof Error && 'context' in error) {
+      const context = (error as any).context;
+      errorDetails = context;
+
+      // Determine error type based on context
+      if (context?.authState === 'oauth_required' || context?.httpStatus === 401) {
+        errorType = 'authentication';
+      } else if (context?.httpStatus === 404) {
+        errorType = 'configuration';
+      } else if (context?.httpStatus === 403) {
+        errorType = 'authentication';
+      } else if (context?.httpStatus >= 500) {
+        errorType = 'server_error';
+      } else if (context?.readyState === 2) {
+        errorType = 'network';
+      }
+    }
+
+    // Store error state with details
+    this.#connectionErrors.set(connector.id, { message: errorMessage, type: errorType, details: errorDetails });
+
+    // Update UI to error state
+    item.classList.add('error');
+    item.classList.remove('connecting', 'connected');
+    toggle.classList.add('error');
+    toggle.classList.remove('connecting', 'enabled');
+    toggle.disabled = true;
+
+    // Add error status dot
+    const toggleContainer = toggle.parentElement as HTMLElement;
+    const existingStatus = toggleContainer.querySelector('.mcp-connector-status');
+    if (existingStatus) {
+      existingStatus.remove();
+    }
+
+    const status = document.createElement('div');
+    status.className = 'mcp-connector-status';
+    const dot = document.createElement('div');
+    dot.className = 'mcp-status-dot error';
+    dot.title = errorMessage;
+    status.appendChild(dot);
+    toggleContainer.appendChild(status);
+
+    // Show error container
+    const errorContainer = item.querySelector('.mcp-connector-error') as HTMLElement;
+    if (errorContainer) {
+      errorContainer.style.display = 'block';
+      errorContainer.innerHTML = '';
+
+      // Error header with type
+      const header = document.createElement('div');
+      header.className = 'mcp-error-header';
+
+      const typeElement = document.createElement('div');
+      typeElement.className = 'mcp-error-type';
+      typeElement.textContent = this.getErrorTypeDisplayName(errorType);
+      header.appendChild(typeElement);
+
+      // Show details toggle if we have details
+      if (errorDetails) {
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'mcp-error-toggle';
+        toggleButton.textContent = i18nString(UIStrings.viewDetails);
+        toggleButton.addEventListener('click', () => {
+          const detailsElement = errorContainer.querySelector('.mcp-error-details') as HTMLElement;
+          if (detailsElement) {
+            const isVisible = detailsElement.style.display !== 'none';
+            detailsElement.style.display = isVisible ? 'none' : 'block';
+            toggleButton.textContent = i18nString(isVisible ? UIStrings.viewDetails : UIStrings.hideDetails);
+          }
+        });
+        header.appendChild(toggleButton);
+      }
+
+      errorContainer.appendChild(header);
+
+      // Error message
+      const message = document.createElement('div');
+      message.className = 'mcp-error-message';
+      message.textContent = errorMessage;
+      errorContainer.appendChild(message);
+
+      // Error details (initially hidden)
+      if (errorDetails) {
+        const details = document.createElement('div');
+        details.className = 'mcp-error-details';
+        details.style.display = 'none';
+        details.textContent = JSON.stringify(errorDetails, null, 2);
+        errorContainer.appendChild(details);
+      }
+
+      // Actions
+      const actions = document.createElement('div');
+      actions.className = 'mcp-error-actions';
+
+      const retryButton = document.createElement('button');
+      retryButton.className = 'mcp-error-retry-button';
+      retryButton.textContent = i18nString(UIStrings.retry);
+      retryButton.addEventListener('click', () => {
+        this.clearConnectorError(connector, item, toggle);
+        this.toggleConnector(connector, toggle, item);
+      });
+      actions.appendChild(retryButton);
+
+      const clearButton = document.createElement('button');
+      clearButton.className = 'mcp-error-clear-button';
+      clearButton.textContent = i18nString(UIStrings.clearError);
+      clearButton.addEventListener('click', () => {
+        this.clearConnectorError(connector, item, toggle);
+      });
+      actions.appendChild(clearButton);
+
+      errorContainer.appendChild(actions);
+    }
+  }
+
+  private getErrorTypeDisplayName(errorType: string): string {
+    switch (errorType) {
+      case 'authentication': return i18nString(UIStrings.errorTypeAuthentication);
+      case 'configuration': return i18nString(UIStrings.errorTypeConfiguration);
+      case 'network': return i18nString(UIStrings.errorTypeNetwork);
+      case 'server_error': return i18nString(UIStrings.errorTypeServerError);
+      case 'connection': return i18nString(UIStrings.errorTypeConnection);
+      default: return i18nString(UIStrings.errorTypeUnknown);
+    }
+  }
+
+  private clearConnectorError(connector: MCPConnector, item: HTMLElement, toggle: HTMLButtonElement): void {
+    // Clear any pending auto-reset timeout
+    const timeoutId = this.#errorResetTimeouts.get(connector.id);
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      this.#errorResetTimeouts.delete(connector.id);
+    }
+
+    // Remove error state
+    this.#connectionErrors.delete(connector.id);
+
+    // Update UI
+    item.classList.remove('error');
+    toggle.classList.remove('error');
+    toggle.disabled = false;
+
+    // Remove error status dot
+    const toggleContainer = toggle.parentElement as HTMLElement;
+    const existingStatus = toggleContainer.querySelector('.mcp-connector-status');
+    if (existingStatus) {
+      existingStatus.remove();
+    }
+
+    // Hide error container
+    const errorContainer = item.querySelector('.mcp-connector-error') as HTMLElement;
+    if (errorContainer) {
+      errorContainer.style.display = 'none';
+      errorContainer.innerHTML = '';
+    }
+  }
+
+  private setConnectingState(connectorId: string): void {
+    this.#connectingConnectorId = connectorId;
+    this.updateAllConnectorStates();
+  }
+
+  private clearConnectingState(): void {
+    this.#connectingConnectorId = null;
+    this.updateAllConnectorStates();
+  }
+
+  private updateAllConnectorStates(): void {
+    if (!this.#connectorsContainer) {
+      return;
+    }
+
+    const allItems = this.#connectorsContainer.querySelectorAll('.mcp-connector-item');
+    allItems.forEach((item) => {
+      const connectorId = this.getConnectorIdFromItem(item as HTMLElement);
+      if (!connectorId) return;
+
+      const toggle = item.querySelector('.mcp-toggle-switch') as HTMLButtonElement;
+      const isCurrentlyConnecting = this.#connectingConnectorId === connectorId;
+      const hasGlobalConnection = this.#connectingConnectorId && !isCurrentlyConnecting;
+
+      if (hasGlobalConnection) {
+        // Disable other toggles during connection
+        item.classList.add('globally-disabled');
+        toggle.classList.add('disabled');
+        toggle.disabled = true;
+      } else {
+        // Re-enable toggle if no global connection in progress
+        item.classList.remove('globally-disabled');
+        if (!this.#connectionErrors.has(connectorId)) {
+          toggle.classList.remove('disabled');
+          toggle.disabled = false;
+        }
+      }
+    });
+  }
+
+  private getConnectorIdFromItem(item: HTMLElement): string | null {
+    // We'll store the connector ID as a data attribute when creating items
+    return item.getAttribute('data-connector-id');
+  }
+
   private createCategorySection(category: string, connectors: MCPConnector[]): HTMLElement {
     const section = document.createElement('div');
     section.className = 'mcp-category-section';
@@ -657,13 +992,20 @@ export class MCPConnectorsCatalogDialog {
   private createConnectorItem(connector: MCPConnector): HTMLElement {
     const item = document.createElement('div');
     item.className = 'mcp-connector-item';
+    item.setAttribute('data-connector-id', connector.id);
 
     const isConnected = this.#existingProviders.some(
       provider => provider.endpoint === connector.endpoint
     );
+    const hasError = this.#connectionErrors.has(connector.id);
+    const isConnecting = this.#connectingConnectorId === connector.id;
 
-    if (isConnected) {
+    if (hasError) {
+      item.classList.add('error');
+    } else if (isConnected) {
       item.classList.add('connected');
+    } else if (isConnecting) {
+      item.classList.add('connecting');
     }
 
     // Logo
@@ -698,33 +1040,150 @@ export class MCPConnectorsCatalogDialog {
 
     const toggle = document.createElement('button');
     toggle.className = 'mcp-toggle-switch';
-    if (isConnected) {
+    if (hasError) {
+      toggle.classList.add('error');
+      toggle.disabled = true;
+    } else if (isConnecting) {
+      toggle.classList.add('connecting');
+      toggle.disabled = true;
+    } else if (isConnected) {
       toggle.classList.add('enabled');
+    }
+
+    // Check if other connections are in progress
+    const hasGlobalConnection = this.#connectingConnectorId && !isConnecting;
+    if (hasGlobalConnection) {
+      toggle.classList.add('disabled');
+      toggle.disabled = true;
     }
 
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.toggleConnector(connector, toggle, item);
+      if (!hasError && !this.#connectingConnectorId) {
+        this.toggleConnector(connector, toggle, item);
+      }
     });
 
     toggleContainer.appendChild(toggle);
 
-    // Status indicator for connected items
-    if (isConnected) {
+    // Loading indicator (positioned before toggle) or status indicator (positioned after toggle)
+    if (isConnecting) {
+      const loading = document.createElement('div');
+      loading.className = 'mcp-loading-indicator';
+      loading.title = i18nString(UIStrings.connecting);
+      toggleContainer.insertBefore(loading, toggle);
+    }
+
+    // Status indicator for connected items or error items (positioned after toggle)
+    if (hasError) {
+      const status = document.createElement('div');
+      status.className = 'mcp-connector-status';
+      const dot = document.createElement('div');
+      dot.className = 'mcp-status-dot error';
+      const errorInfo = this.#connectionErrors.get(connector.id);
+      dot.title = errorInfo?.message || i18nString(UIStrings.connectionError);
+      status.appendChild(dot);
+      toggleContainer.appendChild(status);
+    } else if (isConnected) {
       const status = document.createElement('div');
       status.className = 'mcp-connector-status';
       const dot = document.createElement('div');
       dot.className = 'mcp-status-dot';
+      dot.title = i18nString(UIStrings.connected);
       status.appendChild(dot);
       toggleContainer.appendChild(status);
     }
 
     item.appendChild(toggleContainer);
 
+    // Error container (initially hidden, but show if there's an existing error)
+    const errorContainer = document.createElement('div');
+    errorContainer.className = 'mcp-connector-error';
+    errorContainer.style.display = hasError ? 'block' : 'none';
+
+    if (hasError) {
+      const errorInfo = this.#connectionErrors.get(connector.id);
+      const errorMessage = errorInfo?.message || i18nString(UIStrings.connectionError);
+      const errorType = errorInfo?.type || 'unknown';
+      const errorDetails = errorInfo?.details;
+
+      // Error header with type
+      const header = document.createElement('div');
+      header.className = 'mcp-error-header';
+
+      const typeElement = document.createElement('div');
+      typeElement.className = 'mcp-error-type';
+      typeElement.textContent = this.getErrorTypeDisplayName(errorType);
+      header.appendChild(typeElement);
+
+      // Show details toggle if we have details
+      if (errorDetails) {
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'mcp-error-toggle';
+        toggleButton.textContent = i18nString(UIStrings.viewDetails);
+        toggleButton.addEventListener('click', () => {
+          const detailsElement = errorContainer.querySelector('.mcp-error-details') as HTMLElement;
+          if (detailsElement) {
+            const isVisible = detailsElement.style.display !== 'none';
+            detailsElement.style.display = isVisible ? 'none' : 'block';
+            toggleButton.textContent = i18nString(isVisible ? UIStrings.viewDetails : UIStrings.hideDetails);
+          }
+        });
+        header.appendChild(toggleButton);
+      }
+
+      errorContainer.appendChild(header);
+
+      // Error message
+      const message = document.createElement('div');
+      message.className = 'mcp-error-message';
+      message.textContent = errorMessage;
+      errorContainer.appendChild(message);
+
+      // Error details (initially hidden)
+      if (errorDetails) {
+        const details = document.createElement('div');
+        details.className = 'mcp-error-details';
+        details.style.display = 'none';
+        details.textContent = JSON.stringify(errorDetails, null, 2);
+        errorContainer.appendChild(details);
+      }
+
+      // Actions
+      const actions = document.createElement('div');
+      actions.className = 'mcp-error-actions';
+
+      const retryButton = document.createElement('button');
+      retryButton.className = 'mcp-error-retry-button';
+      retryButton.textContent = i18nString(UIStrings.retry);
+      retryButton.addEventListener('click', () => {
+        this.clearConnectorError(connector, item, toggle);
+        this.toggleConnector(connector, toggle, item);
+      });
+      actions.appendChild(retryButton);
+
+      const clearButton = document.createElement('button');
+      clearButton.className = 'mcp-error-clear-button';
+      clearButton.textContent = i18nString(UIStrings.clearError);
+      clearButton.addEventListener('click', () => {
+        this.clearConnectorError(connector, item, toggle);
+      });
+      actions.appendChild(clearButton);
+
+      errorContainer.appendChild(actions);
+    }
+
+    item.appendChild(errorContainer);
+
     return item;
   }
 
   private async toggleConnector(connector: MCPConnector, toggle: HTMLButtonElement, item: HTMLElement): Promise<void> {
+    // Prevent toggling if another connection is in progress
+    if (this.#connectingConnectorId && this.#connectingConnectorId !== connector.id) {
+      return;
+    }
+
     const isCurrentlyConnected = this.#existingProviders.some(
       provider => provider.endpoint === connector.endpoint
     );
@@ -759,8 +1218,11 @@ export class MCPConnectorsCatalogDialog {
         statusElement.remove();
       }
 
-      await MCPRegistry.init(true);
+      void await MCPRegistry.init(true);
       await MCPRegistry.refresh();
+
+      // Update connection status counter
+      this.updateConnectionStatus();
 
       logger.info(`Disconnected MCP connector: ${connector.name}`);
 
@@ -788,6 +1250,9 @@ export class MCPConnectorsCatalogDialog {
   private async connectConnector(connector: MCPConnector, toggle: HTMLButtonElement, item: HTMLElement): Promise<void> {
     const previousProviders = this.#existingProviders.map(provider => ({ ...provider }));
 
+    // Set global connecting state
+    this.setConnectingState(connector.id);
+
     const progressSnackbar = Snackbars.Snackbar.Snackbar.show({
       message: i18nString(UIStrings.oauthInProgress, {PH1: connector.name}),
       closable: true,
@@ -805,10 +1270,23 @@ export class MCPConnectorsCatalogDialog {
       }
     };
 
+    // Update UI to show loading state
     toggle.classList.add('connecting');
     toggle.disabled = true;
     item.classList.add('connecting');
     item.setAttribute('aria-busy', 'true');
+
+    // Add loading indicator to the left of toggle
+    const toggleContainer = toggle.parentElement as HTMLElement;
+    const existingStatus = toggleContainer.querySelector('.mcp-connector-status, .mcp-loading-indicator');
+    if (existingStatus) {
+      existingStatus.remove();
+    }
+
+    const loading = document.createElement('div');
+    loading.className = 'mcp-loading-indicator';
+    loading.title = i18nString(UIStrings.connecting);
+    toggleContainer.insertBefore(loading, toggle);
 
     try {
       const newProvider: MCPProviderConfig = {
@@ -819,12 +1297,28 @@ export class MCPConnectorsCatalogDialog {
         enabled: true,
       };
 
+      // Save provider temporarily to test connection
       const updatedProviders = [...previousProviders, newProvider];
       saveMCPProviders(updatedProviders);
       this.#existingProviders = getMCPProviders();
 
-      await MCPRegistry.init(true);
+      // Test the connection
+      const connectionResults = await MCPRegistry.init(true);
       await MCPRegistry.refresh();
+
+      // Find the result for our specific connector
+      const ourResult = connectionResults.find(result =>
+        result.endpoint === connector.endpoint || result.serverId === connector.id
+      );
+
+      // If connection failed, throw error to trigger catch block
+      if (!ourResult || !ourResult.connected) {
+        const error = ourResult?.error || new Error('Connection failed');
+        throw error;
+      }
+
+      // Clear global connecting state
+      this.clearConnectingState();
 
       // Update UI to connected state
       toggle.classList.remove('connecting');
@@ -834,16 +1328,25 @@ export class MCPConnectorsCatalogDialog {
       item.classList.add('connected');
       item.removeAttribute('aria-busy');
 
-      // Add status indicator
+      // Replace loading indicator with status indicator
       const toggleContainer = toggle.parentElement as HTMLElement;
+      const loadingIndicator = toggleContainer.querySelector('.mcp-loading-indicator');
+      if (loadingIndicator) {
+        loadingIndicator.remove();
+      }
+
       const status = document.createElement('div');
       status.className = 'mcp-connector-status';
       const dot = document.createElement('div');
       dot.className = 'mcp-status-dot';
+      dot.title = i18nString(UIStrings.connected);
       status.appendChild(dot);
       toggleContainer.appendChild(status);
 
       logger.info(`Connected MCP connector: ${connector.name}`);
+
+      // Update connection status counter
+      this.updateConnectionStatus();
 
       dismissProgressSnackbar();
 
@@ -859,6 +1362,9 @@ export class MCPConnectorsCatalogDialog {
     } catch (error) {
       logger.error('Failed to connect MCP connector', error);
 
+      // Clear global connecting state
+      this.clearConnectingState();
+
       try {
         saveMCPProviders(previousProviders);
         this.#existingProviders = getMCPProviders();
@@ -866,23 +1372,37 @@ export class MCPConnectorsCatalogDialog {
         logger.error('Failed to revert MCP providers after connect failure', revertError);
       }
 
-      toggle.classList.remove('connecting');
-      toggle.disabled = false;
-      item.classList.remove('connecting');
-      item.classList.remove('connected');
       item.removeAttribute('aria-busy');
 
-      const message = error instanceof Error && error.message
-        ? i18nString(UIStrings.connectionFailedWithReason, {PH1: connector.name, PH2: error.message})
-        : i18nString(UIStrings.connectionFailed, {PH1: connector.name});
+      // Remove loading indicator
+      const toggleContainer = toggle.parentElement as HTMLElement;
+      const loadingIndicator = toggleContainer.querySelector('.mcp-loading-indicator');
+      if (loadingIndicator) {
+        loadingIndicator.remove();
+      }
+
+      const errorMessage = error instanceof Error && error.message
+        ? error.message
+        : i18nString(UIStrings.connectionError);
+
+      // Show inline error instead of just snackbar
+      this.showConnectorError(connector, errorMessage, item, toggle);
+
+      // Set 90-second auto-reset timeout
+      const timeoutId = window.setTimeout(() => {
+        this.clearConnectorError(connector, item, toggle);
+        logger.info(`Auto-cleared error for ${connector.name} after 90 seconds`);
+      }, 90000);
+      this.#errorResetTimeouts.set(connector.id, timeoutId);
 
       dismissProgressSnackbar();
 
+      // Still show a snackbar for immediate feedback, but less prominent
       const snackbar = Snackbars.Snackbar.Snackbar.show({
-        message,
+        message: i18nString(UIStrings.connectionFailed, {PH1: connector.name}),
         closable: true,
       });
-      snackbar.dismissTimeout = 6000;
+      snackbar.dismissTimeout = 3000;
     }
   }
 
@@ -893,6 +1413,12 @@ export class MCPConnectorsCatalogDialog {
   }
 
   private close(): void {
+    // Clean up any pending timeout callbacks
+    this.#errorResetTimeouts.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    this.#errorResetTimeouts.clear();
+
     this.#dialog.hide();
     if (this.#options.onClose) {
       this.#options.onClose();

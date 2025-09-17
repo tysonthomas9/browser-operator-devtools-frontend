@@ -59,7 +59,7 @@ export class MCPOAuthProvider implements OAuthClientProvider {
     const redirect = String(this.redirectUrl);
     return {
       redirect_uris: [redirect],
-      client_name: 'chrome-devtools-mcp',
+      client_name: 'browseroperator',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       scope: this.metadata.scope ?? 'offline_access',

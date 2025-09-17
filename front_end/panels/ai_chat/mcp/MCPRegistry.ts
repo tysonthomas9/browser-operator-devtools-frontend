@@ -13,6 +13,15 @@ interface RegistryServer extends MCPServer {
   authType: 'bearer' | 'oauth';
 }
 
+export interface ConnectionResult {
+  serverId: string;
+  name?: string;
+  endpoint: string;
+  connected: boolean;
+  error?: Error;
+  errorType?: 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown';
+}
+
 export interface MCPRegistryStatus {
   enabled: boolean;
   servers: Array<{ id: string; name?: string; endpoint: string; authType: 'bearer' | 'oauth'; connected: boolean; toolCount: number }>;
@@ -35,6 +44,46 @@ class RegistryImpl {
   private categorizeError(error: unknown): 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown' {
     const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 
+    // Check for SSE-specific error context
+    if (error instanceof Error && 'context' in error) {
+      const context = (error as any).context;
+
+      // OAuth-related failures
+      if (context?.authState === 'oauth_required' || context?.httpStatus === 401) {
+        return 'authentication';
+      }
+
+      // Network/connection failures with specific status codes
+      if (context?.httpStatus === 404) {
+        return 'configuration';  // Endpoint not found
+      }
+      if (context?.httpStatus === 403) {
+        return 'authentication';  // Forbidden - likely auth issue
+      }
+      if (context?.httpStatus >= 500) {
+        return 'server_error';
+      }
+
+      // CORS or connection timeouts
+      if (context?.readyState === 2) {  // EventSource CLOSED state
+        return 'network';
+      }
+    }
+
+    // Check for CORS errors (common with SSE)
+    if (message.includes('cors') || message.includes('cross-origin') || message.includes('fetch')) {
+      return 'network';
+    }
+
+    // SSE-specific errors
+    if (message.includes('sse error') || message.includes('eventsource')) {
+      if (message.includes('oauth') || message.includes('401') || message.includes('unauthorized')) {
+        return 'authentication';
+      }
+      return 'connection';
+    }
+
+    // Original categorization logic
     if (message.includes('unauthorized') || message.includes('authentication') || message.includes('auth') || message.includes('token')) {
       return 'authentication';
     }
@@ -58,7 +107,7 @@ class RegistryImpl {
     this.lastErrorType = this.categorizeError(error);
   }
 
-  async init(interactive: boolean = false): Promise<void> {
+  async init(interactive: boolean = false): Promise<ConnectionResult[]> {
     const cfg = getMCPConfig();
     this.registeredTools = [];
     this.lastError = undefined;
@@ -67,13 +116,13 @@ class RegistryImpl {
 
     if (!cfg.enabled) {
       logger.info('MCP disabled');
-      return;
+      return [];
     }
 
     const providers = cfg.providers.filter(provider => provider.enabled);
     if (providers.length === 0) {
       logger.warn('No MCP providers configured');
-      return;
+      return [];
     }
 
     const configuredIds = new Set(providers.map(provider => provider.id));
@@ -113,20 +162,55 @@ class RegistryImpl {
         });
       if (requiresInteraction) {
         logger.info('Skipping OAuth auto-connect on startup; awaiting user action');
-        return;
+        return this.servers.map(server => ({
+          serverId: server.id,
+          name: server.name,
+          endpoint: server.endpoint,
+          connected: false,
+          error: new Error('OAuth authentication required'),
+          errorType: 'authentication' as const,
+        }));
       }
     }
+
+    const results: ConnectionResult[] = [];
 
     for (const server of this.servers) {
       try {
         await this.client.connect(server);
         this.lastConnected = new Date();
         logger.info('MCP connected', { serverId: server.id, endpoint: server.endpoint });
+
+        results.push({
+          serverId: server.id,
+          name: server.name,
+          endpoint: server.endpoint,
+          connected: true,
+        });
       } catch (error) {
         this.setError(error);
-        logger.error('MCP connect failed', { serverId: server.id, error });
+
+        // Enhanced logging with error details
+        const logContext: any = { serverId: server.id, endpoint: server.endpoint, authType: server.authType };
+        if (error instanceof Error && 'context' in error) {
+          const context = (error as any).context;
+          logContext.errorContext = context;
+        }
+
+        logger.error('MCP connect failed', { ...logContext, error });
+
+        results.push({
+          serverId: server.id,
+          name: server.name,
+          endpoint: server.endpoint,
+          connected: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+          errorType: this.categorizeError(error),
+        });
       }
     }
+
+    return results;
   }
 
   async refresh(): Promise<void> {
@@ -220,6 +304,32 @@ class RegistryImpl {
       } catch (error) {
         logger.error('Failed to register MCP tool', { tool: def.name, smartName: toolName, error });
       }
+    }
+  }
+
+  async reconnect(serverId: string): Promise<void> {
+    const server = this.servers.find(srv => srv.id === serverId);
+    if (!server) {
+      throw new Error(`Unknown MCP server: ${serverId}`);
+    }
+
+    try {
+      this.client.disconnect(serverId);
+    } catch (error) {
+      logger.debug('Error disconnecting MCP server before reconnect', { serverId, error });
+    }
+
+    try {
+      await this.client.connect(server);
+      this.lastConnected = new Date();
+      this.lastError = undefined;
+      this.lastErrorType = undefined;
+      await this.refresh();
+      logger.info('MCP server reconnected', { serverId });
+    } catch (error) {
+      this.setError(error);
+      logger.error('Failed to reconnect MCP server', { serverId, error });
+      throw error;
     }
   }
 

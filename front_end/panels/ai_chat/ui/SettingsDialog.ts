@@ -382,6 +382,18 @@ const UIStrings = {
    */
   mcpRefreshConnections: 'Reconnect all',
   /**
+   *@description MCP individual reconnect button text
+   */
+  mcpReconnectButton: 'Reconnect',
+  /**
+   *@description MCP individual reconnect button text while in progress
+   */
+  mcpReconnectInProgress: 'Reconnecting…',
+  /**
+   *@description MCP individual reconnect button failure state text
+   */
+  mcpReconnectRetry: 'Retry reconnect',
+  /**
    *@description MCP discovered tools label
    */
   mcpDiscoveredTools: 'Discovered Tools',
@@ -2620,6 +2632,48 @@ export class SettingsDialog {
 
     const updateMCPStatus = () => {
       const status = MCPRegistry.getStatus();
+
+      const appendServerRow = (server: typeof status.servers[number], isConnected: boolean) => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+        row.style.flexWrap = 'wrap';
+
+        const label = document.createElement('span');
+        label.style.color = isConnected ? 'var(--color-text-secondary)' : 'var(--color-text-disabled)';
+        label.textContent = `${server.name || server.id} — ${isConnected ? 'Connected' : 'Disconnected'} · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
+        row.appendChild(label);
+
+        const needsReconnect = server.authType === 'oauth' && !isConnected;
+        if (needsReconnect) {
+          const reconnectButton = document.createElement('button');
+          reconnectButton.className = 'settings-button';
+          reconnectButton.style.padding = '2px 8px';
+          reconnectButton.style.fontSize = '12px';
+          reconnectButton.textContent = i18nString(UIStrings.mcpReconnectButton);
+          reconnectButton.addEventListener('click', async () => {
+            reconnectButton.disabled = true;
+            reconnectButton.textContent = i18nString(UIStrings.mcpReconnectInProgress);
+            try {
+              await MCPRegistry.reconnect(server.id);
+            } catch (err) {
+              logger.error('Failed to reconnect MCP server', { serverId: server.id, error: err });
+              reconnectButton.disabled = false;
+              reconnectButton.textContent = i18nString(UIStrings.mcpReconnectRetry);
+              return;
+            } finally {
+              updateMCPStatus();
+              updateDisconnectButton();
+              updateToolsList();
+            }
+          });
+          row.appendChild(reconnectButton);
+        }
+
+        mcpStatusDetails.appendChild(row);
+      };
+
       if (!status.enabled) {
         mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
         mcpStatusText.textContent = 'Disabled';
@@ -2643,12 +2697,7 @@ export class SettingsDialog {
           serversHeader.textContent = 'Servers';
           mcpStatusDetails.appendChild(serversHeader);
 
-          status.servers.forEach(server => {
-            const serverLine = document.createElement('div');
-            serverLine.style.color = server.connected ? 'var(--color-text-secondary)' : 'var(--color-text-disabled)';
-            serverLine.textContent = `${server.name || server.id} — ${server.connected ? 'Connected' : 'Disconnected'} · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
-            mcpStatusDetails.appendChild(serverLine);
-          });
+          status.servers.forEach(server => appendServerRow(server, server.connected));
         }
         if (status.lastConnected) {
           const line = document.createElement('div');
@@ -2685,12 +2734,7 @@ export class SettingsDialog {
           serversHeader.textContent = 'Servers';
           mcpStatusDetails.appendChild(serversHeader);
 
-          status.servers.forEach(server => {
-            const serverLine = document.createElement('div');
-            serverLine.style.color = 'var(--color-text-disabled)';
-            serverLine.textContent = `${server.name || server.id} — Disconnected · ${server.toolCount} tools · ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
-            mcpStatusDetails.appendChild(serverLine);
-          });
+          status.servers.forEach(server => appendServerRow(server, false));
         }
         if (status.lastDisconnected) {
           const line = document.createElement('div');

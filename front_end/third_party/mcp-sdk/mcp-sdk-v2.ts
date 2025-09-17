@@ -62,7 +62,12 @@ export class MCPClientSDKv2 {
   }
 
   async connect(server: MCPServer): Promise<void> {
-    logger.info('Connecting to MCP server (v2)', { serverId: server.id, endpoint: server.endpoint });
+    logger.info('Connecting to MCP server (v2)', {
+      serverId: server.id,
+      endpoint: server.endpoint,
+      authType: server.oauth ? 'oauth' : (server.token ? 'bearer' : 'none'),
+      hasRedirectUri: !!(server.oauth?.redirectUri || this.options.defaultRedirectUri)
+    });
 
     const client = new MCPSDKClient(
       {
@@ -94,12 +99,17 @@ export class MCPClientSDKv2 {
     });
 
     try {
+      logger.info('Attempting Streamable HTTP connection', { serverId: server.id, url: endpointUrl.href });
       const transport = await this.establishConnection(client, server, transportFactory, oauthProvider);
       this.connections.set(server.id, { server, connected: true, client, transport });
       logger.info('Connected to MCP server via Streamable HTTP', { serverId: server.id });
       return;
     } catch (error) {
-      logger.warn('Streamable HTTP connection failed, attempting SSE fallback', { serverId: server.id, error });
+      logger.warn('Streamable HTTP connection failed, attempting SSE fallback', {
+        serverId: server.id,
+        httpError: error instanceof Error ? error.message : String(error),
+        errorType: error?.constructor?.name || 'unknown'
+      });
     }
 
     const sseTransportFactory = () => new SSEClientTransport(endpointUrl, {
@@ -108,9 +118,19 @@ export class MCPClientSDKv2 {
       authProvider: oauthProvider,
     });
 
-    const sseTransport = await this.establishConnection(client, server, sseTransportFactory, oauthProvider);
-    this.connections.set(server.id, { server, connected: true, client, transport: sseTransport });
-    logger.info('Connected to MCP server via SSE fallback', { serverId: server.id });
+    try {
+      logger.info('Attempting SSE connection', { serverId: server.id, url: endpointUrl.href });
+      const sseTransport = await this.establishConnection(client, server, sseTransportFactory, oauthProvider);
+      this.connections.set(server.id, { server, connected: true, client, transport: sseTransport });
+      logger.info('Connected to MCP server via SSE fallback', { serverId: server.id });
+    } catch (sseError) {
+      logger.error('SSE connection also failed', {
+        serverId: server.id,
+        sseError: sseError instanceof Error ? sseError.message : String(sseError),
+        errorType: sseError?.constructor?.name || 'unknown'
+      });
+      throw sseError;
+    }
   }
 
   disconnect(serverId: string): void {
@@ -183,9 +203,19 @@ export class MCPClientSDKv2 {
   ): Promise<T> {
     const transport = createTransport();
     try {
+      logger.debug('Attempting transport connection', { serverId: server.id, transportType: transport.constructor.name });
       await client.connect(transport);
+      logger.debug('Transport connection succeeded', { serverId: server.id });
       return transport;
     } catch (error) {
+      logger.debug('Transport connection failed', {
+        serverId: server.id,
+        error: error instanceof Error ? error.message : String(error),
+        isUnauthorized: error instanceof UnauthorizedError,
+        hasOAuth: !!oauthProvider,
+        canFinishAuth: typeof transport.finishAuth === 'function'
+      });
+
       if (oauthProvider && error instanceof UnauthorizedError && typeof transport.finishAuth === 'function') {
         logger.info('Awaiting OAuth authorization code', { serverId: server.id });
         const authorizationCode = await oauthProvider.waitForAuthorizationCode();
@@ -195,8 +225,10 @@ export class MCPClientSDKv2 {
             await (transport as unknown as { close: () => Promise<void> | void }).close();
           } catch {}
         }
+        logger.debug('Creating new authenticated transport', { serverId: server.id });
         const authedTransport = createTransport();
         await client.connect(authedTransport);
+        logger.debug('Authenticated transport connection succeeded', { serverId: server.id });
         return authedTransport;
       }
       throw error;
@@ -302,7 +334,7 @@ class DevToolsPKCEOAuthProvider implements OAuthClientProvider {
     const redirect = String(this.redirectUrl);
     const metadata: OAuthClientMetadata = {
       redirect_uris: [redirect],
-      client_name: 'chrome-devtools-mcp',
+      client_name: 'browseroperator',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: this.init.metadata?.token_endpoint_auth_method,

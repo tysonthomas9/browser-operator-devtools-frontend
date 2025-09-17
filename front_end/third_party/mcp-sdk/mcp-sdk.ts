@@ -266,7 +266,7 @@ class DevToolsMCPOAuthProvider implements OAuthClientProvider {
     const redirect = String(this.redirectUrl);
     return {
       redirect_uris: [redirect],
-      client_name: 'chrome-devtools-mcp',
+      client_name: 'browseroperator',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       // Only pass scope if configured; some providers reject unknown scopes.
