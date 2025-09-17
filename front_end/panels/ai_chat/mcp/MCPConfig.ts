@@ -284,9 +284,9 @@ export function getMCPConfig(): MCPConfigData {
     }
 
     const autostart = localStorage.getItem(KEYS.autostart) === 'true';
-    const toolMode = (localStorage.getItem(KEYS.toolMode) as MCPConfigData['toolMode']) || 'router';
-    const maxToolsPerTurn = parseInt(localStorage.getItem(KEYS.maxToolsPerTurn) || '20', 10);
-    const maxMcpPerTurn = parseInt(localStorage.getItem(KEYS.maxMcpPerTurn) || '8', 10);
+    const toolMode = (localStorage.getItem(KEYS.toolMode) as MCPConfigData['toolMode']) || 'all';
+    const maxToolsPerTurn = parseInt(localStorage.getItem(KEYS.maxToolsPerTurn) || '50', 10);
+    const maxMcpPerTurn = parseInt(localStorage.getItem(KEYS.maxMcpPerTurn) || '50', 10);
 
     return {
       enabled,
