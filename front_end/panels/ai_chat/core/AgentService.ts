@@ -10,6 +10,7 @@ import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelCha
 
 import {createAgentGraph} from './Graph.js';
 import { createLogger } from './Logger.js';
+import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 import {type AgentState, createInitialState, createUserMessage} from './State.js';
 import type {CompiledGraph} from './Types.js';
 import { LLMClient } from '../LLM/LLMClient.js';
@@ -340,6 +341,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     const currentPageUrl = await this.#getCurrentPageUrl();
     const currentPageTitle = await this.#getCurrentPageTitle();
 
+    const orchestratorKey = selectedAgentType ? `orchestrator:${selectedAgentType}` : 'orchestrator:default';
+    const orchestratorDescriptor = await AgentDescriptorRegistry.getDescriptor(orchestratorKey) ||
+      await AgentDescriptorRegistry.getDescriptor('orchestrator:default');
+    if (orchestratorDescriptor) {
+      this.#state.context.agentDescriptor = orchestratorDescriptor;
+    }
+
     // Check if there's an existing tracing context (e.g., from evaluation)
     const existingContext = getCurrentTracingContext() as TracingContext | null;
     
@@ -375,7 +383,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         {
           selectedAgentType,
           currentPageUrl,
-          currentPageTitle
+          currentPageTitle,
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         },
         undefined, // userId
         [selectedAgentType || 'default'].filter(Boolean)
@@ -409,7 +423,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         currentPageUrl,
         currentPageTitle,
         messageCount: this.#state.messages.length,
-        isEvaluationContext: !!existingContext
+        isEvaluationContext: !!existingContext,
+        ...(orchestratorDescriptor ? {
+          agentVersion: orchestratorDescriptor.version,
+          agentName: orchestratorDescriptor.name,
+          promptHash: orchestratorDescriptor.promptHash,
+          toolsetHash: orchestratorDescriptor.toolsetHash
+        } : {})
       },
       ...(parentObservationId && { parentObservationId })
     }, traceId);
@@ -425,7 +445,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
             parentObservationId: parentObservationId
           },
           executionId: this.#executionId,
-          abortSignal: this.#abortController?.signal
+          abortSignal: this.#abortController?.signal,
+          ...(orchestratorDescriptor ? { agentDescriptor: orchestratorDescriptor } : {})
         },
         selectedAgentType: selectedAgentType ?? null, // Set the agent type for this run
         currentPageUrl,
@@ -494,7 +515,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         },
         metadata: {
           totalMessages: this.#state.messages.length,
-          responseType: 'success'
+          responseType: 'success',
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         }
       }, traceId);
 
@@ -548,7 +575,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         error: error instanceof Error ? error.message : String(error),
         metadata: {
           totalMessages: this.#state.messages.length,
-          responseType: 'error'
+          responseType: 'error',
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         }
       }, traceId);
 

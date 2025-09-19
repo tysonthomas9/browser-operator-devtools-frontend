@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import { enhancePromptWithPageContext } from '../core/PageInfoManager.js';
+import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import type { LLMResponse, LLMMessage, LLMProvider } from '../LLM/LLMTypes.js';
 import type { Tool } from '../tools/Tools.js';
@@ -38,6 +39,8 @@ export interface AgentRunnerConfig {
   miniModel?: string;
   /** Nano model for smallest/fastest operations */
   nanoModel?: string;
+  /** Descriptor describing this agent configuration */
+  agentDescriptor?: AgentDescriptor;
 }
 
 /**
@@ -402,7 +405,7 @@ export class AgentRunner {
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
-    const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature } = config;
+    const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
     const { prepareInitialMessages, createSuccessResult, createErrorResult } = hooks;
 
 
@@ -423,7 +426,8 @@ export class AgentRunner {
       config: executingAgent?.config,
       maxIterations,
       modelUsed: modelName,
-      iterationCount: 0
+      iterationCount: 0,
+      descriptor: agentDescriptor
     };
 
     // Use local session variable instead of static
@@ -617,7 +621,12 @@ export class AgentRunner {
               agentName,
               iteration: iteration + 1,
               maxIterations,
-              phase: 'llm_generation'
+              phase: 'llm_generation',
+              ...(agentDescriptor ? {
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
             }
           }, tracingContext.traceId);
 
@@ -683,7 +692,12 @@ export class AgentRunner {
               agentName,
               iteration: iteration + 1,
               phase: 'completed',
-              duration: Date.now() - generationStartTime.getTime()
+              duration: Date.now() - generationStartTime.getTime(),
+              ...(agentDescriptor ? {
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
             }
           });
 
@@ -710,7 +724,12 @@ export class AgentRunner {
               source: 'AgentRunner',
               agentName,
               iteration: iteration + 1,
-              phase: 'error'
+              phase: 'error',
+              ...(agentDescriptor ? {
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
             }
           });
         }

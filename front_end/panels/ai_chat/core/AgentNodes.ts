@@ -19,6 +19,7 @@ import { AgentErrorHandler } from './AgentErrorHandler.js';
 import { createTracingProvider, withTracingContext } from '../tracing/TracingConfig.js';
 import * as ToolNameMap from './ToolNameMap.js';
 import type { TracingProvider } from '../tracing/TracingProvider.js';
+import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 
 const logger = createLogger('AgentNodes');
 
@@ -110,6 +111,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
 
       // Create generation observation for LLM call
       const tracingContext = state.context?.tracingContext;
+      const agentDescriptor = state.context?.agentDescriptor;
       let generationId: string | undefined;
       const generationStartTime = new Date();
 
@@ -134,6 +136,17 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
               entity: state.messages[state.messages.length - 1].entity,
               content: JSON.stringify(state.messages[state.messages.length - 1]).substring(0, 500)
             } : null
+          },
+          metadata: {
+            executionLevel: 'stategraph',
+            source: 'AgentNode',
+            selectedAgentType: state.selectedAgentType ?? 'default',
+            ...(agentDescriptor ? {
+              agentName: agentDescriptor.name,
+              agentVersion: agentDescriptor.version,
+              promptHash: agentDescriptor.promptHash,
+              toolsetHash: agentDescriptor.toolsetHash
+            } : {})
           }
         }, tracingContext.traceId);
 
@@ -248,7 +261,18 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
           await this.tracingProvider.updateObservation(generationId, {
             endTime: new Date(),
             output: parsedAction,
-            ...(usage && { usage })
+            ...(usage && { usage }),
+            metadata: {
+              executionLevel: 'stategraph',
+              source: 'AgentNode',
+              selectedAgentType: state.selectedAgentType ?? 'default',
+              ...(agentDescriptor ? {
+                agentName: agentDescriptor.name,
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
+            }
           });
         }
 
@@ -346,7 +370,18 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
         if (generationId && tracingContext?.traceId) {
           await this.tracingProvider.updateObservation(generationId, {
             endTime: new Date(),
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
+            metadata: {
+              executionLevel: 'stategraph',
+              source: 'AgentNode',
+              selectedAgentType: state.selectedAgentType ?? 'default',
+              ...(agentDescriptor ? {
+                agentName: agentDescriptor.name,
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
+            }
           });
         }
         
@@ -607,6 +642,7 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
       let spanId: string | undefined;
       const spanStartTime = new Date();
       const isConfigurableAgent = selectedTool instanceof ConfigurableAgentTool;
+      const configurableDescriptor = isConfigurableAgent ? await AgentDescriptorRegistry.getDescriptor(selectedTool.name) : null;
 
       console.log(`[HIERARCHICAL_TRACING] ToolExecutorNode: Creating span for ${toolName}:`, {
         hasTracingContext: !!tracingContext,
@@ -636,7 +672,13 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
               phase: 'execution',
               executionLevel: isConfigurableAgent ? 'agentrunner' : 'tool',
               source: 'ToolExecutorNode',
-              isConfigurableAgent
+              isConfigurableAgent,
+              ...(configurableDescriptor ? {
+                agentVersion: configurableDescriptor.version,
+                agentName: configurableDescriptor.name,
+                promptHash: configurableDescriptor.promptHash,
+                toolsetHash: configurableDescriptor.toolsetHash
+              } : {})
             }
           }, tracingContext.traceId);
           console.log(`[HIERARCHICAL_TRACING] ToolExecutorNode: Successfully created span:`, {
@@ -700,7 +742,8 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
             model: this.modelName,
             miniModel: this.miniModel,
             nanoModel: this.nanoModel,
-            abortSignal: state.context.abortSignal
+            abortSignal: state.context.abortSignal,
+            ...(configurableDescriptor ? { agentDescriptor: configurableDescriptor } : {})
           });
         });
         console.log(`[TOOL EXECUTION PATH 1] ToolExecutorNode completed tool: ${toolName}`);
@@ -804,7 +847,12 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
                 agentName: toolName,
                 agentType: toolName,
                 resultType: result && typeof result === 'object' && 'agentSession' in result ? 'agent_result' : 'unknown'
-              })
+              }),
+              ...(configurableDescriptor ? {
+                agentVersion: configurableDescriptor.version,
+                promptHash: configurableDescriptor.promptHash,
+                toolsetHash: configurableDescriptor.toolsetHash
+              } : {})
             };
 
             await this.tracingProvider.updateObservation(spanId, {
@@ -850,7 +898,12 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
               ...(isConfigurableAgent && {
                 agentName: toolName,
                 agentType: toolName
-              })
+              }),
+              ...(configurableDescriptor ? {
+                agentVersion: configurableDescriptor.version,
+                promptHash: configurableDescriptor.promptHash,
+                toolsetHash: configurableDescriptor.toolsetHash
+              } : {})
             };
 
             await this.tracingProvider.updateObservation(spanId, {
