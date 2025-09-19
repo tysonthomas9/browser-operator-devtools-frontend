@@ -1,7 +1,7 @@
 // Copyright 2025 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-// Cache break: 2025-09-18T18:30:00Z - Add skipCredentialChecks parameter for AUTOMATED_MODE
+// Cache break: 2025-09-18T19:00:00Z - Add skipCredentialChecks + preserve credentials + secure logging
 
 import { createLogger } from './Logger.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
@@ -294,38 +294,42 @@ export class LLMConfigurationManager {
 
   /**
    * Save provider-specific settings to localStorage
+   * Only modifies settings for the active provider, preserving other providers' credentials
    */
   private saveProviderSpecificSettings(config: LLMConfig): void {
-    // Clear all provider-specific keys first
-    localStorage.removeItem(STORAGE_KEYS.OPENAI_API_KEY);
-    localStorage.removeItem(STORAGE_KEYS.LITELLM_API_KEY);
-    localStorage.removeItem(STORAGE_KEYS.LITELLM_ENDPOINT);
-    localStorage.removeItem(STORAGE_KEYS.GROQ_API_KEY);
-    localStorage.removeItem(STORAGE_KEYS.OPENROUTER_API_KEY);
-
-    // Save current provider's settings
+    // Save current provider's settings only (do not clear others)
     switch (config.provider) {
       case 'openai':
         if (config.apiKey) {
           localStorage.setItem(STORAGE_KEYS.OPENAI_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.OPENAI_API_KEY);
         }
         break;
       case 'litellm':
         if (config.endpoint) {
           localStorage.setItem(STORAGE_KEYS.LITELLM_ENDPOINT, config.endpoint);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.LITELLM_ENDPOINT);
         }
         if (config.apiKey) {
           localStorage.setItem(STORAGE_KEYS.LITELLM_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.LITELLM_API_KEY);
         }
         break;
       case 'groq':
         if (config.apiKey) {
           localStorage.setItem(STORAGE_KEYS.GROQ_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.GROQ_API_KEY);
         }
         break;
       case 'openrouter':
         if (config.apiKey) {
           localStorage.setItem(STORAGE_KEYS.OPENROUTER_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.OPENROUTER_API_KEY);
         }
         break;
     }
@@ -336,9 +340,18 @@ export class LLMConfigurationManager {
    */
   private handleStorageChange(event: StorageEvent): void {
     if (event.key && Object.values(STORAGE_KEYS).includes(event.key as any)) {
+      const sensitiveKeys = new Set([
+        STORAGE_KEYS.OPENAI_API_KEY,
+        STORAGE_KEYS.LITELLM_API_KEY,
+        STORAGE_KEYS.GROQ_API_KEY,
+        STORAGE_KEYS.OPENROUTER_API_KEY,
+      ]);
+      const redacted =
+        sensitiveKeys.has(event.key as any) ? '(redacted)' :
+        (event.newValue ? `${event.newValue.slice(0, 8)}…` : null);
       logger.debug('Configuration changed in another tab', {
         key: event.key,
-        newValue: event.newValue
+        newValue: redacted
       });
       this.notifyListeners();
     }
@@ -361,10 +374,15 @@ export class LLMConfigurationManager {
    * Get debug information about current configuration state
    */
   getDebugInfo(): Record<string, any> {
+    const redact = (cfg?: Partial<LLMConfig>) => cfg ? {
+      ...cfg,
+      apiKey: cfg.apiKey ? '(redacted)' : undefined
+    } : undefined;
+
     return {
       hasOverride: this.hasOverride(),
-      overrideConfig: this.overrideConfig,
-      currentConfig: this.getConfiguration(),
+      overrideConfig: redact(this.overrideConfig),
+      currentConfig: redact(this.getConfiguration()),
       validation: this.validateConfiguration(),
       listenerCount: this.changeListeners.length,
     };
