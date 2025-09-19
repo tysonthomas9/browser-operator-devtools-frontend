@@ -536,7 +536,8 @@ export class EvaluationAgent {
         // Merge model configuration - prefer params.model over params.input model fields
         // Also check for early override configuration from LLMConfigurationManager
         const configManager = LLMConfigurationManager.getInstance();
-        const overrideConfig = configManager.getConfiguration();
+        const hasOverride = configManager.hasOverride?.() || false;
+        const overrideConfig = hasOverride ? configManager.getConfiguration() : null;
 
         const mergedInput = {
           ...params.input,
@@ -554,7 +555,8 @@ export class EvaluationAgent {
             api_key: overrideConfig.apiKey || ((params.model?.main_model as any)?.api_key || (params.model as any)?.api_key),
             main_model: overrideConfig.mainModel || ((params.model?.main_model as any)?.model || params.model?.main_model),
             mini_model: overrideConfig.miniModel || ((params.model?.mini_model as any)?.model || params.model?.mini_model),
-            nano_model: overrideConfig.nanoModel || ((params.model?.nano_model as any)?.model || params.model?.nano_model)
+            nano_model: overrideConfig.nanoModel || ((params.model?.nano_model as any)?.model || params.model?.nano_model),
+            endpoint: overrideConfig.endpoint || ((params.model as any)?.endpoint || (params.model?.main_model as any)?.endpoint)
           })
         };
 
@@ -835,49 +837,37 @@ export class EvaluationAgent {
 
       try {
 
-        // Set override configuration if provided in input
-        if (input.provider || input.main_model || input.api_key) {
-          logger.info('Setting configuration override for chat evaluation', {
-            provider: input.provider,
-            mainModel: input.main_model,
-            hasApiKey: !!input.api_key
-          });
-
-          configManager.setOverride({
-            provider: input.provider,
-            mainModel: input.main_model,
-            miniModel: input.mini_model,
-            nanoModel: input.nano_model,
-            apiKey: input.api_key,
-            endpoint: input.endpoint
-          });
-        }
-
         // Get or create AgentService instance
         const agentService = AgentService.getInstance();
 
-        // Use override configuration if set, otherwise use constructor models
+        // Get current configuration as baseline
         const config = configManager.getConfiguration();
-        const modelName = config.mainModel || this.judgeModel;
-        const miniModel = config.miniModel || this.miniModel;
-        const nanoModel = config.nanoModel || this.nanoModel;
-        const apiKey = config.apiKey || agentService.getApiKey();
 
-        logger.info('Initializing AgentService for chat evaluation', {
-          modelName,
+        // Consolidate configuration with proper fallbacks
+        // Priority: input values -> existing config -> defaults
+        const provider = input.provider || config.provider || 'openai';
+        const mainModel = input.main_model || config.mainModel || this.judgeModel;
+        const miniModel = input.mini_model ?? config.miniModel ?? this.miniModel;
+        const nanoModel = input.nano_model ?? config.nanoModel ?? this.nanoModel;
+        const apiKey = input.api_key ?? config.apiKey ?? agentService.getApiKey();
+        const endpoint = input.endpoint ?? config.endpoint;
+
+        logger.info('Setting consolidated configuration override for chat evaluation', {
+          provider: provider,
+          mainModel: mainModel,
           hasApiKey: !!apiKey,
-          isInitialized: agentService.isInitialized(),
-          hasOverride: configManager.hasOverride()
+          hasEndpoint: !!endpoint,
+          isInitialized: agentService.isInitialized()
         });
 
-        // CRITICAL FIX: Set configuration override for this evaluation to use API key from request
-        // This is the key change that allows API keys to come from request body instead of localStorage
+        // Set single consolidated override with all fallback values
         configManager.setOverride({
-          provider: 'openai', // TODO: Extract from model config
-          apiKey: apiKey || undefined,
-          mainModel: modelName,
+          provider: provider,
+          mainModel: mainModel,
           miniModel: miniModel,
-          nanoModel: nanoModel
+          nanoModel: nanoModel,
+          apiKey: apiKey || undefined,
+          endpoint: endpoint || undefined
         });
 
         // Send the message using AgentService directly but with configuration override
@@ -895,7 +885,7 @@ export class EvaluationAgent {
               name: 'Chat Execution',
               type: 'span',
               startTime: new Date(),
-              input: { message: input.message, model: modelName },
+              input: { message: input.message, model: mainModel },
               metadata: {
                 evaluationType: 'chat'
               }
@@ -931,18 +921,18 @@ export class EvaluationAgent {
         const result = {
           response: responseText,
           messages: agentService.getMessages(),
-          modelUsed: modelName,
+          modelUsed: mainModel,
           timestamp: new Date().toISOString(),
           evaluationMetadata: {
             evaluationType: 'chat',
-            actualModelUsed: modelName
+            actualModelUsed: mainModel
           }
         };
         
         logger.info('Chat evaluation completed successfully', {
           responseLength: responseText.length,
           messageCount: result.messages.length,
-          modelUsed: modelName,
+          modelUsed: mainModel,
           evaluationId: tracingContext?.traceId
         });
         
@@ -989,15 +979,48 @@ export class EvaluationAgent {
       // Get configuration manager
       const configManager = LLMConfigurationManager.getInstance();
 
-      // Save configuration to localStorage (persistent mode)
-      configManager.saveConfiguration({
-        provider: params.provider,
-        apiKey: params.apiKey,
-        endpoint: params.endpoint,
-        mainModel: params.models.main,
-        miniModel: params.models.mini,
-        nanoModel: params.models.nano
-      });
+      // Load existing configuration for partial updates
+      const currentConfig = configManager.loadConfiguration();
+
+      // Merge configurations based on partial flag
+      const mergedConfig = {
+        provider: params.partial ? (params.provider ?? currentConfig.provider) : params.provider,
+        apiKey: params.partial ? (params.apiKey ?? currentConfig.apiKey) : params.apiKey,
+        endpoint: params.partial ? (params.endpoint ?? currentConfig.endpoint) : params.endpoint,
+        mainModel: params.partial ? (params.models?.main ?? currentConfig.mainModel) : params.models.main,
+        miniModel: params.partial ? (params.models?.mini ?? currentConfig.miniModel) : params.models?.mini,
+        nanoModel: params.partial ? (params.models?.nano ?? currentConfig.nanoModel) : params.models?.nano
+      };
+
+      // Validate the merged configuration
+      const validation = configManager.validateConfiguration();
+
+      // Check validation after setting the merged config temporarily
+      configManager.saveConfiguration(mergedConfig);
+      const postSaveValidation = configManager.validateConfiguration();
+
+      if (!postSaveValidation.isValid) {
+        // Restore the original config if validation fails
+        configManager.saveConfiguration(currentConfig);
+
+        // Send error response with validation errors
+        const errorResponse = createErrorResponse(
+          id,
+          ErrorCodes.INVALID_PARAMS,
+          'Invalid configuration',
+          { errors: postSaveValidation.errors }
+        );
+
+        if (this.client) {
+          this.client.send(errorResponse);
+        }
+
+        logger.error('Configuration validation failed', {
+          errors: postSaveValidation.errors
+        });
+
+        return;
+      }
 
       // Reinitialize AgentService with new configuration
       const agentService = AgentService.getInstance();
@@ -1005,11 +1028,11 @@ export class EvaluationAgent {
 
       // Prepare response with applied configuration
       const appliedConfig = {
-        provider: params.provider,
+        provider: mergedConfig.provider,
         models: {
-          main: params.models.main,
-          mini: params.models.mini || '',
-          nano: params.models.nano || ''
+          main: mergedConfig.mainModel,
+          mini: mergedConfig.miniModel || '',
+          nano: mergedConfig.nanoModel || ''
         }
       };
 
@@ -1021,8 +1044,8 @@ export class EvaluationAgent {
       }
 
       logger.info('LLM configuration applied successfully', {
-        provider: params.provider,
-        mainModel: params.models.main
+        provider: mergedConfig.provider,
+        mainModel: mergedConfig.mainModel
       });
 
     } catch (error) {
