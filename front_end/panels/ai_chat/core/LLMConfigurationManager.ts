@@ -36,12 +36,11 @@ const STORAGE_KEYS = {
 } as const;
 
 /**
- * Centralized LLM configuration manager with override capabilities.
- * Supports both manual mode (localStorage-based) and automated mode (override-based).
+ * Centralized LLM configuration manager for localStorage-based configuration.
+ * Supports configuration persistence and change notifications.
  */
 export class LLMConfigurationManager {
   private static instance: LLMConfigurationManager;
-  private overrideConfig?: Partial<LLMConfig>; // Override for automated mode
   private changeListeners: Array<() => void> = [];
 
   private constructor() {
@@ -60,54 +59,38 @@ export class LLMConfigurationManager {
   }
 
   /**
-   * Get the current provider with override fallback
+   * Get the current provider from localStorage
    */
   getProvider(): LLMProvider {
-    if (this.overrideConfig?.provider) {
-      return this.overrideConfig.provider;
-    }
     const stored = localStorage.getItem(STORAGE_KEYS.PROVIDER);
     return (stored as LLMProvider) || 'openai';
   }
 
   /**
-   * Get the main model with override fallback
+   * Get the main model from localStorage
    */
   getMainModel(): string {
-    if (this.overrideConfig?.mainModel) {
-      return this.overrideConfig.mainModel;
-    }
     return localStorage.getItem(STORAGE_KEYS.MODEL_SELECTION) || '';
   }
 
   /**
-   * Get the mini model with override fallback
+   * Get the mini model from localStorage
    */
   getMiniModel(): string {
-    if (this.overrideConfig?.miniModel) {
-      return this.overrideConfig.miniModel;
-    }
     return localStorage.getItem(STORAGE_KEYS.MINI_MODEL) || '';
   }
 
   /**
-   * Get the nano model with override fallback
+   * Get the nano model from localStorage
    */
   getNanoModel(): string {
-    if (this.overrideConfig?.nanoModel) {
-      return this.overrideConfig.nanoModel;
-    }
     return localStorage.getItem(STORAGE_KEYS.NANO_MODEL) || '';
   }
 
   /**
-   * Get the API key for the current provider with override fallback
+   * Get the API key for the current provider from localStorage
    */
   getApiKey(): string {
-    if (this.overrideConfig?.apiKey) {
-      return this.overrideConfig.apiKey;
-    }
-
     const provider = this.getProvider();
     switch (provider) {
       case 'openai':
@@ -124,13 +107,9 @@ export class LLMConfigurationManager {
   }
 
   /**
-   * Get the endpoint (primarily for LiteLLM) with override fallback
+   * Get the endpoint (primarily for LiteLLM) from localStorage
    */
   getEndpoint(): string | undefined {
-    if (this.overrideConfig?.endpoint) {
-      return this.overrideConfig.endpoint;
-    }
-
     const provider = this.getProvider();
     if (provider === 'litellm') {
       return localStorage.getItem(STORAGE_KEYS.LITELLM_ENDPOINT) || undefined;
@@ -152,38 +131,6 @@ export class LLMConfigurationManager {
     };
   }
 
-  /**
-   * Set override configuration (for automated mode per-request overrides)
-   */
-  setOverride(config: Partial<LLMConfig>): void {
-    logger.info('Setting configuration override', {
-      provider: config.provider,
-      mainModel: config.mainModel,
-      hasApiKey: !!config.apiKey,
-      hasEndpoint: !!config.endpoint
-    });
-
-    this.overrideConfig = { ...config };
-    this.notifyListeners();
-  }
-
-  /**
-   * Clear override configuration
-   */
-  clearOverride(): void {
-    if (this.overrideConfig) {
-      logger.info('Clearing configuration override');
-      this.overrideConfig = undefined;
-      this.notifyListeners();
-    }
-  }
-
-  /**
-   * Check if override is currently active
-   */
-  hasOverride(): boolean {
-    return !!this.overrideConfig;
-  }
 
   /**
    * Save configuration to localStorage (for manual mode and persistent automated mode)
@@ -380,8 +327,6 @@ export class LLMConfigurationManager {
     } : undefined;
 
     return {
-      hasOverride: this.hasOverride(),
-      overrideConfig: redact(this.overrideConfig),
       currentConfig: redact(this.getConfiguration()),
       validation: this.validateConfiguration(),
       listenerCount: this.changeListeners.length,

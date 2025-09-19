@@ -20,7 +20,7 @@ import type { TracingProvider, TracingContext } from '../tracing/TracingProvider
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
 import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
-import type { LLMProvider } from '../LLM/LLMTypes.js';
+import type { LLMProvider, LLMCallConfig } from '../LLM/LLMTypes.js';
 import { BUILD_CONFIG } from './BuildConfig.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
@@ -329,8 +329,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
 
   /**
    * Sends a message to the AI agent
+   * @param text The message text
+   * @param imageInput Optional image data
+   * @param selectedAgentType Optional agent type
+   * @param config Optional per-call LLM configuration
    */
-  async sendMessage(text: string, imageInput?: ImageInputData, selectedAgentType?: string | null): Promise<ChatMessage> {
+  async sendMessage(text: string, imageInput?: ImageInputData, selectedAgentType?: string | null, config?: LLMCallConfig): Promise<ChatMessage> {
     // Check if the current configuration requires an API key
     const requiresApiKey = this.#doesCurrentConfigRequireApiKey();
 
@@ -450,6 +454,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         selectedAgentType: selectedAgentType ?? null, // Set the agent type for this run
         currentPageUrl,
         currentPageTitle,
+        llmConfig: config, // Pass per-call config if provided
       };
 
       // Inject API key into context for tool execution paths (ConfigurableAgentTool)

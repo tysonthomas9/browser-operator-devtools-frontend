@@ -234,3 +234,18 @@ export interface ModelInfo {
   provider: LLMProvider;
   capabilities?: ModelCapabilities;
 }
+
+/**
+ * Configuration for per-call LLM settings
+ * Used to override global configuration for specific calls
+ */
+export interface LLMCallConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  models: {
+    main: string;
+    mini?: string;
+    nano?: string;
+  };
+  baseURL?: string; // For custom endpoints like LiteLLM
+}

@@ -5,6 +5,7 @@
 import * as i18n from '../../../core/i18n/i18n.js';
 import {type ChatMessage, ChatMessageEntity, type ImageInputData} from '../models/ChatTypes.js';
 import type {TracingContext} from '../tracing/TracingProvider.js';
+import type {LLMCallConfig} from '../LLM/LLMTypes.js';
 
 const UIStrings = {
 } as const;
@@ -32,6 +33,7 @@ export interface AgentState {
   selectedAgentType?: string | null; // Type of agent selected via UI button
   currentPageUrl?: string; // URL of the page when the message was sent
   currentPageTitle?: string; // Title of the page when the message was sent
+  llmConfig?: LLMCallConfig; // Per-call LLM configuration
 }
 
 /**

@@ -122,10 +122,10 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
           type: 'generation',
           startTime: generationStartTime,
           parentObservationId: tracingContext.parentObservationId,
-          model: this.modelName,
+          model: state.llmConfig?.models.main || this.modelName,
           modelParameters: {
             temperature: this.temperature,
-            provider: this.provider
+            provider: state.llmConfig?.provider || this.provider
           },
           input: {
             systemPrompt: systemPrompt.substring(0, 1000) + '...', // Truncate for tracing
@@ -144,9 +144,11 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
 
       try {
         const llm = LLMClient.getInstance();
-        
-        // Use provider passed at graph initialization
-        const provider = this.provider as LLMProvider;
+
+        // Use config from state if provided, otherwise fall back to graph initialization values
+        const effectiveProvider = state.llmConfig?.provider || this.provider;
+        const effectiveModel = state.llmConfig?.models.main || this.modelName;
+        const provider = effectiveProvider as LLMProvider;
         
         // Get tools for the current agent type
         const baseTools = BaseOrchestratorAgent.getAgentTools(state.selectedAgentType ?? '') as any;
@@ -191,7 +193,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
             // Call LLM
             const response = await llm.call({
               provider,
-              model: this.modelName,
+              model: effectiveModel,
               messages: llmMessages,
               systemPrompt,
               tools: tools.map(tool => ({
@@ -269,11 +271,11 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
                 reasoning: response.reasoning?.summary
               },
               metadata: {
-                llmModel: this.modelName,
+                llmModel: effectiveModel,
                 callCount: this.callCount,
                 toolCallId,
                 phase: 'tool_call_decision',
-                provider: this.provider
+                provider: provider
               }
             }, tracingContext.traceId);
             
@@ -592,16 +594,37 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         const result = await withTracingContext(executionContext, async () => {
           console.log(`[TOOL EXECUTION PATH 1] Inside withTracingContext for tool: ${toolName}`);
 
-          // Get configuration from manager (supports overrides)
-          const configManager = LLMConfigurationManager.getInstance();
-          const config = configManager.getConfiguration();
+          // Use config from state if provided, otherwise fall back to configuration manager
+          let apiKey: string | undefined;
+          let provider: LLMProvider;
+          let model: string;
+          let miniModel: string | undefined;
+          let nanoModel: string | undefined;
+
+          if (state.llmConfig) {
+            // Use per-call configuration
+            apiKey = state.llmConfig.apiKey;
+            provider = state.llmConfig.provider;
+            model = state.llmConfig.models.main;
+            miniModel = state.llmConfig.models.mini;
+            nanoModel = state.llmConfig.models.nano;
+          } else {
+            // Fall back to global configuration
+            const configManager = LLMConfigurationManager.getInstance();
+            const config = configManager.getConfiguration();
+            apiKey = config.apiKey;
+            provider = config.provider;
+            model = config.mainModel;
+            miniModel = config.miniModel;
+            nanoModel = config.nanoModel;
+          }
 
           return await selectedTool.execute(toolArgs as any, {
-            apiKey: config.apiKey,
-            provider: config.provider,
-            model: config.mainModel,
-            miniModel: config.miniModel,
-            nanoModel: config.nanoModel
+            apiKey,
+            provider,
+            model,
+            miniModel,
+            nanoModel
           });
         });
         console.log(`[TOOL EXECUTION PATH 1] ToolExecutorNode completed tool: ${toolName}`);

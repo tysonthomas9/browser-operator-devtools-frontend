@@ -14,6 +14,7 @@ import { createLogger } from '../../core/Logger.js';
 import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
 import type { ChatMessage } from '../../models/ChatTypes.js';
+import type { LLMCallConfig } from '../../LLM/LLMTypes.js';
 import {
   RegisterMessage,
   ReadyMessage,
@@ -330,7 +331,6 @@ export class EvaluationAgent {
   private async handleEvaluationRequest(request: EvaluationRequest): Promise<void> {
     const { params, id } = request;
     const startTime = Date.now();
-    let hasSetEarlyOverride = false;
 
     logger.info('Received evaluation request', {
       evaluationId: params.evaluationId,
@@ -382,17 +382,12 @@ export class EvaluationAgent {
           modelName
         });
 
-        configManager.setOverride({
+        // No longer needed: Early override removed to eliminate race conditions
+        logger.info('DEBUG: Model configuration available for evaluation', {
+          evaluationId: params.evaluationId,
           provider,
-          apiKey,
-          mainModel: modelName,
-          miniModel: miniModel || modelName,
-          nanoModel: nanoModel || miniModel || modelName
-        });
-        hasSetEarlyOverride = true;
-
-        logger.info('DEBUG: Early override set successfully', {
-          evaluationId: params.evaluationId
+          hasApiKey: !!apiKey,
+          modelName
         });
       } else {
         logger.warn('DEBUG: No API key found in model configuration', {
@@ -534,10 +529,7 @@ export class EvaluationAgent {
         this.sendStatus(params.evaluationId, 'running', 0.5, 'Processing chat request...');
         
         // Merge model configuration - prefer params.model over params.input model fields
-        // Also check for early override configuration from LLMConfigurationManager
-        const configManager = LLMConfigurationManager.getInstance();
-        const hasOverride = configManager.hasOverride?.() || false;
-        const overrideConfig = hasOverride ? configManager.getConfiguration() : null;
+        // No longer using override configuration - per-call config eliminates race conditions
 
         const mergedInput = {
           ...params.input,
@@ -548,22 +540,11 @@ export class EvaluationAgent {
             nano_model: (params.model.nano_model as any)?.model || params.model.nano_model,
             provider: (params.model.main_model as any)?.provider || params.model.provider,
             api_key: (params.model.main_model as any)?.api_key || (params.model as any).api_key
-          }),
-          // Apply early override configuration if available
-          ...(overrideConfig && {
-            provider: overrideConfig.provider || ((params.model?.main_model as any)?.provider || params.model?.provider),
-            api_key: overrideConfig.apiKey || ((params.model?.main_model as any)?.api_key || (params.model as any)?.api_key),
-            main_model: overrideConfig.mainModel || ((params.model?.main_model as any)?.model || params.model?.main_model),
-            mini_model: overrideConfig.miniModel || ((params.model?.mini_model as any)?.model || params.model?.mini_model),
-            nano_model: overrideConfig.nanoModel || ((params.model?.nano_model as any)?.model || params.model?.nano_model),
-            endpoint: overrideConfig.endpoint || ((params.model as any)?.endpoint || (params.model?.main_model as any)?.endpoint)
           })
         };
 
         logger.info('DEBUG: Created merged input for chat evaluation', {
           evaluationId: params.evaluationId,
-          hasOverrideConfig: !!overrideConfig,
-          overrideConfig,
           mergedInput: {
             ...mergedInput,
             api_key: mergedInput.api_key ? `${mergedInput.api_key.substring(0, 10)}...` : undefined
@@ -673,17 +654,7 @@ export class EvaluationAgent {
 
     } finally {
       this.activeEvaluations.delete(params.evaluationId);
-
-      // Clean up early override if we set one
-      if (hasSetEarlyOverride) {
-        try {
-          const configManager = LLMConfigurationManager.getInstance();
-          configManager.clearOverride();
-          logger.info('Cleared early configuration override', { evaluationId: params.evaluationId });
-        } catch (clearError) {
-          logger.warn('Failed to clear early configuration override:', clearError);
-        }
-      }
+      // No longer need to clear overrides - using per-call configuration instead
     }
   }
 
@@ -860,21 +831,23 @@ export class EvaluationAgent {
           isInitialized: agentService.isInitialized()
         });
 
-        // Set single consolidated override with all fallback values
-        configManager.setOverride({
+        // Create per-call configuration instead of global override
+        const callConfig: LLMCallConfig = {
           provider: provider,
-          mainModel: mainModel,
-          miniModel: miniModel,
-          nanoModel: nanoModel,
-          apiKey: apiKey || undefined,
-          endpoint: endpoint || undefined
-        });
+          apiKey: apiKey || '',
+          models: {
+            main: mainModel,
+            mini: miniModel,
+            nano: nanoModel
+          },
+          baseURL: endpoint
+        };
 
-        // Send the message using AgentService directly but with configuration override
-        // The configuration override ensures it uses the API key from the request
+        // Send the message using AgentService directly with per-call configuration
+        // The per-call config ensures it uses the API key from the request without global state pollution
         const finalMessage: ChatMessage = tracingContext
-          ? await withTracingContext(tracingContext, () => agentService.sendMessage(input.message))
-          : await agentService.sendMessage(input.message);
+          ? await withTracingContext(tracingContext, () => agentService.sendMessage(input.message, undefined, undefined, callConfig))
+          : await agentService.sendMessage(input.message, undefined, undefined, callConfig);
         
         // Create a child observation for the chat execution
         if (tracingContext) {
@@ -956,8 +929,7 @@ export class EvaluationAgent {
         logger.error('Chat evaluation failed:', error);
         reject(error);
       } finally {
-        // Clear configuration override after evaluation
-        configManager.clearOverride();
+        // No longer need to clear overrides - using per-call configuration instead
       }
     });
   }
