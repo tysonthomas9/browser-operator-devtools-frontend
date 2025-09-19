@@ -1,6 +1,7 @@
 // Copyright 2025 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+// Cache break: 2025-09-18T18:30:00Z - Add skipCredentialChecks parameter for AUTOMATED_MODE
 
 import { createLogger } from './Logger.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
@@ -251,8 +252,9 @@ export class LLMConfigurationManager {
 
   /**
    * Validate the current configuration
+   * @param skipCredentialChecks When true, bypasses API key/endpoint validation for AUTOMATED_MODE
    */
-  validateConfiguration(): { isValid: boolean; errors: string[] } {
+  validateConfiguration(skipCredentialChecks = false): { isValid: boolean; errors: string[] } {
     const config = this.getConfiguration();
     const errors: string[] = [];
 
@@ -266,20 +268,22 @@ export class LLMConfigurationManager {
       errors.push('Main model is required');
     }
 
-    // Provider-specific validation
-    switch (config.provider) {
-      case 'openai':
-      case 'groq':
-      case 'openrouter':
-        if (!config.apiKey) {
-          errors.push(`API key is required for ${config.provider}`);
-        }
-        break;
-      case 'litellm':
-        if (!config.endpoint) {
-          errors.push('Endpoint is required for LiteLLM');
-        }
-        break;
+    // Provider-specific validation - skip credential checks in AUTOMATED_MODE
+    if (!skipCredentialChecks) {
+      switch (config.provider) {
+        case 'openai':
+        case 'groq':
+        case 'openrouter':
+          if (!config.apiKey) {
+            errors.push(`API key is required for ${config.provider}`);
+          }
+          break;
+        case 'litellm':
+          if (!config.endpoint) {
+            errors.push('Endpoint is required for LiteLLM');
+          }
+          break;
+      }
     }
 
     return {

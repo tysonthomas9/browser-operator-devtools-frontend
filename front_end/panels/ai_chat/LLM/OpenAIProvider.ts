@@ -1,7 +1,6 @@
 // Copyright 2025 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-// Cache break: 2025-09-17T18:15:00Z - Add AUTOMATED_MODE bypass for validateCredentials
 
 import type { LLMMessage, LLMResponse, LLMCallOptions, LLMProvider, ModelInfo, MessageContent } from './LLMTypes.js';
 import { LLMBaseProvider } from './LLMProvider.js';

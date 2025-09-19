@@ -122,7 +122,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     const providers = [];
 
     // Validate and add the selected provider
-    const validation = this.#configManager.validateConfiguration();
+    // Skip credential checks in AUTOMATED_MODE where API keys come from request body
+    const validation = this.#configManager.validateConfiguration(BUILD_CONFIG.AUTOMATED_MODE);
     if (!validation.isValid) {
       throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
     }
