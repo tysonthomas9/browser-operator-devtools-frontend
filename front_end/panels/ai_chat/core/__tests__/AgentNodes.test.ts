@@ -2,25 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { createToolExecutorNode } from './AgentNodes.js';
-import { ConfigurableAgentTool } from '../agent_framework/ConfigurableAgentTool.js';
-import { ChatMessageEntity } from '../ui/ChatView.js';
-import type { AgentState } from './State.js';
-import type { ConfigurableAgentResult } from '../agent_framework/ConfigurableAgentTool.js';
+import { createToolExecutorNode } from '../AgentNodes.js';
+import { ConfigurableAgentTool } from '../../agent_framework/ConfigurableAgentTool.js';
+import { ChatMessageEntity } from '../../models/ChatTypes.js';
+import type { AgentState } from '../State.js';
+import type { ConfigurableAgentResult } from '../../agent_framework/ConfigurableAgentTool.js';
 
-declare global {
-  function describe(name: string, fn: () => void): void;
-  function it(name: string, fn: () => void): void;
-  function beforeEach(fn: () => void): void;
-  function afterEach(fn: () => void): void;
-  namespace assert {
-    function strictEqual(actual: unknown, expected: unknown): void;
-    function deepEqual(actual: unknown, expected: unknown): void;
-    function isTrue(value: unknown): void;
-    function isFalse(value: unknown): void;
-    function doesNotMatch(actual: string, regexp: RegExp): void;
-  }
-}
 
 describe('AgentNodes ToolExecutorNode', () => {
   describe('ConfigurableAgentTool result filtering', () => {
@@ -66,7 +53,7 @@ describe('AgentNodes ToolExecutorNode', () => {
           });
         }
 
-        async execute(): Promise<ConfigurableAgentResult & { agentSession: any }> {
+        override async execute(): Promise<ConfigurableAgentResult & { agentSession: any }> {
           return errorResultWithSession;
         }
       }
@@ -85,7 +72,6 @@ describe('AgentNodes ToolExecutorNode', () => {
             isFinalAnswer: false
           }
         ],
-        agentType: 'web_task',
         context: {}
       };
 
@@ -97,7 +83,8 @@ describe('AgentNodes ToolExecutorNode', () => {
       };
 
       // Create ToolExecutorNode
-      const toolExecutorNode = createToolExecutorNode(stateWithMockTool);
+      const mockProvider = { name: 'test-provider' } as any;
+      const toolExecutorNode = createToolExecutorNode(stateWithMockTool, mockProvider, 'test-model');
 
       // Execute the node
       const result = await toolExecutorNode.invoke(stateWithMockTool);
@@ -113,11 +100,11 @@ describe('AgentNodes ToolExecutorNode', () => {
       assert.strictEqual(resultText, 'Error: Agent reached maximum iterations');
       
       // Verify that the resultText does not contain session data
-      assert.doesNotMatch(resultText, /sessionId/);
-      assert.doesNotMatch(resultText, /test-session-123/);
-      assert.doesNotMatch(resultText, /intermediateSteps/);
-      assert.doesNotMatch(resultText, /agentSession/);
-      assert.doesNotMatch(resultText, /nestedSessions/);
+      assert.notMatch(resultText, /sessionId/);
+      assert.notMatch(resultText, /test-session-123/);
+      assert.notMatch(resultText, /intermediateSteps/);
+      assert.notMatch(resultText, /agentSession/);
+      assert.notMatch(resultText, /nestedSessions/);
       
       // The resultText should be clean and only contain the error message
       assert.strictEqual(resultText.includes('test-session-123'), false);
@@ -159,7 +146,7 @@ describe('AgentNodes ToolExecutorNode', () => {
           });
         }
 
-        async execute(): Promise<ConfigurableAgentResult & { agentSession: any }> {
+        override async execute(): Promise<ConfigurableAgentResult & { agentSession: any }> {
           return successResultWithSession;
         }
       }
@@ -177,7 +164,6 @@ describe('AgentNodes ToolExecutorNode', () => {
             isFinalAnswer: false
           }
         ],
-        agentType: 'web_task',
         context: {}
       };
 
@@ -186,7 +172,8 @@ describe('AgentNodes ToolExecutorNode', () => {
         tools: [mockTool]
       };
 
-      const toolExecutorNode = createToolExecutorNode(stateWithMockTool);
+      const mockProvider = { name: 'test-provider' } as any;
+      const toolExecutorNode = createToolExecutorNode(stateWithMockTool, mockProvider, 'test-model');
       const result = await toolExecutorNode.invoke(stateWithMockTool);
 
       const toolResultMessage = result.messages[result.messages.length - 1];
@@ -196,9 +183,9 @@ describe('AgentNodes ToolExecutorNode', () => {
       assert.strictEqual(resultText, 'Task completed successfully');
       
       // Should NOT contain session data
-      assert.doesNotMatch(resultText, /success-session-456/);
-      assert.doesNotMatch(resultText, /intermediateSteps/);
-      assert.doesNotMatch(resultText, /agentSession/);
+      assert.notMatch(resultText, /success-session-456/);
+      assert.notMatch(resultText, /intermediateSteps/);
+      assert.notMatch(resultText, /agentSession/);
     });
   });
 });

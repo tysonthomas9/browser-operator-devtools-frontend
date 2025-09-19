@@ -45,7 +45,7 @@ When selecting an element for keyboard input, prioritize:
     tools: [
       'get_page_content',
       'perform_action',
-      'schema_based_extractor',
+      'extract_data',
     ],
     maxIterations: 5,
     modelName: MODEL_SENTINELS.USE_MINI,

@@ -230,7 +230,7 @@ Instructions:
 ${iframeContent && iframeContent.length > 0 ? '- The page contains embedded iframes with their own content, which is included above.' : ''}
 - If the user asks about the page, refer to this context.
 - If the partial accessibility tree is present, use it to answer questions about visible page structure, elements, or accessibility.
-- If you need to extract any data from the entire page, you must always use the extract_schema_data tool to do so. Do not attempt to extract data from the full page by any other means.
+- If you need to extract any data from the entire page, you must always use the extract_data tool to do so. Do not attempt to extract data from the full page by any other means.
 - If information is missing, answer based on what is available, or request the full page accessibility tree if necessary.
 - Always be concise, accurate, and helpful.
 

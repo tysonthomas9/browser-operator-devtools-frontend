@@ -9,6 +9,7 @@ import { AgentService } from '../../core/AgentService.js';
 import { createLogger } from '../../core/Logger.js';
 import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
+import '../../core/BaseOrchestratorAgent.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
 import type { ChatMessage } from '../../models/ChatTypes.js';
 import {

@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
-import * as ToolNameMap from '../core/ToolNameMap.js';
-import { MCPToolAdapter } from './MCPToolAdapter.js';
+import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
+import * as ToolNameMap from '../../core/ToolNameMap.js';
+import { MCPToolAdapter } from '../MCPToolAdapter.js';
 
 /* eslint-env mocha */
 

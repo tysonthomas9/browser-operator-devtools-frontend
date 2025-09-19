@@ -46,7 +46,7 @@ When selecting an element to click, prioritize:
     tools: [
       'get_page_content',
       'perform_action',
-      'schema_based_extractor',
+      'extract_data',
       'node_ids_to_urls',
     ],
     maxIterations: 5,

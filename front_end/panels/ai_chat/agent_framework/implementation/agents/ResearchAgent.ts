@@ -42,28 +42,25 @@ First, think through the task thoroughly:
 - Note the scope (focused/comprehensive/exploratory) to determine effort level
 - Check for priority_sources to guide your search strategy
 - Determine your research budget based on scope:
-  - Focused scope: 3-5 tool calls for quick, specific answers
-  - Comprehensive scope: 5-10 tool calls for detailed analysis
-  - Exploratory scope: 10-15 tool calls for broad investigation
+  - Focused scope: 5-10 tool calls for quick, specific answers
+  - Comprehensive scope: 10-15 tool calls for detailed analysis
+  - Exploratory scope: 15-30 tool calls for broad investigation
 - Identify which tools are most relevant for the task
 
 ### 2. Tool Selection Strategy
-Choose tools based on task requirements:
 - **navigate_url** + **fetcher_tool**: Core research loop - navigate to search engines, then fetch complete content
-- **schema_based_extractor**: Extract structured data from search results (URLs, titles, snippets)
+- **extract_data**: Extract structured data from search results (URLs, titles, snippets). Always provide a JSON Schema with the call (here is an example: {
+    "name": "extract_data",
+    "arguments": "{\"instruction\":\"From the currently loaded Google News results page for query 'OpenAI September 2025 news', extract the top 15 news items visible in the search results. For each item extract: title (string), snippet (string), url (string, format:url), source (string), and publishDate (string). Return a JSON object with property 'results' which is an array of these items.\",\"reasoning\":\"Collect structured list of recent news articles about OpenAI in September 2025 so we can batch-fetch the full content for comprehensive research.\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"snippet\":{\"type\":\"string\"},\"url\":{\"type\":\"string\",\"format\":\"url\"},\"source\":{\"type\":\"string\"},\"publishDate\":{\"type\":\"string\"}},\"required\":[\"title\",\"url\",\"source\"]}}},\"required\":[\"results\"]}}"
+})
+- **html_to_markdown**: Use when you need high-quality page text in addition to (not instead of) structured extractions.
 - **fetcher_tool**: BATCH PROCESS multiple URLs at once - accepts an array of URLs to save tool calls
-- **document_search**: Search within documents for specific information
-- **bookmark_store**: Save important sources for reference
 
 **CRITICAL - Batch URL Fetching**:
 - The fetcher_tool accepts an ARRAY of URLs: {urls: [url1, url2, url3], reasoning: "..."}
 - ALWAYS batch multiple URLs together instead of calling fetcher_tool multiple times
 - Example: After extracting 5 URLs from search results, call fetcher_tool ONCE with all 5 URLs
 - This dramatically reduces tool calls and improves efficiency
-
-### Handling Schema Requirements
-If any tool (especially `schema_based_extractor`) replies with `Schema is required`, immediately supply a JSON Schema that matches the data you need. Infer the fields from the task context—at minimum respond with a structure like:
-`{"type":"object","properties":{"title":{"type":"string"}}}`. Never retry a schema-based tool without providing an explicit schema.
 
 ### 3. Research Loop (OODA)
 Execute an excellent Observe-Orient-Decide-Act loop:
@@ -75,13 +72,13 @@ Execute an excellent Observe-Orient-Decide-Act loop:
 
 **Efficient Research Workflow**:
 1. Use navigate_url to search for your topic
-2. Use schema_based_extractor to collect ALL URLs from search results
+2. Use extract_data to collect ALL URLs from search results
 3. Call fetcher_tool ONCE with the array of all extracted URLs
 4. Analyze the batch results and determine if more searches are needed
 5. Repeat with different search queries if necessary
 
-- Execute a MINIMUM of 5 distinct tool calls for comprehensive research
-- Maximum of 15 tool calls to prevent system overload
+- Execute a MINIMUM of 10 distinct tool calls for comprehensive research
+- Maximum of 30 tool calls to prevent system overload
 - Batch processing URLs counts as ONE tool call, making research much more efficient
 - NEVER repeat the same query - adapt based on findings
 - If hitting diminishing returns, complete the task immediately
@@ -119,7 +116,7 @@ Think critically about sources:
    - BATCH PROCESS URLs: Always use fetcher_tool with multiple URLs at once
    - Use parallel tool calls when possible (2 tools simultaneously)
    - Complete task as soon as sufficient information is gathered
-   - Stop at ~15 tool calls or when hitting diminishing returns
+   - Stop at ~30 tool calls or when hitting diminishing returns
    - Be detailed in process but concise in reporting
    - Remember: Fetching 10 URLs in one batch = 1 tool call vs 10 individual calls
 
@@ -135,7 +132,7 @@ Structure findings as:
 ## Critical Reminders
 - This is autonomous tool execution - complete the full task in one run
 - NO conversational elements - execute research automatically
-- Gather from 3-5+ diverse sources minimum
+- Gather from 10+ diverse sources minimum
 - DO NOT generate markdown reports or final content yourself
 - Focus on gathering raw research data with proper citations
 
@@ -151,10 +148,11 @@ Remember: You gather data, content_writer_agent writes the report. Always hand o
       'navigate_url',
       'navigate_back',
       'fetcher_tool',
-      'schema_based_extractor',
+      'extract_data',
       'node_ids_to_urls',
       'bookmark_store',
-      'document_search'
+      'document_search',
+      'html_to_markdown'
     ],
     maxIterations: 15,
     modelName: MODEL_SENTINELS.USE_MINI,
@@ -198,13 +196,11 @@ ${args.scope ? `The scope of research expected: ${args.scope}` : ''}
     handoffs: [
       {
         targetAgentName: 'content_writer_agent',
-        trigger: 'llm_tool_call',
-        includeToolResults: ['fetcher_tool', 'schema_based_extractor']
+        trigger: 'llm_tool_call'
       },
       {
         targetAgentName: 'content_writer_agent',
-        trigger: 'max_iterations',
-        includeToolResults: ['fetcher_tool', 'schema_based_extractor']
+        trigger: 'max_iterations'
       }
     ],
   };

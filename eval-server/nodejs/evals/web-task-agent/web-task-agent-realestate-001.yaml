@@ -49,7 +49,7 @@ validation:
       - "Delegated price filter setting to action_agent"
       - "Coordinated property type selection through action_agent"
       - "Applied search filters through proper action_agent calls"
-      - "Extracted property listings with schema_based_extractor"
+      - "Extracted property listings with extract_data"
       - "Returned structured property data in readable text format (not JSON)"
       - "Each property includes address, price, bedrooms, bathrooms, and other key details"
       - "Properties are clearly numbered or organized for easy comparison"

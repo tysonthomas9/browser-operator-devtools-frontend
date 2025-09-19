@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { createToolExecutorNode } from './AgentNodes.js';
-import type { AgentState } from './State.js';
-import { ChatMessageEntity } from '../models/ChatTypes.js';
-import * as ToolNameMap from './ToolNameMap.js';
-import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import { createToolExecutorNode } from '../AgentNodes.js';
+import type { AgentState } from '../State.js';
+import { ChatMessageEntity } from '../../models/ChatTypes.js';
+import * as ToolNameMap from '../ToolNameMap.js';
+import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
 
 /* eslint-env mocha */
 

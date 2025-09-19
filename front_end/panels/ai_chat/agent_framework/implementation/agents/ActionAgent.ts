@@ -28,7 +28,7 @@ When analyzing page structure, you have access to:
 - Clean accessibility tree with reduced noise for better focus
 
 ## Process Flow
-1. When given an objective, first analyze the page structure using get_page_content tool to access the enhanced accessibility tree or use schema_based_extractor to extract the specific element you need to interact with
+1. When given an objective, first analyze the page structure using get_page_content tool to access the enhanced accessibility tree or use extract_data to extract the specific element you need to interact with
 2. Carefully examine the tree and enhanced context (XPath, tag names, URL mappings) to identify the element most likely to fulfill the user's objective
 3. Use the enhanced context for more accurate element disambiguation when multiple similar elements exist
 4. Determine the appropriate action method based on the element type and objective:
@@ -87,7 +87,7 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
     tools: [
       'get_page_content',
       'perform_action',
-      'schema_based_extractor',
+      'extract_data',
       'node_ids_to_urls',
       'scroll_page',
       'take_screenshot',

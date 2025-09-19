@@ -27,7 +27,7 @@ function createSchemaTest(
 ): TestCase<any> {
   return {
     ...baseConfig,
-    tool: useStreamlined ? 'extract_schema_streamlined' : 'extract_schema_data'
+    tool: useStreamlined ? 'extract_schema_streamlined' : 'extract_data'
   };
 }
 
@@ -122,7 +122,7 @@ export const ecommerceTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Amazon Product Details',
   description: 'Extract product information from an Amazon product page',
   url: 'https://www.amazon.com/Obelisk-Climbing-Rustproof-Trellises-Clematis/dp/B0B4SBY6QD/',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -194,7 +194,7 @@ export const newsTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract BBC News Article',
   description: 'Extract article content and metadata from a BBC News page',
   url: 'https://www.bbc.com/news/technology',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -255,7 +255,7 @@ export const googleSearchTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Google Search Results',
   description: 'Extract search results from Google search page',
   url: 'https://www.google.com/search?q=chrome+devtools+tutorial',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -321,7 +321,7 @@ export const bingSearchTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Bing Search Results',
   description: 'Extract search results from Bing search page',
   url: 'https://www.bing.com/search?q=web+scraping+best+practices',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -382,7 +382,7 @@ export const wikipediaSearchTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Wikipedia Search Results',
   description: 'Extract search results from Wikipedia search',
   url: 'https://en.wikipedia.org/w/index.php?search=artificial+intelligence&title=Special:Search',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -448,7 +448,7 @@ export const homeDepotTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Home Depot Product Search',
   description: 'Extract product listings from Home Depot search results',
   url: 'https://www.homedepot.com/s/power%2520drill',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -526,7 +526,7 @@ export const macysTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Macy\'s Product Listings',
   description: 'Extract fashion products from Macy\'s category page',
   url: 'https://www.macys.com/shop/womens-clothing/womens-dresses',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -619,7 +619,7 @@ export const googleFlightsTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract Google Flights Search Results',
   description: 'Extract flight options from Google Flights search',
   url: 'https://www.google.com/travel/flights/search?tfs=CBwQAhojEgoyMDI1LTEyLTI0agwIAhIIL20vMGQ5anJyBwgBEgNTRk8aIxIKMjAyNS0xMi0zMWoHCAESA1NGT3IMCAISCC9tLzBkOWpyQAFIAXABggELCP___________wGYAQE',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',
@@ -707,7 +707,7 @@ export const simpleTest: TestCase<SchemaExtractionArgs> = {
   name: 'Extract GitHub Repository Info',
   description: 'Extract basic repository information from a GitHub page',
   url: 'https://github.com/microsoft/TypeScript',
-  tool: 'extract_schema_data',
+  tool: 'extract_data',
   input: {
     schema: {
       type: 'object',

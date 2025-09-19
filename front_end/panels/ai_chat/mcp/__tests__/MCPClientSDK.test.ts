@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { MCPClientSDKv2 } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
-import type { MCPServer } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
+import { MCPClientSDKv2 } from '../../../../third_party/mcp-sdk/mcp-sdk-v2.js';
+import type { MCPServer } from '../../../../third_party/mcp-sdk/mcp-sdk-v2.js';
 
 describe('MCPClientSDK', () => {
   let client: MCPClientSDKv2;

@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { MCPRegistry } from './MCPRegistry.js';
-import { createToolExecutorNode } from '../core/AgentNodes.js';
-import * as ToolNameMap from '../core/ToolNameMap.js';
-import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
-import type { AgentState } from '../core/State.js';
-import { ChatMessageEntity } from '../models/ChatTypes.js';
+import { MCPRegistry } from '../MCPRegistry.js';
+import { createToolExecutorNode } from '../../core/AgentNodes.js';
+import * as ToolNameMap from '../../core/ToolNameMap.js';
+import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
+import type { AgentState } from '../../core/State.js';
+import { ChatMessageEntity } from '../../models/ChatTypes.js';
 
 /* eslint-env mocha */
 

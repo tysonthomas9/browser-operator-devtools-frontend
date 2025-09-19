@@ -43,7 +43,7 @@ export enum BaseOrchestratorAgentType {
 
 // System prompts for each agent type
 export const SYSTEM_PROMPTS = {
-  [BaseOrchestratorAgentType.SEARCH]: `You are an AI assistant specialized in pinpoint web fact-finding.
+  [BaseOrchestratorAgentType.SEARCH]: `You are an search browser agent specialized in pinpoint web fact-finding.
 Always delegate investigative work to the 'search_agent' tool so it can gather verified, structured results (emails, team rosters, niche professionals, etc.).
 
 - Launch search_agent with a clear objective, attribute list, filters, and quantity requirement.

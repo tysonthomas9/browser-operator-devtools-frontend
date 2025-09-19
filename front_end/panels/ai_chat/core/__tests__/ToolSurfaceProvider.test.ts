@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { ToolSurfaceProvider } from './ToolSurfaceProvider.js';
-import type { AgentState } from './State.js';
-import type { Tool } from '../tools/Tools.js';
-import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
-import { MCPRegistry } from '../mcp/MCPRegistry.js';
-import { registerMCPMetaTools } from '../mcp/MCPMetaTools.js';
+import { ToolSurfaceProvider } from '../ToolSurfaceProvider.js';
+import type { AgentState } from '../State.js';
+import type { Tool } from '../../tools/Tools.js';
+import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
+import { MCPRegistry } from '../../mcp/MCPRegistry.js';
+import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
 
 /* eslint-env mocha */
 

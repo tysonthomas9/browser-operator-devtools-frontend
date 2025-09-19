@@ -9,6 +9,7 @@ import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
 import type { EvaluationConfig, TestResult, TestCase } from '../framework/types.js';
 import { createLogger } from '../../core/Logger.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
+import '../../core/BaseOrchestratorAgent.js';
 import { LLMClient } from '../../LLM/LLMClient.js';
 import type { LLMProviderConfig } from '../../LLM/LLMClient.js';
 import { TIMING_CONSTANTS } from '../../core/Constants.js';

@@ -13,18 +13,19 @@ import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
 import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
-import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigatorAgentConfig.js';
-import { createResearchAgentConfig } from './agents/ResearchAgentConfig.js';
-import { createContentWriterAgentConfig } from './agents/ContentWriterAgentConfig.js';
-import { createActionAgentConfig } from './agents/ActionAgentConfig.js';
-import { createActionVerificationAgentConfig } from './agents/ActionVerificationAgentConfig.js';
-import { createClickActionAgentConfig } from './agents/ClickActionAgentConfig.js';
-import { createFormFillActionAgentConfig } from './agents/FormFillActionAgentConfig.js';
-import { createKeyboardInputActionAgentConfig } from './agents/KeyboardInputActionAgentConfig.js';
-import { createHoverActionAgentConfig } from './agents/HoverActionAgentConfig.js';
-import { createScrollActionAgentConfig } from './agents/ScrollActionAgentConfig.js';
-import { createWebTaskAgentConfig } from './agents/WebTaskAgentConfig.js';
-import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgentConfig.js';
+import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigatorAgent.js';
+import { createResearchAgentConfig } from './agents/ResearchAgent.js';
+import { createContentWriterAgentConfig } from './agents/ContentWriterAgent.js';
+import { createActionAgentConfig } from './agents/ActionAgent.js';
+import { createActionVerificationAgentConfig } from './agents/ActionVerificationAgent.js';
+import { createClickActionAgentConfig } from './agents/ClickActionAgent.js';
+import { createFormFillActionAgentConfig } from './agents/FormFillActionAgent.js';
+import { createKeyboardInputActionAgentConfig } from './agents/KeyboardInputActionAgent.js';
+import { createHoverActionAgentConfig } from './agents/HoverActionAgent.js';
+import { createScrollActionAgentConfig } from './agents/ScrollActionAgent.js';
+import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
+import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
+import { createSearchAgentConfig } from './agents/SearchAgent.js';
 
 /**
  * Initialize all configured agents
@@ -37,8 +38,7 @@ export function initializeConfiguredAgents(): void {
   ToolRegistry.registerToolFactory('navigate_back', () => new NavigateBackTool());
   ToolRegistry.registerToolFactory('node_ids_to_urls', () => new NodeIDsToURLsTool());
   ToolRegistry.registerToolFactory('fetcher_tool', () => new FetcherTool());
-  ToolRegistry.registerToolFactory('schema_based_extractor', () => new SchemaBasedExtractorTool());
-  ToolRegistry.registerToolFactory('extract_schema_data', () => new SchemaBasedExtractorTool());
+  ToolRegistry.registerToolFactory('extract_data', () => new SchemaBasedExtractorTool());
   ToolRegistry.registerToolFactory('extract_schema_streamlined', () => new StreamlinedSchemaExtractorTool());
   ToolRegistry.registerToolFactory('finalize_with_critique', () => new FinalizeWithCritiqueTool());
   ToolRegistry.registerToolFactory('perform_action', () => new PerformActionTool());
@@ -63,6 +63,11 @@ export function initializeConfiguredAgents(): void {
   const researchAgentConfig = createResearchAgentConfig();
   const researchAgent = new ConfigurableAgentTool(researchAgentConfig);
   ToolRegistry.registerToolFactory('research_agent', () => researchAgent);
+
+  // Create and register Search Agent
+  const searchAgentConfig = createSearchAgentConfig();
+  const searchAgent = new ConfigurableAgentTool(searchAgentConfig);
+  ToolRegistry.registerToolFactory('search_agent', () => searchAgent);
 
   // Create and register Content Writer Agent
   const contentWriterAgentConfig = createContentWriterAgentConfig();

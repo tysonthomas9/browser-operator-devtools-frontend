@@ -2,24 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {AIChatPanel, DEFAULT_PROVIDER_MODELS, type ModelOption, resetAIChatPanelInstanceForTesting} from './AIChatPanel.js';
-import {LLMProviderRegistry} from '../LLM/LLMProviderRegistry.js';
-import {AgentService} from '../core/AgentService.js';
-import {Events as AgentEvents} from '../core/AgentService.js';
-import {ChatMessageEntity} from '../models/ChatTypes.js';
-import {raf} from '../../testing/DOMHelpers.js';
+import {AIChatPanel, DEFAULT_PROVIDER_MODELS, type ModelOption, resetAIChatPanelInstanceForTesting} from '../AIChatPanel.js';
+import {LLMProviderRegistry} from '../../LLM/LLMProviderRegistry.js';
+import {AgentService} from '../../core/AgentService.js';
+import {Events as AgentEvents} from '../../core/AgentService.js';
+import {ChatMessageEntity} from '../../models/ChatTypes.js';
+import {raf} from '../../../../testing/DOMHelpers.js';
 
-declare global {
-  function describe(name: string, fn: () => void): void;
-  function it(name: string, fn: () => void): void;
-  function beforeEach(fn: () => void): void;
-  function afterEach(fn: () => void): void;
-  namespace assert {
-    function strictEqual(actual: unknown, expected: unknown): void;
-    function deepEqual(actual: unknown, expected: unknown): void;
-    function isNull(value: unknown): void;
-  }
-}
 
 describe('AIChatPanel Model Validation', () => {
   let panel: AIChatPanel;

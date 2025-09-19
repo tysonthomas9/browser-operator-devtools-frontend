@@ -50,7 +50,7 @@ Based on the action type, use different verification strategies:
 - search_content: Look for specific text indicating success/failure
 - inspect_element: Check properties of specific elements
 - get_console_logs: Check for errors or success messages in the console
-- schema_based_extractor: Extract structured data to verify expected outcomes
+- extract_data: Extract structured data to verify expected outcomes
 
 ## Output Format
 Provide a clear verification report with:
@@ -65,7 +65,7 @@ Remember that verification is time-sensitive - the page state might change durin
       'search_content',
       'inspect_element',
       'get_console_logs',
-      'schema_based_extractor',
+      'extract_data',
       'take_screenshot'
     ],
     maxIterations: 3,

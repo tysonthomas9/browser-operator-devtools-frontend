@@ -98,7 +98,7 @@ If a product URL is provided, first use the navigate_url tool to go to that page
 ## Process Flow:
 1. If a URL is provided, use navigate_url tool to go to that page first
 2. Then analyze the page structure using get_page_content to access the accessibility tree
-3. Use schema_based_extractor to extract structured product information when possible
+3. Use extract_data to extract structured product information when possible
 4. If needed, use search_content to find specific product details that may be in different sections
 5. Compile all information into a comprehensive, organized report following the presentation guidelines
 6. Present the information in a structured format that makes it easy for shoppers to understand all aspects of the item

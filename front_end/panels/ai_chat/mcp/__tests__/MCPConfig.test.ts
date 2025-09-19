@@ -2,18 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { generateMCPProviderId, saveMCPProviders, type MCPProviderConfig } from './MCPConfig.js';
+import { generateMCPProviderId, saveMCPProviders, type MCPProviderConfig } from '../MCPConfig.js';
 
-declare global {
-  function describe(name: string, fn: () => void): void;
-  function it(name: string, fn: () => void): void;
-  function beforeEach(fn: () => void): void;
-  function afterEach(fn: () => void): void;
-  namespace assert {
-    function strictEqual(actual: unknown, expected: unknown): void;
-    function throws(fn: () => unknown, expected?: RegExp | Function, message?: string): void;
-  }
-}
 
 class MemoryStorage {
   private readonly store = new Map<string, string>();

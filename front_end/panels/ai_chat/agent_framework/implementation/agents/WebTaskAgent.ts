@@ -132,7 +132,7 @@ You automatically receive rich context with each iteration:
 - Avoid redundant tool calls through smart caching
 
 **MANAGE LARGE CONTENT**:
-- For large pages, extract in targeted chunks using schema_based_extractor
+- For large pages, extract in targeted chunks using extract_data
 - Use CSS selectors to limit extraction scope when possible
 - Implement pagination handling for multi-page datasets
 
@@ -197,7 +197,7 @@ Remember: **Plan adaptively, execute systematically, validate continuously, and 
       'navigate_url',
       'navigate_back',
       'action_agent',
-      'schema_based_extractor',
+      'extract_data',
       'node_ids_to_urls',
       'direct_url_navigator_agent',
       'scroll_page',

@@ -7,7 +7,7 @@ import { AGENT_VERSION } from "./AgentVersion.js";
 /**
  * Create the configuration for the Search Signal Agent
  */
-export function createSearchSignalAgentConfig(): AgentToolConfig {
+export function createSearchAgentConfig(): AgentToolConfig {
   return {
     name: 'search_agent',
     version: AGENT_VERSION,
@@ -32,10 +32,22 @@ export function createSearchSignalAgentConfig(): AgentToolConfig {
    - Use navigate_url to reach the most relevant search entry point (search engines, directories, LinkedIn public results, company pages, press releases).
    - Use extract_data with an explicit JSON schema every time you capture structured search results. Prefer capturing multiple leads in one call.
    - Batch follow-up pages with fetcher_tool, and use html_to_markdown when you need to confirm context inside long documents.
-4. **Verify**:
+4. **Mandatory Pagination Loop (ENFORCED)**:
+   - Harvest target per task: collect 30–50 unique candidates before enrichment (unless the user specifies otherwise). Absolute minimum 25 when the request requires it.
+   - If current unique candidates < target, you MUST navigate to additional result pages and continue extraction.
+   - Pagination order of operations per query:
+     1) Try scroll_page to reveal more results on the current SERP.
+     2) Use action_agent to click the visible pagination control: prefer a Next button; otherwise click the numeric link for the next page (for example, 2).
+     3) If pagination controls are unavailable or clicking fails, construct the next-page URL using the engine’s query parameters (for example, Google uses a start parameter like 10, 20, 30; some engines use first, page, or p). Then call navigate_url to load that page.
+   - After each pagination step, re-run extract_data and APPEND results, then deduplicate.
+   - Continue paginating until one of these stop conditions:
+     - You reach at least 30–50 unique candidates (or the user’s requested quantity), OR
+     - Two consecutive pages add fewer than 3 new valid candidates (diminishing returns), OR
+     - You have visited 5 pages for this query without meeting the target.
+5. **Verify**:
    - Cross-check critical attributes (e.g. confirm an email’s domain matches the company, confirm a title with two independent sources when possible).
    - Flag low-confidence findings explicitly in the output.
-5. **Decide completeness**: Stop once required attributes are filled for the requested number of entities or additional searching would be duplicative.
+6. **Decide completeness**: Stop once required attributes are filled for the requested number of entities or additional searching would be duplicative.
 
 ## Tooling Rules
 - Use fetcher_tool with an array of URLs
@@ -45,6 +57,23 @@ export function createSearchSignalAgentConfig(): AgentToolConfig {
 })
 - Use html_to_markdown when you need high-quality page text in addition to (not instead of) structured extractions.
 - Never call extract_data or fetcher_tool without a clear plan for how the results will fill gaps in the objective.
+
+### Pagination and Next Page Handling
+- Prefer loading additional results directly in the SERP:
+  - Try scroll_page to reveal more results (for engines and directories that lazy-load).
+  - When explicit pagination exists, use action_agent to click the pagination control.
+- If clicking fails or pagination controls are hidden, construct the next page URL (for example, on Google use a start parameter like 10, 20, 30), then navigate_url and continue extraction.
+
+Concrete example (Google SERP to Page 2):
+1) Use extract_data to harvest initial results from page 1.
+2) Invoke action_agent with objective like: "Click the 'Next' pagination button on the Google results page to go to the next page of results", reasoning: "Continue lead harvesting to reach 30–50 candidates." If 'Next' is absent, click the numeric link '2'.
+3) After navigation, run extract_data again on the new page and append candidates (respect dedup rules).
+
+### Lead Harvesting Protocol (High Yield)
+- Build 8–12 short, diverse queries across LinkedIn, personal sites, Medium/Dev.to/Substack.
+- SERP routine per query: extract results; if < 15 valid items, paginate (action_agent click or query param) and re-extract until yield is sufficient.
+- Deduplicate strictly by normalized name+hostname and canonical URL; merge cross‑platform duplicates.
+- Prefer authoritative domains (linkedin.com/in, company sites, personal domains, medium.com/@…); down‑rank aggregators (job boards, marketplaces) unless linking to an identifiable person profile.
 
 ### 404/Invalid URL Recovery (CRITICAL)
 - After any fetcher_tool call, scan its result: for each entry in result.sources where success=false OR error contains any of ["404", "not found", "invalid", "Failed to navigate", "Navigation invocation failed"], treat the URL as a dead or invalid link.
@@ -97,6 +126,8 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
       'node_ids_to_urls',
       'fetcher_tool',
       'extract_data',
+      'scroll_page',
+      'action_agent',
       'html_to_markdown'
     ],
     maxIterations: 12,
@@ -144,5 +175,113 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
       }];
     },
     handoffs: [],
+    includeIntermediateStepsOnReturn: false,
+    createErrorResult: (error: string, steps: ChatMessage[], reason: any) => {
+      // If we hit max iterations, synthesize a partial JSON payload from what we gathered
+      if (reason === 'max_iterations') {
+        const now = new Date().toISOString();
+        const seen = new Set<string>();
+        const results: any[] = [];
+
+        const addOrUpdate = (url: string, item: any) => {
+          if (!url) return;
+          const key = url.trim();
+          if (seen.has(key)) return;
+          seen.add(key);
+          results.push(item);
+        };
+
+        // Try to recover the user's objective from the first USER message
+        const firstUser = steps.find(m => m.entity === ChatMessageEntity.USER && 'text' in m) as any;
+        const objectiveMatch = firstUser?.text?.match(/Objective:\s*(.*)/i);
+        const objective = objectiveMatch ? objectiveMatch[1].trim() : '';
+
+        // Scan tool results for extract_data (SERP) and fetcher_tool (content)
+        for (const msg of steps) {
+          if (msg.entity !== ChatMessageEntity.TOOL_RESULT) continue;
+          const tr = msg as any;
+          const tool = tr.toolName;
+          const data = tr.resultData ?? {};
+
+          if (tool === 'extract_data') {
+            const arr = (data?.data?.results || data?.results || []) as any[];
+            for (const r of arr) {
+              const url = r?.url || '';
+              if (!url) continue;
+              const title = r?.title || '';
+              const source = r?.source || '';
+              const snippet = r?.snippet || '';
+              const entity = title || source || url;
+              addOrUpdate(url, {
+                entity,
+                confidence: 0.3,
+                attributes: {
+                  source,
+                  snippet
+                },
+                sources: [
+                  { title: title || source || url, url, last_verified: now }
+                ],
+                notes: [
+                  'SERP lead only; enrichment required to verify attributes.'
+                ]
+              });
+            }
+          }
+
+          if (tool === 'fetcher_tool') {
+            const sources = (data?.sources || []) as any[];
+            for (const s of sources) {
+              const url = s?.url || '';
+              if (!url) continue;
+              const title = s?.title || '';
+              if (s?.success) {
+                addOrUpdate(url, {
+                  entity: title || url,
+                  confidence: 0.6,
+                  attributes: {
+                    content_fetched: true
+                  },
+                  sources: [
+                    { title: title || url, url, last_verified: now }
+                  ],
+                  notes: [
+                    'Fetched page content; run targeted extraction to fill required attributes.'
+                  ]
+                });
+              }
+            }
+          }
+        }
+
+        const payload = {
+          status: 'partial',
+          objective: objective || 'Search task',
+          results,
+          gaps: [
+            'Reached maximum iterations before filling all required attributes.',
+            'Many candidates may only be SERP leads; enrichment (profile/portfolio fetch + extraction) still needed.'
+          ],
+          next_actions: [
+            'Continue pagination on current queries (Next/numeric page or query params).',
+            'Batch fetcher_tool on shortlisted URLs; use html_to_markdown + document_search to extract location, availability, portfolio, and contact.',
+            'Deduplicate by normalized name + hostname and canonical URL.'
+          ]
+        };
+
+        return {
+          success: true,
+          output: JSON.stringify(payload, null, 2),
+          terminationReason: reason
+        };
+      }
+
+      // Fallback to a simple error result
+      return {
+        success: false,
+        error,
+        terminationReason: reason
+      };
+    },
   };
 }
