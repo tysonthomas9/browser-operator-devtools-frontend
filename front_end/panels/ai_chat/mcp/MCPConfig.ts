@@ -275,7 +275,7 @@ export function saveMCPProviders(providers: MCPProviderConfig[]): void {
 
 export function getMCPConfig(): MCPConfigData {
   try {
-    const enabled = localStorage.getItem(KEYS.enabled) === 'true';
+    const enabled = localStorage.getItem(KEYS.enabled) !== 'false'; // Default: true
     const providers = getMCPProviders();
 
     let toolAllowlist: string[] | undefined;

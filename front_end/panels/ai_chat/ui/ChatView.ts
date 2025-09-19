@@ -882,6 +882,22 @@ export class ChatView extends HTMLElement {
     let hostname = '';
     try { hostname = new URL(url).hostname; } catch {}
 
+    // Detect all Chrome internal pages
+    const isChromeInternalPage = url.startsWith('chrome://');
+
+    if (isChromeInternalPage) {
+      // Provide mixed examples for all Chrome internal pages
+      const researchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH;
+      const searchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.SEARCH;
+      const searchExamples: Array<{ text: string; agentType?: string }> = [
+        { text: 'Deep research latest breakthroughs in AI agents', agentType: researchAgent },
+        { text: 'Find content writers in Seattle, WA', agentType: searchAgent },
+        { text: 'Provide me analysis of Apple stocks?', agentType: researchAgent },
+        { text: 'Summarize today\'s news', agentType: researchAgent },
+      ];
+      return searchExamples;
+    }
+
     // Detect common search engines
     const isSearchSite = /(^|\.)((google|bing|duckduckgo|yahoo|yandex|baidu)\.(com|co\.[a-z]+|[a-z]+))$/i.test(hostname);
 

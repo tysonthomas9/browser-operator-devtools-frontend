@@ -163,6 +163,63 @@ class RegistryImpl {
   }
 
   /**
+   * Refresh tools for a specific server with retry logic
+   */
+  private async refreshToolsForServer(serverId: string, retryCount = 0): Promise<void> {
+    const maxRetries = 2;
+    const retryDelayMs = 2000; // 2 seconds
+
+    if (!this.client.isConnected(serverId)) {
+      return;
+    }
+
+    const server = this.servers.find(s => s.id === serverId);
+    if (!server) {
+      logger.warn('MCPRegistry: Server not found for tool refresh', { serverId });
+      return;
+    }
+
+    try {
+
+      const tools = await this.client.listTools(serverId);
+
+      // If we got tools, we're done - tools exist and will be registered by the next refresh
+      if (tools.length > 0) {
+        return;
+      } else if (retryCount < maxRetries) {
+        // No tools found, but maybe the server needs more time
+
+        setTimeout(async () => {
+          try {
+            await this.refreshToolsForServer(serverId, retryCount + 1);
+          } catch (error) {
+            logger.warn('MCPRegistry: Delayed tool refresh failed', { serverId, error });
+          }
+        }, retryDelayMs);
+      } else {
+      }
+    } catch (error) {
+      logger.warn('MCPRegistry: Failed to refresh tools for server', {
+        serverId,
+        attempt: retryCount + 1,
+        maxRetries,
+        error
+      });
+
+      if (retryCount < maxRetries) {
+
+        setTimeout(async () => {
+          try {
+            await this.refreshToolsForServer(serverId, retryCount + 1);
+          } catch (retryError) {
+            logger.warn('MCPRegistry: Delayed tool refresh retry failed', { serverId, error: retryError });
+          }
+        }, retryDelayMs);
+      }
+    }
+  }
+
+  /**
    * Track a connection event
    */
   private trackConnectionEvent(event: Omit<ConnectionEvent, 'timestamp'>): void {
@@ -181,7 +238,6 @@ class RegistryImpl {
     // Also persist to localStorage for persistence across sessions
     this.saveConnectionEvents();
 
-    logger.debug('Connection event tracked', connectionEvent);
   }
 
   /**
@@ -254,12 +310,6 @@ class RegistryImpl {
         await this.client.connect({ ...server, interactive });
         this.lastConnected = new Date();
 
-        logger.info('MCP connected', {
-          serverId: server.id,
-          endpoint: server.endpoint,
-          attempt: attempt + 1,
-          retryAttempts
-        });
 
         // Clear any stored authentication errors on successful connection
         this.clearStoredAuthErrorForServer(server.id);
@@ -271,6 +321,16 @@ class RegistryImpl {
           details: `Connected on attempt ${attempt + 1}`,
           retryAttempt: attempt,
         });
+
+        // Automatically refresh tools after successful connection
+        try {
+          await this.refreshToolsForServer(server.id);
+        } catch (refreshError) {
+          logger.warn('MCPRegistry: Auto-refresh failed after connection', {
+            serverId: server.id,
+            error: refreshError
+          });
+        }
 
         return {
           serverId: server.id,
@@ -380,7 +440,6 @@ class RegistryImpl {
     this.loadConnectionEvents();
 
     if (!cfg.enabled) {
-      logger.info('MCP disabled');
       return [];
     }
 
@@ -427,8 +486,10 @@ class RegistryImpl {
     return results;
   }
 
+
   async refresh(): Promise<void> {
     const cfg = getMCPConfig();
+
     if (!cfg.enabled || this.servers.length === 0) {
       return;
     }
@@ -442,7 +503,9 @@ class RegistryImpl {
 
     // First pass: collect all tools from all servers
     for (const srv of this.servers) {
-      if (!this.client.isConnected(srv.id)) {
+      const isConnected = this.client.isConnected(srv.id);
+
+      if (!isConnected) {
         continue;
       }
 
@@ -451,7 +514,7 @@ class RegistryImpl {
         tools = await this.client.listTools(srv.id);
       } catch (error) {
         this.setError(error);
-        logger.error('listTools failed', { serverId: srv.id, error });
+        logger.error('MCPRegistry: listTools failed', { serverId: srv.id, error });
         continue;
       }
 
@@ -508,16 +571,16 @@ class RegistryImpl {
         const factoryName = toolName; // Use smart name as factory name
         ToolRegistry.registerToolFactory(factoryName, () => new MCPToolAdapter(srv.id, this.client, def, namespacedName));
         this.registeredTools.push(factoryName);
-
-        logger.debug('MCPRegistry: Registered tool with smart name', {
-          originalName: def.name,
-          smartName: toolName,
-          serverId: srv.id,
-          hasConflict: toolInfo.count > 1
-        });
       } catch (error) {
-        logger.error('Failed to register MCP tool', { tool: def.name, smartName: toolName, error });
+        logger.error('MCPRegistry: Failed to register MCP tool', { tool: def.name, smartName: toolName, error });
       }
+    }
+
+    if (allServerTools.length > 0 && this.registeredTools.length === 0) {
+      logger.warn('MCPRegistry: Found tools but none were registered - check allowlist configuration', {
+        foundTools: allServerTools.map(t => t.def.name),
+        allowlist: Array.from(allow)
+      });
     }
   }
 
@@ -543,7 +606,6 @@ class RegistryImpl {
       this.clearStoredAuthErrorForServer(serverId);
 
       await this.refresh();
-      logger.info('MCP server reconnected', { serverId });
     } catch (error) {
       this.setError(error);
       logger.error('Failed to reconnect MCP server', { serverId, error });
@@ -572,7 +634,6 @@ class RegistryImpl {
   async ensureToolsRegistered(): Promise<void> {
     // Auto-refresh if no tools are registered but servers are configured
     if (this.registeredTools.length === 0 && this.servers.length > 0) {
-      logger.debug('MCPRegistry: No tools registered but servers exist, auto-refreshing');
       try {
         await this.refresh();
       } catch (error) {
