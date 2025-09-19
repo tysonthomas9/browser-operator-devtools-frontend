@@ -9,18 +9,19 @@ import { MCPConnectionsDialog } from './MCPConnectionsDialog.js';
 const logger = createLogger('MCPConnectorsCatalogDialog');
 
 const LOGO_URLS = {
-  sentry: new URL('../../../../Images/sentry-mcp.svg', import.meta.url).toString(),
-  atlassian: new URL('../../../../Images/atlassian-mcp.svg', import.meta.url).toString(),
-  linear: new URL('../../../../Images/linear-mcp.svg', import.meta.url).toString(),
-  notion: new URL('../../../../Images/notion-mcp.svg', import.meta.url).toString(),
-  slack: new URL('../../../../Images/slack-mcp.svg', import.meta.url).toString(),
-  github: new URL('../../../../Images/github-mcp.svg', import.meta.url).toString(),
-  asana: new URL('../../../../Images/asana-mcp.svg', import.meta.url).toString(),
-  intercom: new URL('../../../../Images/intercom-mcp.svg', import.meta.url).toString(),
-  'google-drive': new URL('../../../../Images/google-drive-mcp.svg', import.meta.url).toString(),
-  huggingface: new URL('../../../../Images/huggingface-mcp.svg', import.meta.url).toString(),
-  'google-sheets': new URL('../../../../Images/google-sheets-mcp.svg', import.meta.url).toString(),
-  socket: new URL('../../../../Images/socket-mcp.svg', import.meta.url).toString(),
+  sentry: new URL('../../../../Images/sentry-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  atlassian: new URL('../../../../Images/atlassian-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  linear: new URL('../../../../Images/linear-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  notion: new URL('../../../../Images/notion-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  slack: new URL('../../../../Images/slack-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  github: new URL('../../../../Images/github-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  asana: new URL('../../../../Images/asana-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  intercom: new URL('../../../../Images/intercom-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  'google-drive': new URL('../../../../Images/google-drive-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  huggingface: new URL('../../../../Images/huggingface-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  'google-sheets': new URL('../../../../Images/google-sheets-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  socket: new URL('../../../../Images/socket-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  invideo: new URL('../../../../Images/invideo-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
 } as const;
 
 type MCPConnectorLogoId = keyof typeof LOGO_URLS;
@@ -65,7 +66,7 @@ interface MCPConnector {
   id: string;
   name: string;
   description: string;
-  logo: MCPConnectorLogoId;
+  logo?: MCPConnectorLogoId;
   endpoint: string;
   authType: 'oauth' | 'bearer';
   category: string;
@@ -76,19 +77,10 @@ const MCP_CONNECTORS: MCPConnector[] = [
     id: 'invideo',
     name: 'invideo',
     description: 'Build video creation capabilities into your applications',
-  logo: 'socket', // fallback generic icon
+    logo: 'invideo',
     endpoint: 'https://mcp.invideo.io/sse',
     authType: 'oauth',
     category: 'Media'
-  },
-  {
-    id: 'canva',
-    name: 'Canva',
-    description: 'Browse, summarize, autofill, and even generate new Canva designs directly from Claude',
-  logo: 'socket', // fallback generic icon
-    endpoint: 'https://mcp.canva.com/mcp',
-    authType: 'oauth',
-    category: 'Design'
   },
   // {
   //   id: 'monday',
@@ -99,15 +91,6 @@ const MCP_CONNECTORS: MCPConnector[] = [
   //   authType: 'oauth',
   //   category: 'Project Management'
   // },
-  {
-    id: 'jam',
-    name: 'Jam',
-    description: 'Debug faster with AI agents that can access Jam recordings like video, console logs, network requests, and errors',
-  logo: 'socket', // fallback generic icon
-    endpoint: 'https://mcp.jam.dev/mcp',
-    authType: 'oauth',
-    category: 'Debugging'
-  },
   // ...existing connectors...
   {
     id: 'sentry',
@@ -153,6 +136,22 @@ const MCP_CONNECTORS: MCPConnector[] = [
     endpoint: 'https://huggingface.co/mcp',
     authType: 'oauth',
     category: 'AI/ML'
+  },
+  {
+    id: 'canva',
+    name: 'Canva',
+    description: 'Browse, summarize, autofill, and even generate new Canva designs directly from Claude',
+    endpoint: 'https://mcp.canva.com/mcp',
+    authType: 'oauth',
+    category: 'Design'
+  },
+  {
+    id: 'jam',
+    name: 'Jam',
+    description: 'Debug faster with AI agents that can access Jam recordings like video, console logs, network requests, and errors',
+    endpoint: 'https://mcp.jam.dev/mcp',
+    authType: 'oauth',
+    category: 'Debugging'
   },
 ];
 
@@ -1011,11 +1010,13 @@ export class MCPConnectorsCatalogDialog {
     // Logo
     const logo = document.createElement('div');
     logo.className = 'mcp-connector-logo';
-    const logoImg = document.createElement('img');
-    logoImg.src = LOGO_URLS[connector.logo];
-    logoImg.alt = `${connector.name} logo`;
-    logoImg.loading = 'lazy';
-    logo.appendChild(logoImg);
+    if (connector.logo) {
+      const logoImg = document.createElement('img');
+      logoImg.src = LOGO_URLS[connector.logo];
+      logoImg.alt = `${connector.name} logo`;
+      logoImg.loading = 'lazy';
+      logo.appendChild(logoImg);
+    }
     item.appendChild(logo);
 
     // Content

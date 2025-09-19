@@ -209,6 +209,7 @@ _ai_chat_sources = [
     "core/GraphConfigs.ts",
     "core/ConfigurableGraph.ts",
     "core/BaseOrchestratorAgent.ts",
+    "core/AgentDescriptorRegistry.ts",
     "core/PageInfoManager.ts",
     "core/AgentNodes.ts",
     "core/GraphHelpers.ts",

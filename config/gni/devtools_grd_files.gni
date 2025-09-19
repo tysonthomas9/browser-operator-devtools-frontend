@@ -320,6 +320,7 @@ grd_files_bundled_sources = [
   "front_end/Images/google-sheets-mcp.svg",
   "front_end/Images/huggingface-mcp.svg",
   "front_end/Images/intercom-mcp.svg",
+  "front_end/Images/invideo-mcp.svg",
   "front_end/Images/linear-mcp.svg",
   "front_end/Images/notion-mcp.svg",
   "front_end/Images/sentry-mcp.svg",

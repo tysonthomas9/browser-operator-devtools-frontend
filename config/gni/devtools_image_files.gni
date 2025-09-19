@@ -315,6 +315,7 @@ devtools_svg_sources = [
   "google-sheets-mcp.svg",
   "huggingface-mcp.svg",
   "intercom-mcp.svg",
+  "invideo-mcp.svg",
   "linear-mcp.svg",
   "notion-mcp.svg",
   "sentry-mcp.svg",
