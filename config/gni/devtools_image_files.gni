@@ -308,6 +308,19 @@ devtools_svg_sources = [
   "whatsnew.svg",
   "width.svg",
   "zoom-in.svg",
+  "asana-mcp.svg",
+  "atlassian-mcp.svg",
+  "github-mcp.svg",
+  "google-drive-mcp.svg",
+  "google-sheets-mcp.svg",
+  "huggingface-mcp.svg",
+  "intercom-mcp.svg",
+  "invideo-mcp.svg",
+  "linear-mcp.svg",
+  "notion-mcp.svg",
+  "sentry-mcp.svg",
+  "slack-mcp.svg",
+  "socket-mcp.svg",
 ]
 
 devtools_src_svg_files = []

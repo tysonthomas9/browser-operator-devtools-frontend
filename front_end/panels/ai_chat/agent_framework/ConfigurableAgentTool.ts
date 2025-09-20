@@ -5,12 +5,14 @@
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
+import { AgentDescriptorRegistry, type AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import { getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import { MODEL_SENTINELS } from '../core/Constants.js';
 import type { AgentSession } from './AgentSessionTypes.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 
 const logger = createLogger('ConfigurableAgentTool');
+const DEFAULT_AGENT_TOOL_VERSION = '2025-09-17';
 
 import { AgentRunner, type AgentRunnerConfig, type AgentRunnerHooks } from './AgentRunner.js';
 
@@ -26,6 +28,8 @@ export interface CallCtx {
   overrideSessionId?: string,
   overrideParentSessionId?: string,
   overrideTraceId?: string,
+  abortSignal?: AbortSignal,
+  agentDescriptor?: AgentDescriptor,
 }
 
 /**
@@ -110,6 +114,11 @@ export interface AgentToolConfig {
    * Tool names to make available to the agent
    */
   tools: string[];
+
+  /**
+   * Semantic version identifier for this agent configuration
+   */
+  version?: string;
 
   /**
    * Defines potential handoffs to other agents.
@@ -315,6 +324,21 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       throw new Error(`ConfigurableAgentTool: systemPrompt is required for ${config.name}`);
     }
 
+    AgentDescriptorRegistry.registerSource({
+      name: config.name,
+      type: 'configurable_agent',
+      version: config.version ?? DEFAULT_AGENT_TOOL_VERSION,
+      promptProvider: () => config.systemPrompt,
+      toolNamesProvider: () => [...config.tools],
+      metadataProvider: () => ({
+        handoffs: (config.handoffs || []).map(handoff => ({
+          targetAgentName: handoff.targetAgentName,
+          trigger: handoff.trigger || 'llm_tool_call',
+          includeToolResults: handoff.includeToolResults ? [...handoff.includeToolResults] : undefined
+        }))
+      })
+    });
+
     // Call custom init function directly if provided
     if (config.init) {
       config.init(this);
@@ -481,6 +505,12 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       nanoModel: callCtx.nanoModel,
     };
 
+    const descriptor = await AgentDescriptorRegistry.getDescriptor(this.name);
+    if (descriptor) {
+      runnerConfig.agentDescriptor = descriptor;
+      callCtx.agentDescriptor = descriptor;
+    }
+
     const runnerHooks: AgentRunnerHooks = {
       prepareInitialMessages: undefined, // initial messages already prepared above
       createSuccessResult: this.config.createSuccessResult
@@ -504,7 +534,8 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
         sessionId: ctx.overrideSessionId,
         parentSessionId: ctx.overrideParentSessionId,
         traceId: ctx.overrideTraceId,
-      }
+      },
+      callCtx.abortSignal
     );
 
     // Return the direct result from the runner (including agentSession)

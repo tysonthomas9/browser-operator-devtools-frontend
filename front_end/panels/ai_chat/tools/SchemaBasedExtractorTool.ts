@@ -36,7 +36,7 @@ export interface SchemaExtractionResult {
  * Tool for extracting structured data from DOM based on schema definitions
  */
 export class SchemaBasedExtractorTool implements Tool<SchemaExtractionArgs, SchemaExtractionResult> {
-  name = 'extract_schema_data';
+  name = 'extract_data';
   description = `Extracts structured data from a web page's DOM using a user-provided JSON schema and natural language instruction.
   - The schema defines the exact structure and types of data to extract (e.g., text, numbers, URLs).
   - For fields representing URLs, specify them in the schema as: { type: 'string', format: 'url' }.

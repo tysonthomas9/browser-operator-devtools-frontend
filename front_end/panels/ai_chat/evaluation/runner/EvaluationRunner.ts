@@ -8,6 +8,8 @@ import { AgentService } from '../../core/AgentService.js';
 import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
 import type { EvaluationConfig, TestResult, TestCase } from '../framework/types.js';
 import { createLogger } from '../../core/Logger.js';
+import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
+import '../../core/BaseOrchestratorAgent.js';
 import { LLMClient } from '../../LLM/LLMClient.js';
 import type { LLMProviderConfig } from '../../LLM/LLMClient.js';
 import { TIMING_CONSTANTS } from '../../core/Constants.js';
@@ -33,6 +35,7 @@ export class EvaluationRunner {
   private tracingProvider: TracingProvider;
   private sessionId: string;
   #llmInitPromise: Promise<void> | null = null;
+  #orchestratorDescriptorPromise: Promise<AgentDescriptor | null>;
 
   constructor(options: EvaluationRunnerOptions) {
     // Get API key from AgentService
@@ -71,6 +74,7 @@ export class EvaluationRunner {
     // Initialize tracing
     this.tracingProvider = createTracingProvider();
     this.sessionId = `evaluation-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.#orchestratorDescriptorPromise = AgentDescriptorRegistry.getDescriptor('orchestrator:default');
     
     logger.info('EvaluationRunner created with tracing provider', {
       sessionId: this.sessionId,
@@ -169,6 +173,8 @@ export class EvaluationRunner {
       parentObservationId: undefined
     };
 
+    const orchestratorDescriptor = await this.#orchestratorDescriptorPromise;
+
     // Create trace for this evaluation
     if (isTracingEnabled()) {
       try {
@@ -197,7 +203,13 @@ export class EvaluationRunner {
             type: 'evaluation',
             tool: testCase.tool,
             url: testCase.url,
-            testId: testCase.id || testCase.name
+            testId: testCase.id || testCase.name,
+            ...(orchestratorDescriptor ? {
+              agentVersion: orchestratorDescriptor.version,
+              agentName: orchestratorDescriptor.name,
+              promptHash: orchestratorDescriptor.promptHash,
+              toolsetHash: orchestratorDescriptor.toolsetHash
+            } : {})
           },
           'evaluation-runner',
           ['evaluation', testCase.tool, 'test']
@@ -243,7 +255,13 @@ export class EvaluationRunner {
             metadata: {
               tool: testCase.tool,
               testId: testCase.id || testCase.name,
-              phase: 'llm-evaluation'
+              phase: 'llm-evaluation',
+              ...(orchestratorDescriptor ? {
+                agentVersion: orchestratorDescriptor.version,
+                agentName: orchestratorDescriptor.name,
+                promptHash: orchestratorDescriptor.promptHash,
+                toolsetHash: orchestratorDescriptor.toolsetHash
+              } : {})
             }
           }, traceId);
         }
@@ -262,7 +280,13 @@ export class EvaluationRunner {
             metadata: {
               score: llmJudgment.score,
               passed: llmJudgment.passed,
-              explanation: llmJudgment.explanation
+              explanation: llmJudgment.explanation,
+              ...(orchestratorDescriptor ? {
+                agentVersion: orchestratorDescriptor.version,
+                agentName: orchestratorDescriptor.name,
+                promptHash: orchestratorDescriptor.promptHash,
+                toolsetHash: orchestratorDescriptor.toolsetHash
+              } : {})
             }
           });
         }

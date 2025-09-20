@@ -24,6 +24,6 @@ export enum NodeType {
  * Interface for the compiled orchestrator agent
  */
 export interface CompiledGraph {
-  invoke(state: AgentState): AsyncGenerator<AgentState, AgentState, void>;
+  invoke(state: AgentState, signal?: AbortSignal): AsyncGenerator<AgentState, AgentState, void>;
   onStep?: (stepData: {text: string, type: string}) => void;
 }

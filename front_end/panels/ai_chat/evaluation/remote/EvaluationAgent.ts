@@ -4,10 +4,12 @@
 
 import { WebSocketRPCClient } from '../../common/WebSocketRPCClient.js';
 import { getEvaluationConfig, getEvaluationClientId } from '../../common/EvaluationConfig.js';
-import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
+import { ToolRegistry, ConfigurableAgentTool } from '../../agent_framework/ConfigurableAgentTool.js';
 import { AgentService } from '../../core/AgentService.js';
 import { createLogger } from '../../core/Logger.js';
 import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
+import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
+import '../../core/BaseOrchestratorAgent.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
 import type { ChatMessage } from '../../models/ChatTypes.js';
 import {
@@ -62,6 +64,7 @@ export class EvaluationAgent {
   private judgeModel: string;
   private miniModel: string;
   private nanoModel: string;
+  private orchestratorDescriptorPromise: Promise<AgentDescriptor | null>;
 
   constructor(options: EvaluationAgentOptions) {
     this.clientId = options.clientId;
@@ -71,6 +74,7 @@ export class EvaluationAgent {
     this.miniModel = options.miniModel;
     this.nanoModel = options.nanoModel;
     this.tracingProvider = createTracingProvider();
+    this.orchestratorDescriptorPromise = AgentDescriptorRegistry.getDescriptor('orchestrator:default');
     
     logger.info('EvaluationAgent created with tracing provider', {
       clientId: this.clientId,
@@ -335,6 +339,7 @@ export class EvaluationAgent {
       sessionId,
       parentObservationId: undefined 
     };
+    const orchestratorDescriptor = await this.orchestratorDescriptorPromise;
     
     try {
       // Initialize tracing provider if not already done
@@ -357,7 +362,13 @@ export class EvaluationAgent {
           evaluationId: params.evaluationId,
           tool: params.tool,
           url: params.url,
-          source: 'evaluation-server'
+          source: 'evaluation-server',
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         },
         'evaluation-agent',
         ['evaluation', params.tool]
@@ -504,7 +515,13 @@ export class EvaluationAgent {
           statusMessage: 'completed',
           metadata: {
             executionTime,
-            evaluationId: params.evaluationId
+            evaluationId: params.evaluationId,
+            ...(orchestratorDescriptor ? {
+              agentVersion: orchestratorDescriptor.version,
+              agentName: orchestratorDescriptor.name,
+              promptHash: orchestratorDescriptor.promptHash,
+              toolsetHash: orchestratorDescriptor.toolsetHash
+            } : {})
           }
         });
       } catch (error) {
@@ -548,7 +565,13 @@ export class EvaluationAgent {
           statusMessage: 'failed',
           metadata: {
             executionTime,
-            evaluationId: params.evaluationId
+            evaluationId: params.evaluationId,
+            ...(orchestratorDescriptor ? {
+              agentVersion: orchestratorDescriptor.version,
+              agentName: orchestratorDescriptor.name,
+              promptHash: orchestratorDescriptor.promptHash,
+              toolsetHash: orchestratorDescriptor.toolsetHash
+            } : {})
           }
         });
       } catch (updateError) {
@@ -569,6 +592,7 @@ export class EvaluationAgent {
   ): Promise<any> {
     const spanId = `tool-exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const startTime = new Date();
+    const toolDescriptor = tool instanceof ConfigurableAgentTool ? await AgentDescriptorRegistry.getDescriptor(tool.name) : null;
     
     // Create tool execution span if tracing context is provided
     if (tracingContext) {
@@ -581,7 +605,13 @@ export class EvaluationAgent {
           input,
           metadata: {
             tool: toolName,
-            timeout
+            timeout,
+            ...(toolDescriptor ? {
+              agentVersion: toolDescriptor.version,
+              agentName: toolDescriptor.name,
+              promptHash: toolDescriptor.promptHash,
+              toolsetHash: toolDescriptor.toolsetHash
+            } : {})
           }
         }, tracingContext.traceId);
       } catch (error) {
@@ -595,7 +625,13 @@ export class EvaluationAgent {
         if (tracingContext) {
           this.tracingProvider.updateObservation(spanId, {
             endTime: new Date(),
-            error: `Tool execution timeout after ${timeout}ms`
+            error: `Tool execution timeout after ${timeout}ms`,
+            metadata: toolDescriptor ? {
+              agentVersion: toolDescriptor.version,
+              agentName: toolDescriptor.name,
+              promptHash: toolDescriptor.promptHash,
+              toolsetHash: toolDescriptor.toolsetHash
+            } : undefined
           }).catch(err => logger.warn('Failed to update span with timeout:', err));
         }
         reject(new Error(`Tool execution timeout after ${timeout}ms`));
@@ -614,7 +650,13 @@ export class EvaluationAgent {
           if (tracingContext) {
             this.tracingProvider.updateObservation(spanId, {
               endTime: new Date(),
-              output: result
+              output: result,
+              metadata: toolDescriptor ? {
+                agentVersion: toolDescriptor.version,
+                agentName: toolDescriptor.name,
+                promptHash: toolDescriptor.promptHash,
+                toolsetHash: toolDescriptor.toolsetHash
+              } : undefined
             }).catch(err => logger.warn('Failed to update span with result:', err));
           }
           
@@ -627,7 +669,13 @@ export class EvaluationAgent {
           if (tracingContext) {
             this.tracingProvider.updateObservation(spanId, {
               endTime: new Date(),
-              error: error.message
+              error: error.message,
+              metadata: toolDescriptor ? {
+                agentVersion: toolDescriptor.version,
+                agentName: toolDescriptor.name,
+                promptHash: toolDescriptor.promptHash,
+                toolsetHash: toolDescriptor.toolsetHash
+              } : undefined
             }).catch(err => logger.warn('Failed to update span with error:', err));
           }
           
@@ -705,6 +753,7 @@ export class EvaluationAgent {
       }, timeout);
 
       let chatObservationId: string | undefined;
+      const orchestratorDescriptor = await this.orchestratorDescriptorPromise;
 
       try {
         // Get or create AgentService instance
@@ -735,7 +784,13 @@ export class EvaluationAgent {
               startTime: new Date(),
               input: { message: input.message, model: modelName },
               metadata: {
-                evaluationType: 'chat'
+                evaluationType: 'chat',
+                ...(orchestratorDescriptor ? {
+                  agentVersion: orchestratorDescriptor.version,
+                  agentName: orchestratorDescriptor.name,
+                  promptHash: orchestratorDescriptor.promptHash,
+                  toolsetHash: orchestratorDescriptor.toolsetHash
+                } : {})
               }
             }, tracingContext.traceId);
           } catch (error) {
@@ -763,7 +818,18 @@ export class EvaluationAgent {
           try {
             await this.tracingProvider.updateObservation(chatObservationId, {
               endTime: new Date(),
-              output: { response: responseText, messageCount: agentService.getMessages().length }
+              output: { response: responseText, messageCount: agentService.getMessages().length },
+              metadata: orchestratorDescriptor ? {
+                evaluationType: 'chat',
+                status: 'completed',
+                agentVersion: orchestratorDescriptor.version,
+                agentName: orchestratorDescriptor.name,
+                promptHash: orchestratorDescriptor.promptHash,
+                toolsetHash: orchestratorDescriptor.toolsetHash
+              } : {
+                evaluationType: 'chat',
+                status: 'completed'
+              }
             });
           } catch (error) {
             logger.warn('Failed to update chat execution observation:', error);
@@ -799,7 +865,18 @@ export class EvaluationAgent {
           try {
             await this.tracingProvider.updateObservation(chatObservationId, {
               endTime: new Date(),
-              error: error instanceof Error ? error.message : String(error)
+              error: error instanceof Error ? error.message : String(error),
+              metadata: orchestratorDescriptor ? {
+                evaluationType: 'chat',
+                status: 'failed',
+                agentVersion: orchestratorDescriptor.version,
+                agentName: orchestratorDescriptor.name,
+                promptHash: orchestratorDescriptor.promptHash,
+                toolsetHash: orchestratorDescriptor.toolsetHash
+              } : {
+                evaluationType: 'chat',
+                status: 'failed'
+              }
             });
           } catch (updateError) {
             logger.warn('Failed to update chat execution observation with error:', updateError);

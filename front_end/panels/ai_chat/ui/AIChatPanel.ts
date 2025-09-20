@@ -90,6 +90,7 @@ import * as Snackbars from '../../../ui/components/snackbars/snackbars.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { getMCPConfig } from '../mcp/MCPConfig.js';
 import { onMCPConfigChange } from '../mcp/MCPConfig.js';
+import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js';
 
 const {html} = Lit;
 
@@ -163,6 +164,10 @@ const UIStrings = {
    */
   help: 'Help',
   /**
+   *@description AI chat UI tooltip text for the MCP connectors catalog button.
+   */
+  mcpConnectors: 'MCP Connectors',
+  /**
    *@description AI chat UI tooltip text for the settings button (gear icon).
    */
   settings: 'Settings',
@@ -216,6 +221,7 @@ interface ToolbarViewInput {
   onHistoryClick: (event: MouseEvent) => void;
   onDeleteClick: () => void;
   onHelpClick: () => void;
+  onMCPConnectorsClick: () => void;
   onSettingsClick: () => void;
   onEvaluationTestClick: () => void;
   onBookmarkClick: () => void;
@@ -226,17 +232,18 @@ interface ToolbarViewInput {
 
 function toolbarView(input: ToolbarViewInput): Lit.LitTemplate {
   // clang-format off
+        // Add history button when history feature is implemented
+        // <devtools-button
+        //   title=${i18nString(UIStrings.history)}
+        //   aria-label=${i18nString(UIStrings.history)}
+        //   .iconName=${'history'}
+        //   .jslogContext=${'ai-chat.history'}
+        //   .variant=${Buttons.Button.Variant.TOOLBAR}
+        //   @click=${input.onHistoryClick}></devtools-button>
+        //   <div class="toolbar-divider"></div>
   return html`
     <div class="toolbar-container" role="toolbar" .jslogContext=${VisualLogging.toolbar()} style="display: flex; justify-content: space-between; width: 100%; padding: 0 4px; box-sizing: border-box; margin: 0 0 10px 0;">
       <devtools-toolbar class="ai-chat-left-toolbar" role="presentation">
-      <devtools-button
-          title=${i18nString(UIStrings.history)}
-          aria-label=${i18nString(UIStrings.history)}
-          .iconName=${'history'}
-          .jslogContext=${'ai-chat.history'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onHistoryClick}></devtools-button>
-          <div class="toolbar-divider"></div>
         ${!input.isCenteredView ? html`
         <devtools-button
           title=${i18nString(UIStrings.newChat)}
@@ -289,6 +296,13 @@ function toolbarView(input: ToolbarViewInput): Lit.LitTemplate {
           .jslogContext=${'ai-chat.help'}
           .variant=${Buttons.Button.Variant.TOOLBAR}
           @click=${input.onHelpClick}></devtools-button>
+        <devtools-button
+          title=${i18nString(UIStrings.mcpConnectors)}
+          aria-label=${i18nString(UIStrings.mcpConnectors)}
+          .iconName=${'extension'}
+          .jslogContext=${'ai-chat.mcp-connectors'}
+          .variant=${Buttons.Button.Variant.TOOLBAR}
+          @click=${input.onMCPConnectorsClick}></devtools-button>
         <devtools-button
             title="Close Chat Window"
             aria-label="Close Chat Window"
@@ -794,8 +808,9 @@ export class AIChatPanel extends UI.Panel.Panel {
   #setupMCPIntegration(): void {
     const initAndRefresh = async () => {
       try {
-        // Always attempt to connect to MCP on startup
-        await MCPRegistry.init();
+        // Attempt to connect to MCP on startup. For OAuth, this will not trigger login
+        // until the user explicitly clicks Connect in Settings.
+        await MCPRegistry.init(false);
         await MCPRegistry.refresh();
         const status = MCPRegistry.getStatus();
         logger.info('MCP auto-connect completed', status);
@@ -1945,6 +1960,10 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Cleanup when panel is hidden
    */
   override willHide(): void {
+    // Cancel any running agent execution when the panel is hidden/reloaded
+    try {
+      this.#agentService.cancelRun();
+    } catch {}
     // Explicitly remove any event listeners to prevent memory leaks
     if (this.#boundOnMessagesChanged) {
       this.#agentService.removeEventListener(AgentEvents.MESSAGES_CHANGED, this.#boundOnMessagesChanged);
@@ -1985,6 +2004,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       onHistoryClick: this.#onHistoryClick.bind(this),
       onDeleteClick: this.#onDeleteClick.bind(this),
       onHelpClick: this.#onHelpClick.bind(this),
+      onMCPConnectorsClick: this.#onMCPConnectorsClick.bind(this),
       onSettingsClick: this.#onSettingsClick.bind(this),
       onEvaluationTestClick: this.#onEvaluationTestClick.bind(this),
       onBookmarkClick: this.#onBookmarkClick.bind(this),
@@ -2078,6 +2098,20 @@ export class AIChatPanel extends UI.Panel.Panel {
   #onHelpClick(): void {
     // Open external getting started docs in a new tab
     UI.UIUtils.openInNewTab('https://browseroperator.io/docs/getting-started/');
+  }
+
+  #onMCPConnectorsClick(): void {
+    MCPConnectorsCatalogDialog.show({
+      onClose: async () => {
+        // Refresh MCP registry when catalog is closed in case new connectors were added
+        try {
+          await MCPRegistry.init(true);
+          logger.info('MCP registry refreshed after catalog closed');
+        } catch (error) {
+          logger.error('Failed to refresh MCP registry after catalog closed', error);
+        }
+      }
+    });
   }
 
   /**

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import type { AgentToolConfig } from './ConfigurableAgentTool.js';
 
 /**
@@ -30,6 +31,7 @@ export interface AgentSession {
   reasoning?: string;
   tools: string[];
   config?: AgentToolConfig;
+  descriptor?: AgentDescriptor;
   
   // Execution metadata
   iterationCount?: number;

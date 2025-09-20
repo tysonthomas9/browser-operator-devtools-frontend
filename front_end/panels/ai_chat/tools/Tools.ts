@@ -58,6 +58,7 @@ export interface LLMContext {
   getVisionCapability?: (model: string) => Promise<boolean> | boolean;
   miniModel?: string;
   nanoModel?: string;
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -889,7 +890,7 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
     required: ['steps', 'reasoning'],
   };
 
-  async execute(args: { steps: number, reasoning: string }, _ctx?: LLMContext): Promise<NavigateBackResult | ErrorResult> {
+  async execute(args: { steps: number, reasoning: string }, ctx?: LLMContext): Promise<NavigateBackResult | ErrorResult> {
     logger.error('navigate_back', args);
     const steps = args.steps;
     if (typeof steps !== 'number' || steps <= 0) {
@@ -939,10 +940,14 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
       const timeoutMs = 5000; // 5 second timeout
       let isNavigationComplete = false;
 
-      // Poll until navigation completes or times out
+      const signal = ctx?.abortSignal;
+      // Poll until navigation completes, cancels, or times out
       while (!isNavigationComplete && (Date.now() - startTime) < timeoutMs) {
+        if (signal?.aborted) {
+          throw new DOMException('The operation was aborted', 'AbortError');
+        }
         // Short delay between checks
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await abortableSleep(100, signal);
 
         // Check if navigation is complete by testing document readyState
         try {
@@ -1424,6 +1429,30 @@ export class WaitTool implements Tool<{ seconds?: number, duration?: number, rea
   description = 'Waits for a specified number of seconds to allow page content to load, animations to complete, or dynamic content to appear. After waiting, returns a summary of what is currently visible in the viewport to help determine if additional waiting is needed. Provide the number of seconds to wait and an optional reasoning for waiting.';
 
   async execute(args: { seconds?: number, duration?: number, reason?: string, reasoning?: string }, ctx?: LLMContext): Promise<WaitResult | ErrorResult> {
+    const signal = ctx?.abortSignal;
+    const sleep = (ms: number) => new Promise<void>((resolve, reject) => {
+      if (!ms) return resolve();
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        cleanup();
+        reject(new DOMException('The operation was aborted', 'AbortError'));
+      };
+      const cleanup = () => {
+        signal?.removeEventListener('abort', onAbort);
+      };
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(timer);
+          cleanup();
+          return reject(new DOMException('The operation was aborted', 'AbortError'));
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
     // Handle both 'seconds' and 'duration' parameter names for flexibility
     const waitTime = args.seconds ?? args.duration;
     const waitReason = args.reason ?? args.reasoning;
@@ -1444,8 +1473,8 @@ export class WaitTool implements Tool<{ seconds?: number, duration?: number, rea
     // Log the wait reason if provided
     logger.info(`Waiting for ${waitTime} seconds${waitReason ? `: ${waitReason}` : ''}`);
 
-    // Wait for the specified duration
-    await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+    // Wait for the specified duration (abortable)
+    await sleep(waitTime * 1000);
 
     // Get viewport summary after waiting
     let viewportSummary: string | undefined;
@@ -1946,7 +1975,7 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
       await Utils.performAction(target, method, actionArgsArray, xpath, iframeNodeId);
 
       // --- Wait for DOM to stabilize after action ---
-      await this.waitForDOMStability(target, method, isLikelyNavigationElement);
+      await this.waitForDOMStability(target, method, isLikelyNavigationElement, (ctx as LLMContext | undefined)?.abortSignal);
 
       // --- Capture tree state after action and generate diff ---
       try {
@@ -2027,8 +2056,8 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
       // Check for navigation after 'click' on relevant elements
       if (method === 'click' && isLikelyNavigationElement && initialUrl !== undefined) {
         logger.info('Checking for navigation after click');
-        // Wait briefly for potential navigation.
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second wait
+        // Wait briefly for potential navigation (abortable)
+        await abortableSleep(1000, ctx?.abortSignal);
 
         const urlResult = await target.runtimeAgent().invoke_evaluate({
           expression: 'window.location.href',
@@ -2129,8 +2158,8 @@ Provide a clear, concise response about what happened.`
         }
       } else {
         try {
-          // Add some delay to allow UI to refresh
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // Add some delay to allow UI to refresh (abortable)
+          await abortableSleep(300, (ctx as LLMContext | undefined)?.abortSignal);
           
           // Take after screenshot
           const afterScreenshotResult = await target.pageAgent().invoke_captureScreenshot({
@@ -2383,7 +2412,7 @@ Provide a clear, descriptive response about what you observe and whether the act
   };
 
   // DOM stability waiting method
-  private async waitForDOMStability(target: SDK.Target.Target, method: string, isLikelyNavigationElement: boolean): Promise<void> {
+  private async waitForDOMStability(target: SDK.Target.Target, method: string, isLikelyNavigationElement: boolean, signal?: AbortSignal): Promise<void> {
     const maxWaitTime = isLikelyNavigationElement ? 5000 : 2000; // 5s for navigation, 2s for other actions
     const startTime = Date.now();
     
@@ -2392,24 +2421,27 @@ Provide a clear, descriptive response about what you observe and whether the act
     try {
       // For navigation elements, wait for document ready state
       if (isLikelyNavigationElement) {
-        await this.waitForDocumentReady(target, maxWaitTime);
+        await this.waitForDocumentReady(target, maxWaitTime, signal);
       }
       
       // Wait for DOM mutations to settle using polling approach
-      await this.waitForDOMMutationStability(target, maxWaitTime - (Date.now() - startTime));
+      await this.waitForDOMMutationStability(target, maxWaitTime - (Date.now() - startTime), signal);
       
     } catch (error) {
       logger.warn('Error waiting for DOM stability:', error);
       // Fallback to minimal wait
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await abortableSleep(300, signal);
     }
   }
 
-  private async waitForDocumentReady(target: SDK.Target.Target, maxWaitTime: number): Promise<void> {
+  private async waitForDocumentReady(target: SDK.Target.Target, maxWaitTime: number, signal?: AbortSignal): Promise<void> {
     const startTime = Date.now();
     const pollInterval = 100;
     
     while (Date.now() - startTime < maxWaitTime) {
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted', 'AbortError');
+      }
       try {
         const readyStateResult = await target.runtimeAgent().invoke_evaluate({
           expression: 'document.readyState',
@@ -2421,7 +2453,7 @@ Provide a clear, descriptive response about what you observe and whether the act
           return;
         }
         
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await abortableSleep(pollInterval, signal);
       } catch (error) {
         logger.warn('Error checking document ready state:', error);
         break;
@@ -2429,7 +2461,7 @@ Provide a clear, descriptive response about what you observe and whether the act
     }
   }
 
-  private async waitForDOMMutationStability(target: SDK.Target.Target, maxWaitTime: number): Promise<void> {
+  private async waitForDOMMutationStability(target: SDK.Target.Target, maxWaitTime: number, signal?: AbortSignal): Promise<void> {
     const startTime = Date.now();
     const stabilityWindow = 800; // Longer stability window for complex content
     const pollInterval = 100;
@@ -2439,6 +2471,9 @@ Provide a clear, descriptive response about what you observe and whether the act
     const requiredStableChecks = 3;
     
     while (Date.now() - startTime < maxWaitTime) {
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted', 'AbortError');
+      }
       try {
         // Generic DOM stability detection
         const currentTreeResult = await target.runtimeAgent().invoke_evaluate({
@@ -2505,7 +2540,7 @@ Provide a clear, descriptive response about what you observe and whether the act
           }
         }
         
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await abortableSleep(pollInterval, signal);
       } catch (error) {
         logger.warn('Error checking DOM stability:', error);
         break;
@@ -4218,3 +4253,20 @@ export function getTools(): Array<(
 
 // Export the SequentialThinkingTool
 export { SequentialThinkingTool } from './SequentialThinkingTool.js';
+// Abortable sleep utility for tools that need delays/polling
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (!ms) return resolve();
+    const timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(timer); cleanup(); reject(new DOMException('The operation was aborted', 'AbortError')); };
+    const cleanup = () => { signal?.removeEventListener('abort', onAbort); };
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timer);
+        cleanup();
+        return reject(new DOMException('The operation was aborted', 'AbortError'));
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}

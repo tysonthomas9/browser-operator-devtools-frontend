@@ -19,6 +19,7 @@ import { AgentErrorHandler } from './AgentErrorHandler.js';
 import { createTracingProvider, withTracingContext } from '../tracing/TracingConfig.js';
 import * as ToolNameMap from './ToolNameMap.js';
 import type { TracingProvider } from '../tracing/TracingProvider.js';
+import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 
 const logger = createLogger('AgentNodes');
 
@@ -110,6 +111,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
 
       // Create generation observation for LLM call
       const tracingContext = state.context?.tracingContext;
+      const agentDescriptor = state.context?.agentDescriptor;
       let generationId: string | undefined;
       const generationStartTime = new Date();
 
@@ -134,6 +136,17 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
               entity: state.messages[state.messages.length - 1].entity,
               content: JSON.stringify(state.messages[state.messages.length - 1]).substring(0, 500)
             } : null
+          },
+          metadata: {
+            executionLevel: 'stategraph',
+            source: 'AgentNode',
+            selectedAgentType: state.selectedAgentType ?? 'default',
+            ...(agentDescriptor ? {
+              agentName: agentDescriptor.name,
+              agentVersion: agentDescriptor.version,
+              promptHash: agentDescriptor.promptHash,
+              toolsetHash: agentDescriptor.toolsetHash
+            } : {})
           }
         }, tracingContext.traceId);
 
@@ -149,7 +162,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
         
         // Get tools for the current agent type
         const baseTools = BaseOrchestratorAgent.getAgentTools(state.selectedAgentType ?? '') as any;
-        const selection = await ToolSurfaceProvider.select(state, baseTools, { maxToolsPerTurn: 20, maxMcpPerTurn: 8 });
+        const selection = await ToolSurfaceProvider.select(state, baseTools);
         // Persist selection in context so ToolExecutorNode can resolve the same set
         if (!state.context) { (state as any).context = {}; }
         (state.context as any).selectedToolNames = selection.selectedNames;
@@ -173,9 +186,16 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
             logger.warn('Failed to update generation observation with tools list', err);
           }
         }
-        
+
+        // Build mapping from original tool names to sanitized names for message conversion
+        const originalToSanitized: Record<string, string> = {};
+        tools.forEach(tool => {
+          const sanitized = ToolNameMap.getSanitized(tool.name);
+          originalToSanitized[tool.name] = sanitized;
+        });
+
         // Convert ChatMessage[] to LLMMessage[]
-        const llmMessages = this.convertChatMessagesToLLMMessages(state.messages);
+        const llmMessages = this.convertChatMessagesToLLMMessages(state.messages, originalToSanitized);
         
         // Create error handler for retry logic
         const errorHandler = AgentErrorHandler.createErrorHandler({
@@ -241,7 +261,18 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
           await this.tracingProvider.updateObservation(generationId, {
             endTime: new Date(),
             output: parsedAction,
-            ...(usage && { usage })
+            ...(usage && { usage }),
+            metadata: {
+              executionLevel: 'stategraph',
+              source: 'AgentNode',
+              selectedAgentType: state.selectedAgentType ?? 'default',
+              ...(agentDescriptor ? {
+                agentName: agentDescriptor.name,
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
+            }
           });
         }
 
@@ -249,7 +280,10 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
         let newModelMessage: ModelChatMessage;
         if (parsedAction.type === 'tool_call') {
           const toolCallId = crypto.randomUUID(); // Generate unique ID for OpenAI format
-          const resolvedToolName = ToolNameMap.resolveOriginal(parsedAction.name) || parsedAction.name;
+          const sanitizedToolName = ToolNameMap.getSanitized(parsedAction.name);
+          const resolvedToolName = ToolNameMap.resolveOriginal(parsedAction.name)
+            || ToolNameMap.resolveOriginal(sanitizedToolName)
+            || parsedAction.name;
           
           // Create tool-call event observation
           const tracingContext = state.context?.tracingContext;
@@ -336,7 +370,18 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
         if (generationId && tracingContext?.traceId) {
           await this.tracingProvider.updateObservation(generationId, {
             endTime: new Date(),
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
+            metadata: {
+              executionLevel: 'stategraph',
+              source: 'AgentNode',
+              selectedAgentType: state.selectedAgentType ?? 'default',
+              ...(agentDescriptor ? {
+                agentName: agentDescriptor.name,
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
+            }
           });
         }
         
@@ -456,7 +501,33 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
     tools = [] as unknown as ReturnType<typeof getTools>;
   }
   const toolMap = new Map<string, ReturnType<typeof getTools>[number]>();
-  (tools as any[]).forEach((tool: any) => toolMap.set(tool.name, tool));
+  (tools as any[]).forEach((tool: any) => {
+    // Map original name
+    toolMap.set(tool.name, tool);
+
+    // Map sanitized name
+    const sanitized = ToolNameMap.getSanitized(tool.name);
+    if (sanitized && sanitized !== tool.name) {
+      toolMap.set(sanitized, tool);
+    }
+
+    // Also try to resolve any existing mapping from ToolNameMap
+    const resolvedOriginal = ToolNameMap.resolveOriginal(sanitized);
+    if (resolvedOriginal && resolvedOriginal !== tool.name && resolvedOriginal !== sanitized) {
+      toolMap.set(resolvedOriginal, tool);
+    }
+
+    // Debug logging for MCP tools
+    if (tool.name.includes('mcp:')) {
+      logger.debug('ToolExecutorNode: Mapped MCP tool', {
+        original: tool.name,
+        sanitized: sanitized,
+        resolvedOriginal: resolvedOriginal
+      });
+    }
+  });
+
+  logger.debug('ToolExecutorNode: Created toolMap with keys', Array.from(toolMap.keys()));
 
   const toolExecutorNode = new class ToolExecutorNode implements Runnable<AgentState, AgentState> {
     private toolMap: Map<string, ReturnType<typeof getTools>[number]>;
@@ -494,8 +565,75 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
       // Initialize messages array with current state
       const messages = [...state.messages];
 
-      const selectedTool = this.toolMap.get(toolName);
+      const sanitizedToolName = ToolNameMap.getSanitized(toolName);
+      const resolvedOriginalName = ToolNameMap.resolveOriginal(toolName) || ToolNameMap.resolveOriginal(sanitizedToolName);
+
+      // Extract tool name for smart naming (declared here for reuse in fallback)
+      let extractedToolName: string | null = null;
+      if (toolName.startsWith('mcp:') && toolName.includes(':')) {
+        // Extract tool name from "mcp:server_id:tool_name" format
+        const parts = toolName.split(':');
+        if (parts.length >= 3) {
+          extractedToolName = parts.slice(2).join(':'); // Handle tool names with colons
+        }
+      } else if (toolName.includes('mcp_')) {
+        // Handle sanitized format "mcp_server_id_tool_name"
+        const mcpPrefix = toolName.match(/^mcp_[^_]+_(.+)$/);
+        if (mcpPrefix) {
+          extractedToolName = mcpPrefix[1].replace(/_/g, ':'); // Convert back underscores in tool name
+        }
+      }
+
+      // Debug logging for tool resolution
+      logger.debug('ToolExecutorNode: Resolving tool', {
+        requested: toolName,
+        sanitized: sanitizedToolName,
+        resolved: resolvedOriginalName,
+        availableTools: Array.from(this.toolMap.keys())
+      });
+
+      // Try multiple resolution strategies
+      let selectedTool = this.toolMap.get(toolName)
+        || (resolvedOriginalName ? this.toolMap.get(resolvedOriginalName) : undefined)
+        || this.toolMap.get(sanitizedToolName);
+
+      // Last resort: try to get tool directly from ToolRegistry
       if (!selectedTool) {
+        logger.debug('ToolExecutorNode: Trying direct ToolRegistry lookup as fallback');
+
+        // Try all possible name variants
+        const namesToTry = [
+          toolName,
+          sanitizedToolName,
+          resolvedOriginalName,
+          extractedToolName
+        ].filter(Boolean) as string[];
+
+        for (const name of namesToTry) {
+          try {
+            const registryTool = ToolRegistry.getRegisteredTool(name as any);
+            if (registryTool) {
+              selectedTool = registryTool;
+              logger.debug('ToolExecutorNode: Found tool via direct registry lookup', {
+                requested: toolName,
+                foundAs: name,
+                toolType: registryTool.constructor.name
+              });
+              break;
+            }
+          } catch (error) {
+            // Ignore registry lookup errors
+          }
+        }
+      }
+
+      if (!selectedTool) {
+        logger.error('ToolExecutorNode: Tool not found', {
+          requested: toolName,
+          sanitized: sanitizedToolName,
+          resolved: resolvedOriginalName,
+          availableTools: Array.from(this.toolMap.keys())
+        });
         throw new Error(`Tool ${toolName} not found`);
       }
 
@@ -504,6 +642,7 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
       let spanId: string | undefined;
       const spanStartTime = new Date();
       const isConfigurableAgent = selectedTool instanceof ConfigurableAgentTool;
+      const configurableDescriptor = isConfigurableAgent ? await AgentDescriptorRegistry.getDescriptor(selectedTool.name) : null;
 
       console.log(`[HIERARCHICAL_TRACING] ToolExecutorNode: Creating span for ${toolName}:`, {
         hasTracingContext: !!tracingContext,
@@ -533,7 +672,13 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
               phase: 'execution',
               executionLevel: isConfigurableAgent ? 'agentrunner' : 'tool',
               source: 'ToolExecutorNode',
-              isConfigurableAgent
+              isConfigurableAgent,
+              ...(configurableDescriptor ? {
+                agentVersion: configurableDescriptor.version,
+                agentName: configurableDescriptor.name,
+                promptHash: configurableDescriptor.promptHash,
+                toolsetHash: configurableDescriptor.toolsetHash
+              } : {})
             }
           }, tracingContext.traceId);
           console.log(`[HIERARCHICAL_TRACING] ToolExecutorNode: Successfully created span:`, {
@@ -591,12 +736,14 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         const result = await withTracingContext(executionContext, async () => {
           console.log(`[TOOL EXECUTION PATH 1] Inside withTracingContext for tool: ${toolName}`);
           const apiKeyFromState = (state.context as any)?.apiKey;
-          return await selectedTool.execute(toolArgs as any, { 
+          return await selectedTool.execute(toolArgs as any, {
             apiKey: apiKeyFromState,
-            provider: this.provider, 
+            provider: this.provider,
             model: this.modelName,
             miniModel: this.miniModel,
-            nanoModel: this.nanoModel
+            nanoModel: this.nanoModel,
+            abortSignal: state.context.abortSignal,
+            ...(configurableDescriptor ? { agentDescriptor: configurableDescriptor } : {})
           });
         });
         console.log(`[TOOL EXECUTION PATH 1] ToolExecutorNode completed tool: ${toolName}`);
@@ -700,7 +847,12 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
                 agentName: toolName,
                 agentType: toolName,
                 resultType: result && typeof result === 'object' && 'agentSession' in result ? 'agent_result' : 'unknown'
-              })
+              }),
+              ...(configurableDescriptor ? {
+                agentVersion: configurableDescriptor.version,
+                promptHash: configurableDescriptor.promptHash,
+                toolsetHash: configurableDescriptor.toolsetHash
+              } : {})
             };
 
             await this.tracingProvider.updateObservation(spanId, {
@@ -723,6 +875,10 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         }
 
       } catch (err) {
+        // Propagate cancellation so the graph can handle AbortError cleanly
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          throw err;
+        }
         resultText = `Error during tool execution: ${err instanceof Error ? err.message : String(err)}`;
         logger.error(resultText, { tool: toolName, args: toolArgs });
         isError = true;
@@ -742,7 +898,12 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
               ...(isConfigurableAgent && {
                 agentName: toolName,
                 agentType: toolName
-              })
+              }),
+              ...(configurableDescriptor ? {
+                agentVersion: configurableDescriptor.version,
+                promptHash: configurableDescriptor.promptHash,
+                toolsetHash: configurableDescriptor.toolsetHash
+              } : {})
             };
 
             await this.tracingProvider.updateObservation(spanId, {

@@ -8,8 +8,9 @@ import { getEvaluationConfig, setEvaluationConfig, isEvaluationEnabled, connectT
 import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
-import { getMCPConfig, setMCPConfig, isMCPEnabled } from '../mcp/MCPConfig.js';
+import { getMCPConfig, setMCPConfig, isMCPEnabled, hasStoredAuthErrors, getStoredAuthErrors, clearStoredAuthError } from '../mcp/MCPConfig.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
+import { MCPConnectionsDialog } from './mcp/MCPConnectionsDialog.js';
 
 import { DEFAULT_PROVIDER_MODELS } from './AIChatPanel.js';
 import './model_selector/ModelSelector.js';
@@ -365,25 +366,33 @@ const UIStrings = {
    */
   mcpEnabledHint: 'Enable MCP client to discover and call tools via Model Context Protocol',
   /**
-   *@description MCP endpoint label
+   *@description MCP connections header label
    */
-  mcpEndpoint: 'MCP Server Endpoint',
+  mcpConnectionsHeader: 'Connections',
   /**
-   *@description MCP endpoint hint
+   *@description MCP connections hint text
    */
-  mcpEndpointHint: 'HTTPS SSE or WebSocket endpoint (e.g., https://host/mcp or ws://localhost:9000)',
+  mcpConnectionsHint: 'Configure one or more MCP servers. OAuth flows use PKCE automatically.',
   /**
-   *@description MCP token label
+   *@description MCP manage connections button text
    */
-  mcpToken: 'Auth Token (optional)',
+  mcpManageConnections: 'Manage connections',
   /**
-   *@description MCP token hint
+   *@description MCP refresh connections button text
    */
-  mcpTokenHint: 'If your MCP server requires authentication, provide a token here',
+  mcpRefreshConnections: 'Reconnect all',
   /**
-   *@description MCP connect button
+   *@description MCP individual reconnect button text
    */
-  mcpConnectRefresh: 'Connect / Refresh Tools',
+  mcpReconnectButton: 'Reconnect',
+  /**
+   *@description MCP individual reconnect button text while in progress
+   */
+  mcpReconnectInProgress: 'Reconnecting…',
+  /**
+   *@description MCP individual reconnect button failure state text
+   */
+  mcpReconnectRetry: 'Retry reconnect',
   /**
    *@description MCP discovered tools label
    */
@@ -433,6 +442,46 @@ const UIStrings = {
    *@description MCP max MCP tools per turn hint
    */
   mcpMaxMcpPerTurnHint: 'Maximum number of MCP tools to include in tool selection (default: 8)',
+  /**
+   *@description MCP auth type label
+   */
+  mcpAuthType: 'Authentication Method',
+  /**
+   *@description MCP auth type hint
+   */
+  mcpAuthTypeHint: 'Choose how to authenticate with your MCP server',
+  /**
+   *@description MCP bearer option
+   */
+  mcpAuthBearer: 'Bearer token',
+  /**
+   *@description MCP OAuth option
+   */
+  mcpAuthOAuth: 'OAuth (redirect to provider)',
+  /**
+   *@description MCP OAuth client ID label
+   */
+  mcpOAuthClientId: 'OAuth Client ID',
+  /**
+   *@description MCP OAuth client ID hint
+   */
+  mcpOAuthClientIdHint: 'Pre-registered public client ID for this MCP server (no secret).',
+  /**
+   *@description MCP OAuth redirect URL label
+   */
+  mcpOAuthRedirect: 'OAuth Redirect URL',
+  /**
+   *@description MCP OAuth redirect URL hint
+   */
+  mcpOAuthRedirectHint: 'Must match the redirect URI registered with the provider (default: https://localhost:3000/callback).',
+  /**
+   *@description MCP OAuth scope label
+   */
+  mcpOAuthScope: 'OAuth Scope (optional)',
+  /**
+   *@description MCP OAuth scope hint
+   */
+  mcpOAuthScopeHint: 'Provider-specific scopes, space-separated. Leave empty if unsure.',
 };
 
 const str_ = i18n.i18n.registerUIStrings('panels/ai_chat/ui/SettingsDialog.ts', UIStrings);
@@ -465,20 +514,13 @@ export class SettingsDialog {
     addCustomModelOption: (modelName: string, modelType?: 'openai' | 'litellm' | 'groq' | 'openrouter') => ModelOption[],
     removeCustomModelOption: (modelName: string) => ModelOption[],
   ): Promise<void> {
-    logger.debug('SettingsDialog.show - Initial parameters:');
-    logger.debug('selectedModel:', selectedModel);
-    logger.debug('miniModel:', miniModel);
-    logger.debug('nanoModel:', nanoModel);
-    logger.debug('Current provider:', localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai');
     
     // Get all model options using the provided getModelOptions function
     const modelOptions = getModelOptions();
-    logger.debug('Model options from getModelOptions:', modelOptions);
     
     // Count models by provider
     const openaiModels = modelOptions.filter(m => m.type === 'openai');
     const litellmModels = modelOptions.filter(m => m.type === 'litellm');
-    logger.debug(`Model counts - OpenAI: ${openaiModels.length}, LiteLLM: ${litellmModels.length}`);
     
     // Reset selector references
     SettingsDialog.#openaiMiniModelSelect = null;
@@ -596,7 +638,6 @@ export class SettingsDialog {
       groqContent.style.display = selectedProvider === 'groq' ? 'block' : 'none';
       openrouterContent.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
       
-      logger.debug(`Provider changed to: ${selectedProvider}`);
 
       // If switching to LiteLLM, fetch the latest models if endpoint is configured
       if (selectedProvider === 'litellm') {
@@ -658,8 +699,6 @@ export class SettingsDialog {
 
       // Get model options filtered by the selected provider
       const availableModels = getModelOptions(selectedProvider as 'openai' | 'litellm' | 'groq' | 'openrouter');
-      logger.debug(`Available models for ${selectedProvider}:`, availableModels);
-      logger.debug(`Current miniModel: ${miniModel}, nanoModel: ${nanoModel}`);
 
 
       // Refresh model selectors based on new provider
@@ -708,11 +747,9 @@ export class SettingsDialog {
     
     // Function to update OpenAI model selectors
     function updateOpenAIModelSelectors() {
-      logger.debug('Updating OpenAI model selectors');
       
       // Get the latest model options filtered for OpenAI provider
       const openaiModels = getModelOptions('openai');
-      logger.debug('OpenAI models from getModelOptions:', openaiModels);
 
       // Get valid models using generic helper
       const validMiniModel = getValidModelForProvider(miniModel, openaiModels, 'openai', 'mini');
@@ -732,7 +769,6 @@ export class SettingsDialog {
       openaiModelSectionTitle.textContent = 'Model Size Selection';
       openaiModelSection.appendChild(openaiModelSectionTitle);
       
-      logger.debug(`Current miniModel: ${miniModel}, nanoModel: ${nanoModel}`);
       
       // No focus handler needed for OpenAI selectors as we don't need to fetch models on focus
       
@@ -748,7 +784,6 @@ export class SettingsDialog {
         undefined // No focus handler for OpenAI
       );
       
-      logger.debug('Created OpenAI Mini Model Select:', SettingsDialog.#openaiMiniModelSelect);
       
       // Create OpenAI Nano Model selection and store reference
       SettingsDialog.#openaiNanoModelSelect = createModelSelector(
@@ -762,7 +797,6 @@ export class SettingsDialog {
         undefined // No focus handler for OpenAI
       );
       
-      logger.debug('Created OpenAI Nano Model Select:', SettingsDialog.#openaiNanoModelSelect);
     }
     
     // Initialize OpenAI model selectors
@@ -980,7 +1014,6 @@ export class SettingsDialog {
       litellmModelSectionTitle.textContent = 'Model Size Selection';
       litellmModelSection.appendChild(litellmModelSectionTitle);
       
-      logger.debug(`Current miniModel: ${miniModel}, nanoModel: ${nanoModel}`);
       
       // Create a focus handler for LiteLLM selectors
       const onLiteLLMSelectorFocus = async () => {
@@ -1272,7 +1305,557 @@ export class SettingsDialog {
       
       addModelButton.disabled = false;
     });
-    
+
+    // ---- MCP Integration Section ----
+    const mcpSection = document.createElement('div');
+    mcpSection.className = 'settings-section mcp-section';
+    // Make MCP UI visible so users can configure OAuth/bearer and connect
+    mcpSection.style.display = 'block';
+    contentDiv.appendChild(mcpSection);
+
+    const mcpSectionTitle = document.createElement('h3');
+    mcpSectionTitle.className = 'settings-subtitle';
+    mcpSectionTitle.textContent = i18nString(UIStrings.mcpSection);
+    mcpSection.appendChild(mcpSectionTitle);
+
+    // Current MCP config
+    const currentMCPConfig = getMCPConfig();
+
+    // Status indicator
+    const mcpStatusContainer = document.createElement('div');
+    mcpStatusContainer.className = 'connection-status-container';
+    mcpStatusContainer.style.display = 'flex';
+    mcpStatusContainer.style.alignItems = 'center';
+    mcpStatusContainer.style.gap = '8px';
+    mcpStatusContainer.style.marginTop = '8px';
+    mcpStatusContainer.style.fontSize = '13px';
+    mcpSection.appendChild(mcpStatusContainer);
+
+    const mcpStatusDot = document.createElement('div');
+    mcpStatusDot.className = 'connection-status-dot';
+    mcpStatusDot.style.width = '8px';
+    mcpStatusDot.style.height = '8px';
+    mcpStatusDot.style.borderRadius = '50%';
+    mcpStatusDot.style.flexShrink = '0';
+    mcpStatusContainer.appendChild(mcpStatusDot);
+
+    const mcpStatusText = document.createElement('span');
+    mcpStatusText.className = 'connection-status-text';
+    mcpStatusContainer.appendChild(mcpStatusText);
+
+    const mcpStatusDetails = document.createElement('div');
+    mcpStatusDetails.className = 'settings-hint';
+    mcpStatusDetails.style.marginTop = '12px';
+    mcpStatusDetails.style.display = 'flex';
+    mcpStatusDetails.style.flexDirection = 'column';
+    mcpStatusDetails.style.gap = '8px';
+    mcpSection.appendChild(mcpStatusDetails);
+
+    const formatTimestamp = (date: Date | undefined): string => {
+      if (!date) return '';
+      return date.toLocaleString();
+    };
+
+    const formatMCPError = (error: string, errorType?: string): {message: string, hint?: string} => {
+      if (!errorType) return {message: error};
+      switch (errorType) {
+        case 'connection':
+          return {message: `Connection failed: ${error}`, hint: 'Check if the MCP server is running and the endpoint URL is correct.'};
+        case 'authentication':
+          return {message: `Authentication failed: ${error}`, hint: 'Verify your auth token is correct and has not expired.'};
+        case 'configuration':
+          return {message: `Configuration error: ${error}`, hint: 'Check your endpoint URL format (should be ws:// or wss://).'};
+        case 'network':
+          return {message: `Network error: ${error}`, hint: 'Check your internet connection and firewall settings.'};
+        case 'server_error':
+          return {message: `Server error: ${error}`, hint: 'The MCP server encountered an internal error. Contact the server administrator.'};
+        default:
+          return {message: error};
+      }
+    };
+
+    const updateMCPStatus = () => {
+      const status = MCPRegistry.getStatus();
+
+
+      const appendServerRow = (server: typeof status.servers[number], isConnected: boolean) => {
+        // Get auth errors once for this server
+        const authErrors = getStoredAuthErrors();
+        const serverAuthError = authErrors.find(error => error.serverId === server.id);
+
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'flex-start';
+        row.style.gap = '8px';
+        row.style.marginBottom = '6px';
+        row.style.padding = '8px';
+        row.style.borderRadius = '6px';
+        row.style.backgroundColor = 'var(--color-background-elevation-1)';
+        row.style.border = '1px solid var(--color-details-hairline)';
+
+        // Status indicator dot (smaller)
+        const statusDot = document.createElement('span');
+        statusDot.style.width = '6px';
+        statusDot.style.height = '6px';
+        statusDot.style.borderRadius = '50%';
+        statusDot.style.marginTop = '8px';
+        statusDot.style.flexShrink = '0';
+
+        // Server info container
+        const serverInfo = document.createElement('div');
+        serverInfo.style.flex = '1';
+        serverInfo.style.minWidth = '0';
+
+        // Server name line
+        const serverNameLine = document.createElement('div');
+        serverNameLine.style.display = 'flex';
+        serverNameLine.style.alignItems = 'center';
+        serverNameLine.style.gap = '8px';
+        serverNameLine.style.marginBottom = '4px';
+        serverNameLine.style.flexWrap = 'wrap';
+
+        const serverName = document.createElement('span');
+        serverName.style.fontWeight = '600';
+        serverName.style.color = 'var(--color-text-primary)';
+        serverName.style.fontSize = '13px';
+        serverName.textContent = server.name || server.id;
+
+        const statusBadge = document.createElement('span');
+        statusBadge.style.fontSize = '10px';
+        statusBadge.style.padding = '2px 6px';
+        statusBadge.style.borderRadius = '12px';
+        statusBadge.style.fontWeight = '500';
+        statusBadge.style.textTransform = 'uppercase';
+        statusBadge.style.letterSpacing = '0.5px';
+
+        // Determine status and styling with modern badge design
+        if (isConnected) {
+          if (server.toolCount === 0) {
+            // Connected but discovering tools
+            statusDot.style.backgroundColor = '#f59e0b';
+            statusBadge.style.backgroundColor = '#fef3c7';
+            statusBadge.style.color = '#92400e';
+            statusBadge.textContent = 'Discovering';
+          } else {
+            // Connected with tools
+            statusDot.style.backgroundColor = '#10b981';
+            statusBadge.style.backgroundColor = '#d1fae5';
+            statusBadge.style.color = '#065f46';
+            statusBadge.textContent = 'Connected';
+          }
+        } else {
+          if (serverAuthError) {
+            statusDot.style.backgroundColor = '#ef4444';
+            statusBadge.style.backgroundColor = '#fee2e2';
+            statusBadge.style.color = '#991b1b';
+            statusBadge.textContent = 'Auth Required';
+          } else {
+            statusDot.style.backgroundColor = '#9ca3af';
+            statusBadge.style.backgroundColor = '#f3f4f6';
+            statusBadge.style.color = '#6b7280';
+            statusBadge.textContent = 'Disconnected';
+          }
+        }
+
+        serverNameLine.appendChild(serverName);
+        serverNameLine.appendChild(statusBadge);
+
+        // Details line
+        const detailsLine = document.createElement('div');
+        detailsLine.style.fontSize = '11px';
+        detailsLine.style.color = 'var(--color-text-secondary)';
+
+        const toolCountText = server.toolCount === 0 && isConnected ?
+          'Tools loading...' :
+          `${server.toolCount} tools`;
+
+        detailsLine.textContent = `${toolCountText} • ${server.authType === 'oauth' ? 'OAuth' : 'Bearer'}`;
+
+        serverInfo.appendChild(serverNameLine);
+        serverInfo.appendChild(detailsLine);
+
+        row.appendChild(statusDot);
+        row.appendChild(serverInfo);
+
+        const needsReconnect = server.authType === 'oauth' && !isConnected;
+        if (needsReconnect) {
+          const reconnectButton = document.createElement('button');
+          reconnectButton.className = 'settings-button';
+          reconnectButton.style.padding = '2px 8px';
+          reconnectButton.style.fontSize = '12px';
+          reconnectButton.textContent = i18nString(UIStrings.mcpReconnectButton);
+          reconnectButton.addEventListener('click', async () => {
+            reconnectButton.disabled = true;
+            reconnectButton.textContent = i18nString(UIStrings.mcpReconnectInProgress);
+            try {
+              await MCPRegistry.reconnect(server.id);
+              // Clear stored authentication error on successful reconnection
+              clearStoredAuthError(server.id);
+            } catch (err) {
+              logger.error('Failed to reconnect MCP server', { serverId: server.id, error: err });
+              reconnectButton.disabled = false;
+              reconnectButton.textContent = i18nString(UIStrings.mcpReconnectRetry);
+              return;
+            } finally {
+              updateMCPStatus();
+              updateActionButtons();
+            }
+          });
+          row.appendChild(reconnectButton);
+        }
+
+        mcpStatusDetails.appendChild(row);
+
+        // Add authentication error details if present
+        if (serverAuthError) {
+          const errorDetails = document.createElement('div');
+          errorDetails.className = 'settings-hint';
+          errorDetails.style.color = 'var(--color-error)';
+          errorDetails.style.fontSize = '12px';
+          errorDetails.style.marginTop = '2px';
+          errorDetails.style.marginLeft = '16px';
+          errorDetails.style.marginBottom = '4px';
+
+          const timestamp = new Date(serverAuthError.timestamp).toLocaleString();
+          errorDetails.textContent = `Last error (${timestamp}): ${serverAuthError.message}`;
+
+          mcpStatusDetails.appendChild(errorDetails);
+        }
+      };
+
+      if (!status.enabled) {
+        mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
+        mcpStatusText.innerHTML = `<span style="color: var(--color-text-disabled); font-weight: 500;">⚫ Disabled</span>`;
+        mcpStatusDetails.textContent = '';
+        return;
+      }
+      const anyConnected = status.servers.some(s => s.connected);
+      const toolCount = status.registeredToolNames.length;
+      const authErrors = getStoredAuthErrors();
+      const hasAuthErrors = authErrors.length > 0;
+
+      if (anyConnected) {
+        if (hasAuthErrors) {
+          mcpStatusDot.style.backgroundColor = 'var(--color-warning)';
+          mcpStatusText.innerHTML = `<span style="color: var(--color-warning); font-weight: 500;">🟡 Connected with issues</span> <span style="color: var(--color-text-secondary); font-size: 12px;">(${toolCount} tools)</span>`;
+        } else {
+          mcpStatusDot.style.backgroundColor = 'var(--color-accent-green)';
+          mcpStatusText.innerHTML = `<span style="color: var(--color-accent-green); font-weight: 500;">🟢 Connected</span> <span style="color: var(--color-text-secondary); font-size: 12px;">(${toolCount} tools)</span>`;
+        }
+
+        // Safely build details content without using innerHTML
+        mcpStatusDetails.textContent = '';
+        if (status.servers.length > 0) {
+          status.servers.forEach(server => appendServerRow(server, server.connected));
+        }
+        if (status.lastConnected) {
+          const line = document.createElement('div');
+          line.style.fontSize = '11px';
+          line.style.color = 'var(--color-text-secondary)';
+          line.style.marginTop = '8px';
+          line.textContent = `Last connected: ${formatTimestamp(status.lastConnected)}`;
+          mcpStatusDetails.appendChild(line);
+        }
+        if (status.lastError) {
+          const {message, hint} = formatMCPError(status.lastError, status.lastErrorType);
+          const errLine = document.createElement('div');
+          const errSpan = document.createElement('span');
+          errSpan.style.color = 'var(--color-error-text)';
+          errSpan.textContent = message;
+          errLine.appendChild(errSpan);
+          mcpStatusDetails.appendChild(errLine);
+          if (hint) {
+            const hintLine = document.createElement('div');
+            hintLine.style.color = 'var(--color-text-secondary)';
+            hintLine.style.fontSize = '12px';
+            hintLine.textContent = hint;
+            mcpStatusDetails.appendChild(hintLine);
+          }
+        }
+      } else {
+        if (hasAuthErrors) {
+          mcpStatusDot.style.backgroundColor = 'var(--color-error)';
+          mcpStatusText.innerHTML = `<span style="color: var(--color-error); font-weight: 500;">🔴 Authentication required</span>`;
+        } else {
+          mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
+          mcpStatusText.innerHTML = `<span style="color: var(--color-text-disabled); font-weight: 500;">⚪ Not connected</span>`;
+        }
+
+        // Safely build details content without using innerHTML
+        mcpStatusDetails.textContent = '';
+        if (status.servers.length > 0) {
+          status.servers.forEach(server => appendServerRow(server, false));
+        }
+        if (status.lastDisconnected) {
+          const line = document.createElement('div');
+          line.style.fontSize = '11px';
+          line.style.color = 'var(--color-text-secondary)';
+          line.style.marginTop = '8px';
+          line.textContent = `Last disconnected: ${formatTimestamp(status.lastDisconnected)}`;
+          mcpStatusDetails.appendChild(line);
+        }
+        if (status.lastError) {
+          const {message, hint} = formatMCPError(status.lastError, status.lastErrorType);
+          const errLine = document.createElement('div');
+          const errSpan = document.createElement('span');
+          errSpan.style.color = 'var(--color-error-text)';
+          errSpan.textContent = message;
+          errLine.appendChild(errSpan);
+          mcpStatusDetails.appendChild(errLine);
+          if (hint) {
+            const hintLine = document.createElement('div');
+            hintLine.style.color = 'var(--color-text-secondary)';
+            hintLine.style.fontSize = '12px';
+            hintLine.textContent = hint;
+            mcpStatusDetails.appendChild(hintLine);
+          }
+        }
+      }
+    };
+    updateMCPStatus();
+
+    // Set up periodic MCP status updates every 10 seconds
+    const mcpStatusUpdateInterval = setInterval(updateMCPStatus, 10000);
+
+    // Action buttons row (shown when connected)
+    const mcpActionsContainer = document.createElement('div');
+    mcpActionsContainer.style.marginTop = '12px';
+    mcpActionsContainer.style.marginBottom = '8px';
+    mcpActionsContainer.style.display = 'flex';
+    mcpActionsContainer.style.gap = '8px';
+    mcpActionsContainer.style.flexWrap = 'wrap';
+    mcpSection.appendChild(mcpActionsContainer);
+
+    // Disconnect button
+    const mcpDisconnectButton = document.createElement('button');
+    mcpDisconnectButton.textContent = 'Disconnect';
+    mcpDisconnectButton.className = 'settings-button';
+    mcpDisconnectButton.style.backgroundColor = '#fee2e2';
+    mcpDisconnectButton.style.border = '1px solid #fecaca';
+    mcpDisconnectButton.style.color = '#dc2626';
+    mcpDisconnectButton.style.padding = '6px 12px';
+    mcpDisconnectButton.style.borderRadius = '6px';
+    mcpDisconnectButton.style.cursor = 'pointer';
+    mcpDisconnectButton.style.fontSize = '12px';
+    mcpDisconnectButton.style.fontWeight = '500';
+    mcpDisconnectButton.addEventListener('click', async () => {
+      try {
+        MCPRegistry.dispose();
+        updateMCPStatus();
+        updateActionButtons();
+      } catch (err) {
+        console.error('Failed to disconnect MCP:', err);
+      }
+    });
+    mcpActionsContainer.appendChild(mcpDisconnectButton);
+
+    // Manage connections button
+    const mcpManageButton = document.createElement('button');
+    mcpManageButton.textContent = 'Manage connections';
+    mcpManageButton.className = 'settings-button';
+    mcpManageButton.style.backgroundColor = 'var(--color-background-elevation-1)';
+    mcpManageButton.style.border = '1px solid var(--color-details-hairline)';
+    mcpManageButton.style.color = 'var(--color-text-primary)';
+    mcpManageButton.style.padding = '6px 12px';
+    mcpManageButton.style.borderRadius = '6px';
+    mcpManageButton.style.cursor = 'pointer';
+    mcpManageButton.style.fontSize = '12px';
+    mcpManageButton.style.fontWeight = '500';
+    mcpManageButton.addEventListener('click', () => {
+      dialog.hide();
+      MCPConnectionsDialog.show();
+    });
+    mcpActionsContainer.appendChild(mcpManageButton);
+
+    // Reconnect all button
+    const mcpReconnectAllButton = document.createElement('button');
+    mcpReconnectAllButton.textContent = 'Reconnect all';
+    mcpReconnectAllButton.className = 'settings-button';
+    mcpReconnectAllButton.style.backgroundColor = '#dbeafe';
+    mcpReconnectAllButton.style.border = '1px solid #bfdbfe';
+    mcpReconnectAllButton.style.color = '#1d4ed8';
+    mcpReconnectAllButton.style.padding = '6px 12px';
+    mcpReconnectAllButton.style.borderRadius = '6px';
+    mcpReconnectAllButton.style.cursor = 'pointer';
+    mcpReconnectAllButton.style.fontSize = '12px';
+    mcpReconnectAllButton.style.fontWeight = '500';
+    mcpReconnectAllButton.addEventListener('click', async () => {
+      mcpReconnectAllButton.disabled = true;
+      mcpReconnectAllButton.textContent = 'Reconnecting...';
+      try {
+        await MCPRegistry.init(true);
+        updateMCPStatus();
+        updateActionButtons();
+      } catch (err) {
+        console.error('Failed to reconnect all MCP servers:', err);
+      } finally {
+        mcpReconnectAllButton.disabled = false;
+        mcpReconnectAllButton.textContent = 'Reconnect all';
+      }
+    });
+    mcpActionsContainer.appendChild(mcpReconnectAllButton);
+
+    const updateActionButtons = () => {
+      const status = MCPRegistry.getStatus();
+      const anyConnected = status.enabled && status.servers.some(s => s.connected);
+      mcpActionsContainer.style.display = anyConnected ? 'flex' : 'none';
+    };
+    updateActionButtons();
+
+    // Connections management
+    const mcpConnectionsLabel = document.createElement('div');
+    mcpConnectionsLabel.className = 'settings-label';
+    mcpConnectionsLabel.textContent = i18nString(UIStrings.mcpConnectionsHeader);
+    mcpSection.appendChild(mcpConnectionsLabel);
+
+    const mcpConnectionsHint = document.createElement('div');
+    mcpConnectionsHint.className = 'settings-hint';
+    mcpConnectionsHint.textContent = i18nString(UIStrings.mcpConnectionsHint);
+    mcpSection.appendChild(mcpConnectionsHint);
+
+    const mcpConnectionsActions = document.createElement('div');
+    mcpConnectionsActions.className = 'mcp-connections-actions';
+    mcpConnectionsActions.style.display = 'flex';
+    mcpConnectionsActions.style.gap = '8px';
+    mcpConnectionsActions.style.marginBottom = '12px';
+    mcpSection.appendChild(mcpConnectionsActions);
+
+    const manageConnectionsButton = document.createElement('button');
+    manageConnectionsButton.className = 'settings-button';
+    manageConnectionsButton.textContent = i18nString(UIStrings.mcpManageConnections);
+    manageConnectionsButton.addEventListener('click', () => {
+      MCPConnectionsDialog.show({
+        onSave: async () => {
+          try {
+            await MCPRegistry.init(true);
+            await MCPRegistry.refresh();
+          } catch (err) {
+            logger.error('Failed to refresh MCP connections after save', err);
+          } finally {
+            updateMCPStatus();
+            updateActionButtons();
+            onSettingsSaved();
+          }
+        },
+      });
+    });
+    mcpConnectionsActions.appendChild(manageConnectionsButton);
+
+    const refreshConnectionsButton = document.createElement('button');
+    refreshConnectionsButton.className = 'settings-button';
+    refreshConnectionsButton.textContent = i18nString(UIStrings.mcpRefreshConnections);
+    refreshConnectionsButton.addEventListener('click', async () => {
+      try {
+        await MCPRegistry.init(true);
+        await MCPRegistry.refresh();
+      } catch (err) {
+        logger.error('Failed to refresh MCP connections', err);
+      } finally {
+        updateMCPStatus();
+        updateActionButtons();
+      }
+    });
+    mcpConnectionsActions.appendChild(refreshConnectionsButton);
+
+    // MCP config inputs (always visible since MCP is always enabled)
+    const mcpConfigContainer = document.createElement('div');
+    mcpConfigContainer.className = 'mcp-config-container';
+    mcpConfigContainer.style.display = 'block';
+    mcpSection.appendChild(mcpConfigContainer);
+
+    // Tool mode selection
+    const mcpToolModeLabel = document.createElement('div');
+    mcpToolModeLabel.className = 'settings-label';
+    mcpToolModeLabel.textContent = i18nString(UIStrings.mcpToolMode);
+    mcpConfigContainer.appendChild(mcpToolModeLabel);
+
+    const mcpToolModeHint = document.createElement('div');
+    mcpToolModeHint.className = 'settings-hint';
+    mcpToolModeHint.textContent = i18nString(UIStrings.mcpToolModeHint);
+    mcpConfigContainer.appendChild(mcpToolModeHint);
+
+    const mcpToolModeSelect = document.createElement('select');
+    mcpToolModeSelect.className = 'settings-select';
+    mcpConfigContainer.appendChild(mcpToolModeSelect);
+
+    // Tool mode options
+    const toolModeOptions = [
+      { value: 'all', text: i18nString(UIStrings.mcpToolModeAll) },
+      { value: 'router', text: i18nString(UIStrings.mcpToolModeRouter) },
+      { value: 'meta', text: i18nString(UIStrings.mcpToolModeMeta) },
+    ];
+
+    toolModeOptions.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if ((currentMCPConfig.toolMode || 'router') === option.value) {
+        optionElement.selected = true;
+      }
+      mcpToolModeSelect.appendChild(optionElement);
+    });
+
+    // Ensure the select reflects the currently stored mode even if options were appended later
+    mcpToolModeSelect.value = (currentMCPConfig.toolMode || 'router');
+
+    // Handle tool mode changes
+    mcpToolModeSelect.addEventListener('change', () => {
+      setMCPConfig({ toolMode: mcpToolModeSelect.value as 'all' | 'router' | 'meta' });
+      onSettingsSaved();
+    });
+
+    // Advanced budget controls
+    const mcpMaxToolsLabel = document.createElement('div');
+    mcpMaxToolsLabel.className = 'settings-label';
+    mcpMaxToolsLabel.textContent = i18nString(UIStrings.mcpMaxToolsPerTurn);
+    mcpConfigContainer.appendChild(mcpMaxToolsLabel);
+
+    const mcpMaxToolsHint = document.createElement('div');
+    mcpMaxToolsHint.className = 'settings-hint';
+    mcpMaxToolsHint.textContent = i18nString(UIStrings.mcpMaxToolsPerTurnHint);
+    mcpConfigContainer.appendChild(mcpMaxToolsHint);
+
+    const mcpMaxToolsInput = document.createElement('input');
+    mcpMaxToolsInput.type = 'number';
+    mcpMaxToolsInput.className = 'settings-input';
+    mcpMaxToolsInput.min = '1';
+    mcpMaxToolsInput.max = '100';
+    mcpMaxToolsInput.value = String(currentMCPConfig.maxToolsPerTurn || 20);
+    mcpConfigContainer.appendChild(mcpMaxToolsInput);
+
+    const mcpMaxMcpLabel = document.createElement('div');
+    mcpMaxMcpLabel.className = 'settings-label';
+    mcpMaxMcpLabel.textContent = i18nString(UIStrings.mcpMaxMcpPerTurn);
+    mcpConfigContainer.appendChild(mcpMaxMcpLabel);
+
+    const mcpMaxMcpHint = document.createElement('div');
+    mcpMaxMcpHint.className = 'settings-hint';
+    mcpMaxMcpHint.textContent = i18nString(UIStrings.mcpMaxMcpPerTurnHint);
+    mcpConfigContainer.appendChild(mcpMaxMcpHint);
+
+    const mcpMaxMcpInput = document.createElement('input');
+    mcpMaxMcpInput.type = 'number';
+    mcpMaxMcpInput.className = 'settings-input';
+    mcpMaxMcpInput.min = '1';
+    mcpMaxMcpInput.max = '50';
+    mcpMaxMcpInput.value = String(currentMCPConfig.maxMcpPerTurn || 8);
+    mcpConfigContainer.appendChild(mcpMaxMcpInput);
+
+    // Handle budget control changes
+    const updateBudgetControls = () => {
+      const maxTools = Math.max(1, Math.min(100, parseInt(mcpMaxToolsInput.value, 10) || 20));
+      const maxMcp = Math.max(1, Math.min(50, parseInt(mcpMaxMcpInput.value, 10) || 8));
+      setMCPConfig({
+        maxToolsPerTurn: maxTools,
+        maxMcpPerTurn: maxMcp,
+      });
+      onSettingsSaved();
+    };
+
+    mcpMaxToolsInput.addEventListener('change', updateBudgetControls);
+    mcpMaxMcpInput.addEventListener('change', updateBudgetControls);
+
+
     // Add Advanced Settings Toggle
     const ADVANCED_SETTINGS_ENABLED_KEY = 'ai_chat_advanced_settings_enabled';
     
@@ -1452,7 +2035,6 @@ export class SettingsDialog {
       groqModelSectionTitle.textContent = 'Model Size Selection';
       groqModelSection.appendChild(groqModelSectionTitle);
       
-      logger.debug(`Current miniModel: ${miniModel}, nanoModel: ${nanoModel}`);
       
       // Create Groq Mini Model selection and store reference
       SettingsDialog.#groqMiniModelSelect = createModelSelector(
@@ -2493,461 +3075,7 @@ export class SettingsDialog {
     evaluationEndpointInput.value = currentEvaluationConfig.endpoint || 'ws://localhost:8080';
     evaluationConfigContainer.appendChild(evaluationEndpointInput);
 
-    // ---- MCP Integration Section ----
-    const mcpSection = document.createElement('div');
-    mcpSection.className = 'settings-section mcp-section';
-    // Hide MCP UI: auto-connect is always on; settings are not user-configurable
-    mcpSection.style.display = 'none';
-    contentDiv.appendChild(mcpSection);
 
-    const mcpSectionTitle = document.createElement('h3');
-    mcpSectionTitle.className = 'settings-subtitle';
-    mcpSectionTitle.textContent = i18nString(UIStrings.mcpSection);
-    mcpSection.appendChild(mcpSectionTitle);
-
-    // Current MCP config
-    const currentMCPConfig = getMCPConfig();
-
-    // Enable checkbox
-    const mcpEnabledContainer = document.createElement('div');
-    mcpEnabledContainer.className = 'mcp-enabled-container';
-    mcpSection.appendChild(mcpEnabledContainer);
-
-    const mcpEnabledCheckbox = document.createElement('input');
-    mcpEnabledCheckbox.type = 'checkbox';
-    mcpEnabledCheckbox.id = 'mcp-enabled';
-    mcpEnabledCheckbox.className = 'mcp-checkbox';
-    mcpEnabledCheckbox.checked = isMCPEnabled();
-    mcpEnabledContainer.appendChild(mcpEnabledCheckbox);
-
-    const mcpEnabledLabel = document.createElement('label');
-    mcpEnabledLabel.htmlFor = 'mcp-enabled';
-    mcpEnabledLabel.className = 'mcp-label';
-    mcpEnabledLabel.textContent = i18nString(UIStrings.mcpEnabled);
-    mcpEnabledContainer.appendChild(mcpEnabledLabel);
-
-    const mcpEnabledHint = document.createElement('div');
-    mcpEnabledHint.className = 'settings-hint';
-    mcpEnabledHint.textContent = i18nString(UIStrings.mcpEnabledHint);
-    mcpSection.appendChild(mcpEnabledHint);
-
-    // Status indicator
-    const mcpStatusContainer = document.createElement('div');
-    mcpStatusContainer.className = 'connection-status-container';
-    mcpStatusContainer.style.display = 'flex';
-    mcpStatusContainer.style.alignItems = 'center';
-    mcpStatusContainer.style.gap = '8px';
-    mcpStatusContainer.style.marginTop = '8px';
-    mcpStatusContainer.style.fontSize = '13px';
-    mcpSection.appendChild(mcpStatusContainer);
-
-    const mcpStatusDot = document.createElement('div');
-    mcpStatusDot.className = 'connection-status-dot';
-    mcpStatusDot.style.width = '8px';
-    mcpStatusDot.style.height = '8px';
-    mcpStatusDot.style.borderRadius = '50%';
-    mcpStatusDot.style.flexShrink = '0';
-    mcpStatusContainer.appendChild(mcpStatusDot);
-
-    const mcpStatusText = document.createElement('span');
-    mcpStatusText.className = 'connection-status-text';
-    mcpStatusContainer.appendChild(mcpStatusText);
-
-    const mcpStatusDetails = document.createElement('div');
-    mcpStatusDetails.className = 'settings-hint';
-    mcpStatusDetails.style.marginTop = '4px';
-    mcpSection.appendChild(mcpStatusDetails);
-
-    const formatTimestamp = (date: Date | undefined): string => {
-      if (!date) return '';
-      return date.toLocaleString();
-    };
-
-    const formatMCPError = (error: string, errorType?: string): {message: string, hint?: string} => {
-      if (!errorType) return {message: error};
-      switch (errorType) {
-        case 'connection':
-          return {message: `Connection failed: ${error}`, hint: 'Check if the MCP server is running and the endpoint URL is correct.'};
-        case 'authentication':
-          return {message: `Authentication failed: ${error}`, hint: 'Verify your auth token is correct and has not expired.'};
-        case 'configuration':
-          return {message: `Configuration error: ${error}`, hint: 'Check your endpoint URL format (should be ws:// or wss://).'};
-        case 'network':
-          return {message: `Network error: ${error}`, hint: 'Check your internet connection and firewall settings.'};
-        case 'server_error':
-          return {message: `Server error: ${error}`, hint: 'The MCP server encountered an internal error. Contact the server administrator.'};
-        default:
-          return {message: error};
-      }
-    };
-
-    const updateMCPStatus = () => {
-      const status = MCPRegistry.getStatus();
-      if (!status.enabled) {
-        mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
-        mcpStatusText.textContent = 'Disabled';
-        mcpStatusText.style.color = 'var(--color-text-disabled)';
-        mcpStatusDetails.textContent = '';
-        return;
-      }
-      const anyConnected = status.servers.some(s => s.connected);
-      const toolCount = status.registeredToolNames.length;
-      if (anyConnected) {
-        mcpStatusDot.style.backgroundColor = 'var(--color-accent-green)';
-        mcpStatusText.textContent = `Connected (${toolCount} tools)`;
-        mcpStatusText.style.color = 'var(--color-accent-green)';
-        
-        // Safely build details content without using innerHTML
-        mcpStatusDetails.textContent = '';
-        if (status.lastConnected) {
-          const line = document.createElement('div');
-          line.textContent = `Last connected: ${formatTimestamp(status.lastConnected)}`;
-          mcpStatusDetails.appendChild(line);
-        }
-        if (status.lastError) {
-          const {message, hint} = formatMCPError(status.lastError, status.lastErrorType);
-          const errLine = document.createElement('div');
-          const errSpan = document.createElement('span');
-          errSpan.style.color = 'var(--color-error-text)';
-          errSpan.textContent = message;
-          errLine.appendChild(errSpan);
-          mcpStatusDetails.appendChild(errLine);
-          if (hint) {
-            const hintLine = document.createElement('div');
-            hintLine.style.color = 'var(--color-text-secondary)';
-            hintLine.style.fontSize = '12px';
-            hintLine.textContent = hint;
-            mcpStatusDetails.appendChild(hintLine);
-          }
-        }
-      } else {
-        mcpStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
-        mcpStatusText.textContent = 'Not connected';
-        mcpStatusText.style.color = 'var(--color-text-disabled)';
-        
-        // Safely build details content without using innerHTML
-        mcpStatusDetails.textContent = '';
-        if (status.lastDisconnected) {
-          const line = document.createElement('div');
-          line.textContent = `Last disconnected: ${formatTimestamp(status.lastDisconnected)}`;
-          mcpStatusDetails.appendChild(line);
-        }
-        if (status.lastError) {
-          const {message, hint} = formatMCPError(status.lastError, status.lastErrorType);
-          const errLine = document.createElement('div');
-          const errSpan = document.createElement('span');
-          errSpan.style.color = 'var(--color-error-text)';
-          errSpan.textContent = message;
-          errLine.appendChild(errSpan);
-          mcpStatusDetails.appendChild(errLine);
-          if (hint) {
-            const hintLine = document.createElement('div');
-            hintLine.style.color = 'var(--color-text-secondary)';
-            hintLine.style.fontSize = '12px';
-            hintLine.textContent = hint;
-            mcpStatusDetails.appendChild(hintLine);
-          }
-        }
-      }
-    };
-    updateMCPStatus();
-
-    // Disconnect button (only shown when connected)
-    const mcpDisconnectContainer = document.createElement('div');
-    mcpDisconnectContainer.style.marginTop = '8px';
-    mcpDisconnectContainer.style.marginBottom = '8px';
-    mcpSection.appendChild(mcpDisconnectContainer);
-
-    const mcpDisconnectButton = document.createElement('button');
-    mcpDisconnectButton.textContent = 'Disconnect';
-    mcpDisconnectButton.className = 'settings-button';
-    mcpDisconnectButton.style.backgroundColor = 'var(--color-button-secondary)';
-    mcpDisconnectButton.style.border = '1px solid var(--color-button-outline)';
-    mcpDisconnectButton.style.color = 'var(--color-text-primary)';
-    mcpDisconnectButton.style.padding = '4px 8px';
-    mcpDisconnectButton.style.borderRadius = '3px';
-    mcpDisconnectButton.style.cursor = 'pointer';
-    mcpDisconnectButton.addEventListener('click', async () => {
-      try {
-        MCPRegistry.dispose();
-        updateMCPStatus();
-        updateDisconnectButton();
-        updateToolsList();
-      } catch (err) {
-        console.error('Failed to disconnect MCP:', err);
-      }
-    });
-    mcpDisconnectContainer.appendChild(mcpDisconnectButton);
-
-    const updateDisconnectButton = () => {
-      const status = MCPRegistry.getStatus();
-      const anyConnected = status.enabled && status.servers.some(s => s.connected);
-      mcpDisconnectContainer.style.display = anyConnected ? 'block' : 'none';
-    };
-    updateDisconnectButton();
-
-    // MCP config inputs (visible when enabled)
-    const mcpConfigContainer = document.createElement('div');
-    mcpConfigContainer.className = 'mcp-config-container';
-    mcpConfigContainer.style.display = mcpEnabledCheckbox.checked ? 'block' : 'none';
-    mcpSection.appendChild(mcpConfigContainer);
-
-    // Endpoint
-    const mcpEndpointLabel = document.createElement('div');
-    mcpEndpointLabel.className = 'settings-label';
-    mcpEndpointLabel.textContent = i18nString(UIStrings.mcpEndpoint);
-    mcpConfigContainer.appendChild(mcpEndpointLabel);
-
-    const mcpEndpointHint = document.createElement('div');
-    mcpEndpointHint.className = 'settings-hint';
-    mcpEndpointHint.textContent = i18nString(UIStrings.mcpEndpointHint);
-    mcpConfigContainer.appendChild(mcpEndpointHint);
-
-    const mcpEndpointInput = document.createElement('input');
-    mcpEndpointInput.type = 'text';
-    mcpEndpointInput.className = 'settings-input';
-    mcpEndpointInput.placeholder = 'ws://localhost:9000';
-    mcpEndpointInput.value = currentMCPConfig.endpoint || '';
-    mcpConfigContainer.appendChild(mcpEndpointInput);
-
-    // Token
-    const mcpTokenLabel = document.createElement('div');
-    mcpTokenLabel.className = 'settings-label';
-    mcpTokenLabel.textContent = i18nString(UIStrings.mcpToken);
-    mcpConfigContainer.appendChild(mcpTokenLabel);
-
-    const mcpTokenHint = document.createElement('div');
-    mcpTokenHint.className = 'settings-hint';
-    mcpTokenHint.textContent = i18nString(UIStrings.mcpTokenHint);
-    mcpConfigContainer.appendChild(mcpTokenHint);
-
-    const mcpTokenInput = document.createElement('input');
-    mcpTokenInput.type = 'password';
-    mcpTokenInput.className = 'settings-input';
-    mcpTokenInput.placeholder = 'Optional';
-    mcpTokenInput.value = currentMCPConfig.token || '';
-    mcpConfigContainer.appendChild(mcpTokenInput);
-
-    // Connect/Refresh button
-    const mcpConnectButton = document.createElement('button');
-    mcpConnectButton.className = 'settings-button';
-    mcpConnectButton.textContent = i18nString(UIStrings.mcpConnectRefresh);
-    mcpConnectButton.addEventListener('click', async () => {
-      // Save config then init/refresh
-      setMCPConfig({
-        enabled: mcpEnabledCheckbox.checked,
-        endpoint: mcpEndpointInput.value.trim(),
-        token: mcpTokenInput.value.trim() || undefined,
-      });
-      try {
-        await MCPRegistry.init();
-        await MCPRegistry.refresh();
-      } catch (err) {
-        logger.error('MCP connect/refresh failed', err);
-      } finally {
-        updateMCPStatus();
-        updateDisconnectButton();
-        updateToolsList();
-        onSettingsSaved();
-      }
-    });
-    mcpConfigContainer.appendChild(mcpConnectButton);
-
-    // Autostart checkbox
-    // Autostart UI removed: MCP auto-connect is always enabled by the panel
-
-    // Tool mode selection
-    const mcpToolModeLabel = document.createElement('div');
-    mcpToolModeLabel.className = 'settings-label';
-    mcpToolModeLabel.textContent = i18nString(UIStrings.mcpToolMode);
-    mcpConfigContainer.appendChild(mcpToolModeLabel);
-
-    const mcpToolModeHint = document.createElement('div');
-    mcpToolModeHint.className = 'settings-hint';
-    mcpToolModeHint.textContent = i18nString(UIStrings.mcpToolModeHint);
-    mcpConfigContainer.appendChild(mcpToolModeHint);
-
-    const mcpToolModeSelect = document.createElement('select');
-    mcpToolModeSelect.className = 'settings-select';
-    mcpConfigContainer.appendChild(mcpToolModeSelect);
-
-    // Tool mode options
-    const toolModeOptions = [
-      { value: 'all', text: i18nString(UIStrings.mcpToolModeAll) },
-      { value: 'router', text: i18nString(UIStrings.mcpToolModeRouter) },
-      { value: 'meta', text: i18nString(UIStrings.mcpToolModeMeta) },
-    ];
-
-    toolModeOptions.forEach(option => {
-      const optionElement = document.createElement('option');
-      optionElement.value = option.value;
-      optionElement.textContent = option.text;
-      if ((currentMCPConfig.toolMode || 'router') === option.value) {
-        optionElement.selected = true;
-      }
-      mcpToolModeSelect.appendChild(optionElement);
-    });
-
-    // Ensure the select reflects the currently stored mode even if options were appended later
-    mcpToolModeSelect.value = (currentMCPConfig.toolMode || 'router');
-
-    // Handle tool mode changes
-    mcpToolModeSelect.addEventListener('change', () => {
-      setMCPConfig({
-        ...getMCPConfig(),
-        toolMode: mcpToolModeSelect.value as 'all' | 'router' | 'meta',
-      });
-      onSettingsSaved();
-    });
-
-    // Advanced budget controls
-    const mcpMaxToolsLabel = document.createElement('div');
-    mcpMaxToolsLabel.className = 'settings-label';
-    mcpMaxToolsLabel.textContent = i18nString(UIStrings.mcpMaxToolsPerTurn);
-    mcpConfigContainer.appendChild(mcpMaxToolsLabel);
-
-    const mcpMaxToolsHint = document.createElement('div');
-    mcpMaxToolsHint.className = 'settings-hint';
-    mcpMaxToolsHint.textContent = i18nString(UIStrings.mcpMaxToolsPerTurnHint);
-    mcpConfigContainer.appendChild(mcpMaxToolsHint);
-
-    const mcpMaxToolsInput = document.createElement('input');
-    mcpMaxToolsInput.type = 'number';
-    mcpMaxToolsInput.className = 'settings-input';
-    mcpMaxToolsInput.min = '1';
-    mcpMaxToolsInput.max = '100';
-    mcpMaxToolsInput.value = String(currentMCPConfig.maxToolsPerTurn || 20);
-    mcpConfigContainer.appendChild(mcpMaxToolsInput);
-
-    const mcpMaxMcpLabel = document.createElement('div');
-    mcpMaxMcpLabel.className = 'settings-label';
-    mcpMaxMcpLabel.textContent = i18nString(UIStrings.mcpMaxMcpPerTurn);
-    mcpConfigContainer.appendChild(mcpMaxMcpLabel);
-
-    const mcpMaxMcpHint = document.createElement('div');
-    mcpMaxMcpHint.className = 'settings-hint';
-    mcpMaxMcpHint.textContent = i18nString(UIStrings.mcpMaxMcpPerTurnHint);
-    mcpConfigContainer.appendChild(mcpMaxMcpHint);
-
-    const mcpMaxMcpInput = document.createElement('input');
-    mcpMaxMcpInput.type = 'number';
-    mcpMaxMcpInput.className = 'settings-input';
-    mcpMaxMcpInput.min = '1';
-    mcpMaxMcpInput.max = '50';
-    mcpMaxMcpInput.value = String(currentMCPConfig.maxMcpPerTurn || 8);
-    mcpConfigContainer.appendChild(mcpMaxMcpInput);
-
-    // Handle budget control changes
-    const updateBudgetControls = () => {
-      const maxTools = Math.max(1, Math.min(100, parseInt(mcpMaxToolsInput.value, 10) || 20));
-      const maxMcp = Math.max(1, Math.min(50, parseInt(mcpMaxMcpInput.value, 10) || 8));
-      setMCPConfig({
-        ...getMCPConfig(),
-        maxToolsPerTurn: maxTools,
-        maxMcpPerTurn: maxMcp,
-      });
-      onSettingsSaved();
-    };
-
-    mcpMaxToolsInput.addEventListener('change', updateBudgetControls);
-    mcpMaxMcpInput.addEventListener('change', updateBudgetControls);
-
-    // Tool management UI
-    const mcpToolsSection = document.createElement('div');
-    mcpToolsSection.className = 'mcp-tools-section';
-    mcpConfigContainer.appendChild(mcpToolsSection);
-
-    const mcpToolsLabel = document.createElement('div');
-    mcpToolsLabel.className = 'settings-label';
-    mcpToolsLabel.textContent = i18nString(UIStrings.mcpDiscoveredTools);
-    mcpToolsSection.appendChild(mcpToolsLabel);
-
-    const mcpToolsHint = document.createElement('div');
-    mcpToolsHint.className = 'settings-hint';
-    mcpToolsHint.textContent = i18nString(UIStrings.mcpDiscoveredToolsHint);
-    mcpToolsSection.appendChild(mcpToolsHint);
-
-    const mcpToolsList = document.createElement('div');
-    mcpToolsList.className = 'mcp-tools-list';
-    mcpToolsSection.appendChild(mcpToolsList);
-
-    const updateToolsList = () => {
-      const status = MCPRegistry.getStatus();
-      mcpToolsList.innerHTML = '';
-      
-      if (!status.enabled || status.registeredToolNames.length === 0) {
-        const noToolsMessage = document.createElement('div');
-        noToolsMessage.className = 'mcp-no-tools';
-        noToolsMessage.textContent = i18nString(UIStrings.mcpNoTools);
-        mcpToolsList.appendChild(noToolsMessage);
-        return;
-      }
-
-      const currentAllowlist = new Set(currentMCPConfig.toolAllowlist || []);
-
-      status.registeredToolNames.forEach(toolName => {
-        const toolItem = document.createElement('div');
-        toolItem.className = 'mcp-tool-item';
-
-        const toolCheckbox = document.createElement('input');
-        toolCheckbox.type = 'checkbox';
-        toolCheckbox.id = `mcp-tool-${toolName.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        toolCheckbox.className = 'mcp-tool-checkbox';
-        toolCheckbox.checked = currentAllowlist.size === 0 || currentAllowlist.has(toolName);
-        toolItem.appendChild(toolCheckbox);
-
-        const toolLabel = document.createElement('label');
-        toolLabel.htmlFor = toolCheckbox.id;
-        toolLabel.className = 'mcp-tool-label';
-        toolLabel.textContent = toolName.replace(/^mcp:[^:]+:/, ''); // Remove namespace prefix
-        toolItem.appendChild(toolLabel);
-
-        // Update allowlist when checkbox changes
-        toolCheckbox.addEventListener('change', () => {
-          const currentConfig = getMCPConfig();
-          const allowlist = new Set(currentConfig.toolAllowlist || []);
-          
-          if (toolCheckbox.checked) {
-            allowlist.add(toolName);
-          } else {
-            allowlist.delete(toolName);
-          }
-
-          setMCPConfig({
-            ...currentConfig,
-            toolAllowlist: Array.from(allowlist),
-          });
-        });
-
-        mcpToolsList.appendChild(toolItem);
-      });
-    };
-
-    // Initial tools list update
-    updateToolsList();
-
-    // Autostart is deprecated; always auto-connect is handled by the UI layer
-
-    // Toggle visibility on enable/disable
-    mcpEnabledCheckbox.addEventListener('change', async () => {
-      setMCPConfig({
-        enabled: mcpEnabledCheckbox.checked,
-        endpoint: mcpEndpointInput.value.trim(),
-        token: mcpTokenInput.value.trim() || undefined,
-      });
-      mcpConfigContainer.style.display = mcpEnabledCheckbox.checked ? 'block' : 'none';
-      try {
-        await MCPRegistry.init();
-        await MCPRegistry.refresh();
-      } catch (err) {
-        logger.error('MCP toggle failed', err);
-      } finally {
-        updateMCPStatus();
-        updateDisconnectButton();
-        updateToolsList();
-        onSettingsSaved();
-      }
-    });
 
     // Evaluation secret key
     const evaluationSecretKeyLabel = document.createElement('div');
@@ -3271,9 +3399,7 @@ export class SettingsDialog {
       vectorDBSection.style.display = display;
       tracingSection.style.display = display;
       evaluationSection.style.display = display;
-      const mcpSectionEl = contentDiv.querySelector('.mcp-section') as HTMLElement | null;
-      if (mcpSectionEl) { mcpSectionEl.style.display = display; }
-      
+
       // Save state to localStorage
       localStorage.setItem(ADVANCED_SETTINGS_ENABLED_KEY, show.toString());
     }
@@ -3806,6 +3932,11 @@ export class SettingsDialog {
         margin-top: 16px;
         padding: 16px 20px;
         border-bottom: 1px solid var(--color-details-hairline);
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
     `;
     dialog.contentElement.appendChild(styleElement);

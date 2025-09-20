@@ -130,7 +130,7 @@
         "tool": {
           "type": "string",
           "enum": [
-            "extract_schema_data",
+            "extract_data",
             "extract_schema_streamlined", 
             "research_agent",
             "action_agent",

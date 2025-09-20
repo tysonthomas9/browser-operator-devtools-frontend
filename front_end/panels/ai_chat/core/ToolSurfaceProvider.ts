@@ -9,6 +9,8 @@ import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { getMCPConfig } from '../mcp/MCPConfig.js';
 import { MCPToolAdapter } from '../mcp/MCPToolAdapter.js';
+import { LLMClient } from '../LLM/LLMClient.js';
+import { AIChatPanel } from '../ui/AIChatPanel.js';
 
 const logger = createLogger('ToolSurfaceProvider');
 
@@ -29,8 +31,10 @@ function uniqByName(tools: Tool<any, any>[]): Tool<any, any>[] {
   return out;
 }
 
-function getAllMcpTools(): Tool<any, any>[] {
+async function getAllMcpTools(): Promise<Tool<any, any>[]> {
   try {
+    // Ensure tools are registered before getting status
+    await MCPRegistry.ensureToolsRegistered();
     const status = MCPRegistry.getStatus();
     console.log('[TOOL_SELECTION_DEBUG] MCPRegistry status:', {
       enabled: status.enabled,
@@ -61,20 +65,115 @@ function getAllMcpTools(): Tool<any, any>[] {
   }
 }
 
-function scoreTool(query: string, agentType: string | null | undefined, tool: Tool<any, any>): number {
-  const q = (query || '').toLowerCase();
-  const a = (agentType || '').toLowerCase();
-  const name = (tool.name || '').toLowerCase();
-  const desc = (tool.description || '').toLowerCase();
-  let score = 0;
-  if (q && name.includes(q)) score += 10;
-  if (q && desc.includes(q)) score += 3;
-  if (a && name.includes(a)) score += 2;
-  if (a && desc.includes(a)) score += 1;
-  // Prefer MCP tools only slightly lower than strong name matches
-  if (tool instanceof MCPToolAdapter) score += 0.5;
-  return score;
+async function selectToolsWithLLM(
+  query: string,
+  agentType: string | null | undefined,
+  mcpTools: Tool<any, any>[],
+  maxMcpPerTurn: number
+): Promise<Tool<any, any>[]> {
+  try {
+    // Early return for empty tool list - avoid unnecessary LLM call
+    if (mcpTools.length === 0) {
+      console.log('[TOOL_SELECTION_DEBUG] No MCP tools provided to LLM selector');
+      return [];
+    }
+
+    const miniModel = AIChatPanel.getMiniModel();
+    const miniProvider = AIChatPanel.getMiniModelWithProvider();
+    if (!miniModel || !miniProvider) {
+      console.log('[TOOL_SELECTION_DEBUG] Mini model not available, falling back to first N tools');
+      return mcpTools.slice(0, maxMcpPerTurn);
+    }
+
+    const toolDescriptions = mcpTools.map(tool =>
+      `- ${tool.name}: ${tool.description}`
+    ).join('\n');
+
+    const systemPrompt = `You are an intelligent tool selector. Given a user query and agent type, select the most relevant MCP tools.
+
+Select up to ${maxMcpPerTurn} most relevant tools for this query. Consider:
+1. Direct keyword matches between query and tool names/descriptions
+2. Semantic relevance to the task
+3. Agent type preferences (e.g., research agents prefer search/analysis tools)
+
+CRITICAL RULES:
+- You MUST ONLY select from the exact tool names provided in the "Available MCP tools" list
+- Do NOT invent, create, or hallucinate any tool names
+- Return ONLY the exact tool names as they appear in the list
+- Respond with a JSON array containing only the selected tool names
+
+Response format: JSON array of exact tool names from the provided list.`;
+
+    const userMessage = `User query: "${query}"
+Agent type: ${agentType || 'general'}
+
+Available MCP tools:
+${toolDescriptions}`;
+
+    console.log('[TOOL_SELECTION_DEBUG] LLM prompt:', userMessage);
+
+    const llmClient = LLMClient.getInstance();
+    const response = await llmClient.call({
+      provider: miniProvider.provider,
+      model: miniModel,
+      messages: [{ role: 'user', content: userMessage }],
+      systemPrompt,
+      temperature: 0.1
+    });
+
+    console.log('[TOOL_SELECTION_DEBUG] LLM response:', response.text);
+
+    // Parse the JSON response
+    let selectedToolNames: string[];
+    try {
+      // Check if response.text is defined
+      if (!response.text) {
+        throw new Error('LLM response text is undefined');
+      }
+
+      // Try to extract JSON from the response
+      const jsonMatch = response.text.match(/\[[\s\S]*?\]/);
+      if (jsonMatch) {
+        selectedToolNames = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No JSON array found in response');
+      }
+    } catch (parseError) {
+      console.log('[TOOL_SELECTION_DEBUG] Failed to parse LLM response, falling back to first N tools:', parseError);
+      return mcpTools.slice(0, maxMcpPerTurn);
+    }
+
+    // Map selected tool names back to tool objects
+    const selectedTools: Tool<any, any>[] = [];
+    const toolMap = new Map(mcpTools.map(tool => [tool.name, tool]));
+
+    for (const toolName of selectedToolNames) {
+      const tool = toolMap.get(toolName);
+      if (tool && selectedTools.length < maxMcpPerTurn) {
+        selectedTools.push(tool);
+      }
+    }
+
+    // Fill remaining slots if LLM didn't select enough tools
+    if (selectedTools.length < maxMcpPerTurn) {
+      const remainingTools = mcpTools.filter(tool => !selectedTools.includes(tool));
+      selectedTools.push(...remainingTools.slice(0, maxMcpPerTurn - selectedTools.length));
+    }
+
+    console.log('[TOOL_SELECTION_DEBUG] LLM selected tools:', {
+      selectedToolNames,
+      selectedCount: selectedTools.length,
+      finalToolNames: selectedTools.map(t => t.name)
+    });
+
+    return selectedTools;
+
+  } catch (error) {
+    console.log('[TOOL_SELECTION_DEBUG] Error in LLM tool selection:', error);
+    return mcpTools.slice(0, maxMcpPerTurn);
+  }
 }
+
 
 // DEBUG: Add a utility function to test MCP modes from console
 (globalThis as any).debugToolSelection = {
@@ -111,9 +210,9 @@ function scoreTool(query: string, agentType: string | null | undefined, tool: To
 
 export const ToolSurfaceProvider = {
   async select(state: AgentState, baseTools: Tool<any, any>[], opts?: ToolSelectionOptions): Promise<{ tools: Tool<any, any>[]; selectedNames: string[] }> {
-    const { maxToolsPerTurn = 20, maxMcpPerTurn = 8 } = opts || {};
     const cfg = getMCPConfig();
-    const mode = cfg.toolMode || 'router';
+    const { maxToolsPerTurn = cfg.maxToolsPerTurn || 50, maxMcpPerTurn = cfg.maxMcpPerTurn || 50 } = opts || {};
+    const mode = cfg.toolMode || 'all';
 
     // DEBUG: Log current MCP configuration and tool selection parameters
     console.log('[TOOL_SELECTION_DEBUG] ToolSurfaceProvider.select called with:', {
@@ -148,12 +247,12 @@ export const ToolSurfaceProvider = {
 
     if (mode === 'all') {
       console.log('[TOOL_SELECTION_DEBUG] Using ALL mode');
-      const mcpTools = getAllMcpTools();
+      const mcpTools = await getAllMcpTools();
       console.log('[TOOL_SELECTION_DEBUG] MCP tools found:', {
         mcpToolsCount: mcpTools.length,
         mcpToolNames: mcpTools.map(t => t.name)
       });
-      resultTools = uniqByName([...resultTools, ...mcpTools]).slice(0, maxToolsPerTurn);
+      resultTools = uniqByName([...resultTools, ...mcpTools]);
       console.log('[TOOL_SELECTION_DEBUG] Final result (ALL mode):', {
         toolCount: resultTools.length,
         toolNames: resultTools.map(t => t.name)
@@ -181,31 +280,38 @@ export const ToolSurfaceProvider = {
       return { tools: resultTools, selectedNames: resultTools.map(t => t.name) };
     }
 
-    // Router mode (heuristic pre-call selection)
-    console.log('[TOOL_SELECTION_DEBUG] Using ROUTER mode');
-    const mcpTools = getAllMcpTools();
-    console.log('[TOOL_SELECTION_DEBUG] MCP tools available for scoring:', {
+    // Router mode (LLM-based intelligent selection)
+    console.log('[TOOL_SELECTION_DEBUG] Using ROUTER mode with LLM selection');
+    const mcpTools = await getAllMcpTools();
+    console.log('[TOOL_SELECTION_DEBUG] MCP tools available for LLM selection:', {
       mcpToolsCount: mcpTools.length,
       mcpToolNames: mcpTools.map(t => t.name)
     });
-    
+
+    // Early return if no MCP tools available - avoid unnecessary LLM call
+    if (mcpTools.length === 0) {
+      console.log('[TOOL_SELECTION_DEBUG] No MCP tools available, skipping LLM selection');
+      console.log('[TOOL_SELECTION_DEBUG] Final result (ROUTER mode - no MCP tools):', {
+        toolCount: resultTools.length,
+        toolNames: resultTools.map(t => t.name),
+        maxToolsPerTurn
+      });
+      return { tools: resultTools, selectedNames: resultTools.map(t => t.name) };
+    }
+
     const lastUserMsg = [...state.messages].reverse().find(m => m.entity === 'user' || (m as any).entity === 0) as any;
     const queryText = lastUserMsg?.text || '';
-    console.log('[TOOL_SELECTION_DEBUG] Query text for scoring:', queryText);
+    console.log('[TOOL_SELECTION_DEBUG] Query text for LLM selection:', queryText);
 
-    const scored = mcpTools
-      .map(t => ({ t, s: scoreTool(queryText, state.selectedAgentType, t) }))
-      .sort((a, b) => b.s - a.s)
-      .slice(0, maxMcpPerTurn)
-      .map(({ t }) => t);
+    const selectedMcpTools = await selectToolsWithLLM(queryText, state.selectedAgentType, mcpTools, maxMcpPerTurn);
 
-    console.log('[TOOL_SELECTION_DEBUG] Top scored MCP tools:', {
-      scoredToolsCount: scored.length,
-      scoredToolNames: scored.map(t => t.name),
+    console.log('[TOOL_SELECTION_DEBUG] LLM selected MCP tools:', {
+      selectedToolsCount: selectedMcpTools.length,
+      selectedToolNames: selectedMcpTools.map(t => t.name),
       maxMcpPerTurn
     });
 
-    resultTools = uniqByName([...resultTools, ...scored]).slice(0, maxToolsPerTurn);
+    resultTools = uniqByName([...resultTools, ...selectedMcpTools]).slice(0, maxToolsPerTurn);
     console.log('[TOOL_SELECTION_DEBUG] Final result (ROUTER mode):', {
       toolCount: resultTools.length,
       toolNames: resultTools.map(t => t.name),

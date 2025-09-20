@@ -1,7 +1,7 @@
 Name: Model Context Protocol SDK
 Short Name: mcp-sdk
 URL: https://github.com/modelcontextprotocol/typescript-sdk
-Version: 1.12.3
+Version: 1.18.0
 License: MIT
 License File: LICENSE
 Security Critical: no
@@ -13,12 +13,25 @@ to interact with external systems through a standardized protocol.
 
 Dependencies:
 - eventsource-parser@3.0.6 (MIT license)
+- ajv@6.12.6 (MIT license)
 
 To update this package:
-wget -qO- https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.12.3.tgz | tar xzf -
+wget -qO- https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.18.0.tgz | tar xzf - --strip-components=1 package/
 wget -qO- https://registry.npmjs.org/eventsource-parser/-/eventsource-parser-3.0.6.tgz | tar xzf -
+wget -qO- https://registry.npmjs.org/ajv/-/ajv-6.12.6.tgz | tar xzf - -C ajv --strip-components=1
+cd ajv/dist && ln -s ../lib/ajv.d.ts ajv.d.ts && ln -s ../lib/ajv.js ajv.js
 
 Local Modifications:
 - Created mcp-sdk.ts wrapper for DevTools integration
 - Removed Node.js-specific code paths
 - Modified imports to use DevTools module system
+- Updated to use official StreamableHTTPClientTransport instead of custom implementation
+- Created ES module wrapper for ajv UMD bundle:
+  - ajv/dist/ajv-esm.js: exports ajv.bundle.js as ES module
+- Patched SDK files to use ajv-esm wrapper:
+  - dist/esm/client/index.js: import Ajv from "../../ajv/dist/ajv-esm.js"
+  - dist/esm/server/index.js: import Ajv from "../../ajv/dist/ajv-esm.js"
+  - dist/esm/examples/client/simpleStreamableHttp.js: import Ajv from "../../../ajv/dist/ajv-esm.js"
+- Updated build configuration to use new SDK files:
+  - BUILD.gn: updated to reference dist/esm/ instead of package/dist/
+  - devtools_grd_files.gni: updated file paths to include new SDK and ajv files

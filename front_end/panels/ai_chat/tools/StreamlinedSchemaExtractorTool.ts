@@ -43,6 +43,23 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
   private readonly MAX_JSON_RETRIES = 2;
   private readonly RETRY_DELAY_MS = 10000; // 10 second delay between retries
 
+  private async sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (!ms) return resolve();
+      const timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+      const onAbort = () => { clearTimeout(timer); cleanup(); reject(new DOMException('The operation was aborted', 'AbortError')); };
+      const cleanup = () => { signal?.removeEventListener('abort', onAbort); };
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(timer);
+          cleanup();
+          return reject(new DOMException('The operation was aborted', 'AbortError'));
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
+  }
+
   schema = {
     type: 'object',
     properties: {
@@ -163,9 +180,9 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
 
       logger.debug(`Attempt ${attempt}: Found ${unresolvedNodeIds.length} unresolved nodeIDs, asking LLM to try different ones`);
       
-      // Add delay before retry to prevent overloading the LLM
+      // Add delay before retry to prevent overloading the LLM (abortable)
       if (attempt > 1) {
-        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY_MS));
+        await this.sleep(this.RETRY_DELAY_MS, ctx?.abortSignal);
       }
       
       const retryResult = await this.retryUrlResolution(
@@ -287,8 +304,8 @@ IMPORTANT: Only extract data that you can see in the accessibility tree above. D
       } catch (error) {
         if (attempt <= maxRetries) {
           logger.warn(`JSON parsing failed on attempt ${attempt}, retrying...`, error);
-          // Add delay before next attempt to prevent overloading the LLM
-          await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY_MS));
+          // Add delay before next attempt to prevent overloading the LLM (abortable)
+          await this.sleep(this.RETRY_DELAY_MS, ctx?.abortSignal);
         } else {
           logger.error(`JSON extraction failed after ${attempt} attempts:`, error instanceof Error ? error.message : String(error));
           throw new Error(`Data extraction failed after ${attempt} attempts: ${error instanceof Error ? error.message : String(error)}`);
