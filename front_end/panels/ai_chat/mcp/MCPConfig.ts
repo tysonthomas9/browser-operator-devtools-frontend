@@ -234,9 +234,13 @@ export function getMCPProviders(): MCPProviderConfig[] {
 }
 
 export function saveMCPProviders(providers: MCPProviderConfig[]): void {
+  // Get existing providers to identify which ones are being removed
+  const existingProviders = loadProviders();
+  const existingIds = new Set(existingProviders.map(p => p.id));
+
   const sanitizedProviders: StoredProvider[] = [];
   const newTokenMap: TokenMap = {};
-
+  const newIds = new Set<string>();
   const seenIds = new Set<string>();
 
   for (const provider of providers) {
@@ -251,6 +255,7 @@ export function saveMCPProviders(providers: MCPProviderConfig[]): void {
       throw new Error(`Duplicate MCP connection identifier: ${id}. Please use unique names or endpoints.`);
     }
     seenIds.add(id);
+    newIds.add(id);
 
     sanitizedProviders.push({
       id,
@@ -265,6 +270,13 @@ export function saveMCPProviders(providers: MCPProviderConfig[]): void {
 
     if (authType === 'bearer' && provider.token) {
       newTokenMap[id] = provider.token;
+    }
+  }
+
+  // Clean up OAuth data for removed providers
+  for (const existingId of existingIds) {
+    if (!newIds.has(existingId)) {
+      cleanupOAuthData(existingId);
     }
   }
 
@@ -442,4 +454,32 @@ export function clearStoredAuthError(serverId: string): void {
  */
 export function hasStoredAuthErrors(): boolean {
   return getStoredAuthErrors().length > 0;
+}
+
+/**
+ * Clean up all OAuth-related data for a specific provider
+ */
+export function cleanupOAuthData(serverId: string): void {
+  try {
+    const prefix = `mcp_oauth:${serverId}:`;
+    const keysToRemove = [
+      'tokens',
+      'client_info',
+      'code_verifier',
+      'state',
+      'original_url',
+      'last_auth_error',
+      'auth_error_timestamp',
+      'auth_error_type',
+      'token_expiration',
+    ];
+
+    for (const key of keysToRemove) {
+      localStorage.removeItem(`${prefix}${key}`);
+    }
+
+    logger.info('Cleaned up OAuth data for provider', { serverId });
+  } catch (err) {
+    logger.warn('Failed to clean up OAuth data', { serverId, err });
+  }
 }

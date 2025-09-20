@@ -232,17 +232,18 @@ interface ToolbarViewInput {
 
 function toolbarView(input: ToolbarViewInput): Lit.LitTemplate {
   // clang-format off
+        // Add history button when history feature is implemented
+        // <devtools-button
+        //   title=${i18nString(UIStrings.history)}
+        //   aria-label=${i18nString(UIStrings.history)}
+        //   .iconName=${'history'}
+        //   .jslogContext=${'ai-chat.history'}
+        //   .variant=${Buttons.Button.Variant.TOOLBAR}
+        //   @click=${input.onHistoryClick}></devtools-button>
+        //   <div class="toolbar-divider"></div>
   return html`
     <div class="toolbar-container" role="toolbar" .jslogContext=${VisualLogging.toolbar()} style="display: flex; justify-content: space-between; width: 100%; padding: 0 4px; box-sizing: border-box; margin: 0 0 10px 0;">
       <devtools-toolbar class="ai-chat-left-toolbar" role="presentation">
-      <devtools-button
-          title=${i18nString(UIStrings.history)}
-          aria-label=${i18nString(UIStrings.history)}
-          .iconName=${'history'}
-          .jslogContext=${'ai-chat.history'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onHistoryClick}></devtools-button>
-          <div class="toolbar-divider"></div>
         ${!input.isCenteredView ? html`
         <devtools-button
           title=${i18nString(UIStrings.newChat)}

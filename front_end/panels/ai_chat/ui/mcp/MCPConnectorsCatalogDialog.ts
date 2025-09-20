@@ -9,19 +9,19 @@ import { MCPConnectionsDialog } from './MCPConnectionsDialog.js';
 const logger = createLogger('MCPConnectorsCatalogDialog');
 
 const LOGO_URLS = {
-  sentry: new URL('../../../../Images/sentry-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  atlassian: new URL('../../../../Images/atlassian-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  linear: new URL('../../../../Images/linear-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  notion: new URL('../../../../Images/notion-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  slack: new URL('../../../../Images/slack-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  github: new URL('../../../../Images/github-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  asana: new URL('../../../../Images/asana-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  intercom: new URL('../../../../Images/intercom-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  'google-drive': new URL('../../../../Images/google-drive-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  huggingface: new URL('../../../../Images/huggingface-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  'google-sheets': new URL('../../../../Images/google-sheets-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  socket: new URL('../../../../Images/socket-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
-  invideo: new URL('../../../../Images/invideo-mcp.svg', import.meta.url).toString().replace('/Images/', '/bundled/Images/'),
+  sentry: '/bundled/Images/sentry-mcp.svg',
+  atlassian: '/bundled/Images/atlassian-mcp.svg',
+  linear: '/bundled/Images/linear-mcp.svg',
+  notion: '/bundled/Images/notion-mcp.svg',
+  slack: '/bundled/Images/slack-mcp.svg',
+  github: '/bundled/Images/github-mcp.svg',
+  asana: '/bundled/Images/asana-mcp.svg',
+  intercom: '/bundled/Images/intercom-mcp.svg',
+  'google-drive': '/bundled/Images/google-drive-mcp.svg',
+  huggingface: '/bundled/Images/huggingface-mcp.svg',
+  'google-sheets': '/bundled/Images/google-sheets-mcp.svg',
+  socket: '/bundled/Images/socket-mcp.svg',
+  invideo: '/bundled/Images/invideo-mcp.svg',
 } as const;
 
 type MCPConnectorLogoId = keyof typeof LOGO_URLS;
