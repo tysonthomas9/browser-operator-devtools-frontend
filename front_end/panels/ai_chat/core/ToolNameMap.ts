@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import { createLogger } from "./Logger.js";
+
+const logger = createLogger('ToolNameMap');
+
 // A small, dependency-free utility that maintains a global mapping between
 // original tool identifiers (e.g. "mcp:default:alpha") and provider-compliant
 // function names (^[a-zA-Z0-9_-]{1,64}$). This avoids import cycles between
@@ -13,7 +17,10 @@ const sanitizedToOriginal = new Map<string, string>();
 function sanitize(original: string): string {
   let name = original.replace(/[^a-zA-Z0-9_-]/g, '_');
   if (!name) name = 'tool';
-  // Removed 64-character truncation to preserve full tool names
+  if (name.length > 64) {
+    logger.warn(`Tool name too long (${name.length} chars), truncating to 64: ${original}`);
+    name = name.slice(0, 64);
+  }
   return name;
 }
 

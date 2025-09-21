@@ -97,7 +97,7 @@ export class Logger {
   /**
    * Check if we're in development mode
    */
-  private static isDevelopment(): boolean {
+  static isDevelopment(): boolean {
     // Check for development indicators
     return location.hostname === 'localhost' || 
            location.hostname.includes('127.0.0.1') ||

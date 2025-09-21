@@ -36,7 +36,7 @@ async function getAllMcpTools(): Promise<Tool<any, any>[]> {
     // Ensure tools are registered before getting status
     await MCPRegistry.ensureToolsRegistered();
     const status = MCPRegistry.getStatus();
-    console.log('[TOOL_SELECTION_DEBUG] MCPRegistry status:', {
+    logger.debug('MCPRegistry status:', {
       enabled: status.enabled,
       serverCount: status.servers.length,
       servers: status.servers,
@@ -51,16 +51,16 @@ async function getAllMcpTools(): Promise<Tool<any, any>[]> {
       if (tool) {
         tools.push(tool);
       } else {
-        console.log('[TOOL_SELECTION_DEBUG] Tool registered but not found:', name);
+        logger.debug('Tool registered but not found:', name);
       }
     }
-    console.log('[TOOL_SELECTION_DEBUG] getAllMcpTools result:', {
+    logger.debug('getAllMcpTools result:', {
       availableToolsCount: tools.length,
       availableToolNames: tools.map(t => t.name)
     });
     return tools;
   } catch (error) {
-    console.error('[TOOL_SELECTION_DEBUG] Error in getAllMcpTools:', error);
+    logger.error('Error in getAllMcpTools:', error);
     return [];
   }
 }
@@ -74,14 +74,14 @@ async function selectToolsWithLLM(
   try {
     // Early return for empty tool list - avoid unnecessary LLM call
     if (mcpTools.length === 0) {
-      console.log('[TOOL_SELECTION_DEBUG] No MCP tools provided to LLM selector');
+      logger.debug('No MCP tools provided to LLM selector');
       return [];
     }
 
     const miniModel = AIChatPanel.getMiniModel();
     const miniProvider = AIChatPanel.getMiniModelWithProvider();
     if (!miniModel || !miniProvider) {
-      console.log('[TOOL_SELECTION_DEBUG] Mini model not available, falling back to first N tools');
+      logger.debug('Mini model not available, falling back to first N tools');
       return mcpTools.slice(0, maxMcpPerTurn);
     }
 
@@ -110,7 +110,7 @@ Agent type: ${agentType || 'general'}
 Available MCP tools:
 ${toolDescriptions}`;
 
-    console.log('[TOOL_SELECTION_DEBUG] LLM prompt:', userMessage);
+    logger.debug('LLM prompt:', userMessage);
 
     const llmClient = LLMClient.getInstance();
     const response = await llmClient.call({
@@ -121,7 +121,7 @@ ${toolDescriptions}`;
       temperature: 0.1
     });
 
-    console.log('[TOOL_SELECTION_DEBUG] LLM response:', response.text);
+    logger.debug('LLM response:', response.text);
 
     // Parse the JSON response
     let selectedToolNames: string[];
@@ -139,7 +139,7 @@ ${toolDescriptions}`;
         throw new Error('No JSON array found in response');
       }
     } catch (parseError) {
-      console.log('[TOOL_SELECTION_DEBUG] Failed to parse LLM response, falling back to first N tools:', parseError);
+      logger.debug('Failed to parse LLM response, falling back to first N tools:', parseError);
       return mcpTools.slice(0, maxMcpPerTurn);
     }
 
@@ -160,7 +160,7 @@ ${toolDescriptions}`;
       selectedTools.push(...remainingTools.slice(0, maxMcpPerTurn - selectedTools.length));
     }
 
-    console.log('[TOOL_SELECTION_DEBUG] LLM selected tools:', {
+    logger.debug('LLM selected tools:', {
       selectedToolNames,
       selectedCount: selectedTools.length,
       finalToolNames: selectedTools.map(t => t.name)
@@ -169,7 +169,7 @@ ${toolDescriptions}`;
     return selectedTools;
 
   } catch (error) {
-    console.log('[TOOL_SELECTION_DEBUG] Error in LLM tool selection:', error);
+    logger.error('Error in LLM tool selection:', error);
     return mcpTools.slice(0, maxMcpPerTurn);
   }
 }
@@ -179,12 +179,12 @@ ${toolDescriptions}`;
 (globalThis as any).debugToolSelection = {
   getCurrentMCPConfig: () => {
     const cfg = getMCPConfig();
-    console.log('Current MCP Config:', cfg);
+    logger.debug('Current MCP Config:', cfg);
     return cfg;
   },
   testMode: async (mode: 'all' | 'router' | 'meta') => {
     const originalConfig = getMCPConfig();
-    console.log(`Testing mode: ${mode}`);
+    logger.debug(`Testing mode: ${mode}`);
     // Temporarily set the mode
     localStorage.setItem('ai_chat_mcp_tool_mode', mode);
     // Test with mock state
@@ -198,12 +198,12 @@ ${toolDescriptions}`;
     if (originalConfig.toolMode) {
       localStorage.setItem('ai_chat_mcp_tool_mode', originalConfig.toolMode);
     }
-    console.log(`Mode ${mode} result:`, result);
+    logger.debug(`Mode ${mode} result:`, result);
     return result;
   },
   getMCPRegistryStatus: () => {
     const status = MCPRegistry.getStatus();
-    console.log('MCP Registry Status:', status);
+    logger.debug('MCP Registry Status:', status);
     return status;
   }
 };
@@ -215,7 +215,7 @@ export const ToolSurfaceProvider = {
     const mode = cfg.toolMode || 'all';
 
     // DEBUG: Log current MCP configuration and tool selection parameters
-    console.log('[TOOL_SELECTION_DEBUG] ToolSurfaceProvider.select called with:', {
+    logger.debug('ToolSurfaceProvider.select called with:', {
       maxToolsPerTurn,
       maxMcpPerTurn,
       mcpConfig: cfg,
@@ -229,16 +229,16 @@ export const ToolSurfaceProvider = {
     let resultTools: Tool<any, any>[] = uniqByName([...baseTools]);
     const selectedNames: string[] = [];
 
-    console.log('[TOOL_SELECTION_DEBUG] Base tools provided:', {
+    logger.debug('Base tools provided:', {
       agentType: state.selectedAgentType,
       baseToolsCount: baseTools.length,
       baseToolNames: baseTools.map(t => t.name)
     });
 
     if (!cfg.enabled) {
-      console.log('[TOOL_SELECTION_DEBUG] MCP disabled, returning core tools only');
+      logger.debug('MCP disabled, returning core tools only');
       const uniq = uniqByName(resultTools).slice(0, maxToolsPerTurn);
-      console.log('[TOOL_SELECTION_DEBUG] Final result (MCP disabled):', {
+      logger.debug('Final result (MCP disabled):', {
         toolCount: uniq.length,
         toolNames: uniq.map(t => t.name)
       });
@@ -246,14 +246,14 @@ export const ToolSurfaceProvider = {
     }
 
     if (mode === 'all') {
-      console.log('[TOOL_SELECTION_DEBUG] Using ALL mode');
+      logger.debug('Using ALL mode');
       const mcpTools = await getAllMcpTools();
-      console.log('[TOOL_SELECTION_DEBUG] MCP tools found:', {
+      logger.debug('MCP tools found:', {
         mcpToolsCount: mcpTools.length,
         mcpToolNames: mcpTools.map(t => t.name)
       });
       resultTools = uniqByName([...resultTools, ...mcpTools]);
-      console.log('[TOOL_SELECTION_DEBUG] Final result (ALL mode):', {
+      logger.debug('Final result (ALL mode):', {
         toolCount: resultTools.length,
         toolNames: resultTools.map(t => t.name)
       });
@@ -261,19 +261,19 @@ export const ToolSurfaceProvider = {
     }
 
     if (mode === 'meta') {
-      console.log('[TOOL_SELECTION_DEBUG] Using META mode');
+      logger.debug('Using META mode');
       // Include only meta-tools for MCP alongside core tools
       const search = ToolRegistry.getRegisteredTool('mcp.search');
       const invoke = ToolRegistry.getRegisteredTool('mcp.invoke');
       const metaTools = [search, invoke].filter(Boolean) as Tool<any, any>[];
-      console.log('[TOOL_SELECTION_DEBUG] Meta tools found:', {
+      logger.debug('Meta tools found:', {
         metaToolsCount: metaTools.length,
         metaToolNames: metaTools.map(t => t.name),
         searchTool: !!search,
         invokeTool: !!invoke
       });
       resultTools = uniqByName([...resultTools, ...metaTools]).slice(0, maxToolsPerTurn);
-      console.log('[TOOL_SELECTION_DEBUG] Final result (META mode):', {
+      logger.debug('Final result (META mode):', {
         toolCount: resultTools.length,
         toolNames: resultTools.map(t => t.name)
       });
@@ -281,17 +281,17 @@ export const ToolSurfaceProvider = {
     }
 
     // Router mode (LLM-based intelligent selection)
-    console.log('[TOOL_SELECTION_DEBUG] Using ROUTER mode with LLM selection');
+    logger.debug('Using ROUTER mode with LLM selection');
     const mcpTools = await getAllMcpTools();
-    console.log('[TOOL_SELECTION_DEBUG] MCP tools available for LLM selection:', {
+    logger.debug('MCP tools available for LLM selection:', {
       mcpToolsCount: mcpTools.length,
       mcpToolNames: mcpTools.map(t => t.name)
     });
 
     // Early return if no MCP tools available - avoid unnecessary LLM call
     if (mcpTools.length === 0) {
-      console.log('[TOOL_SELECTION_DEBUG] No MCP tools available, skipping LLM selection');
-      console.log('[TOOL_SELECTION_DEBUG] Final result (ROUTER mode - no MCP tools):', {
+      logger.debug('No MCP tools available, skipping LLM selection');
+      logger.debug('Final result (ROUTER mode - no MCP tools):', {
         toolCount: resultTools.length,
         toolNames: resultTools.map(t => t.name),
         maxToolsPerTurn
@@ -299,20 +299,46 @@ export const ToolSurfaceProvider = {
       return { tools: resultTools, selectedNames: resultTools.map(t => t.name) };
     }
 
-    const lastUserMsg = [...state.messages].reverse().find(m => m.entity === 'user' || (m as any).entity === 0) as any;
-    const queryText = lastUserMsg?.text || '';
-    console.log('[TOOL_SELECTION_DEBUG] Query text for LLM selection:', queryText);
+    // Gate LLM tool selection to only run on fresh user input
+    const lastMsg = state.messages[state.messages.length - 1] as any;
+    const isUserTurn = lastMsg?.entity === 'user' || lastMsg?.entity === 0; // 0 is ChatMessageEntity.USER in some compiled forms
 
+    if (!isUserTurn) {
+      logger.debug('Not a user turn; skipping LLM tool selection. Attempting to reuse previous selection.');
+      // Try to reuse the previous selection from state.context if available
+      const prevSelectedNames = (state.context as any)?.selectedToolNames as string[] | undefined;
+      if (Array.isArray(prevSelectedNames) && prevSelectedNames.length > 0) {
+        const mcpMap = new Map(mcpTools.map(t => [t.name, t] as const));
+        const reused = prevSelectedNames.map(n => mcpMap.get(n)).filter(Boolean) as Tool<any, any>[];
+        const combined = uniqByName([...resultTools, ...reused]).slice(0, maxToolsPerTurn);
+        logger.debug('Reused previous MCP tool selection for non-user turn:', {
+          prevSelectedCount: prevSelectedNames.length,
+          reusedToolNames: reused.map(t => t.name),
+          finalToolNames: combined.map(t => t.name)
+        });
+        return { tools: combined, selectedNames: prevSelectedNames };
+      }
+      // No previous selection to reuse; return current (base) tools only
+      logger.debug('No previous selection found; returning base tools only for non-user turn.', {
+        toolCount: resultTools.length,
+        toolNames: resultTools.map(t => t.name)
+      });
+      return { tools: resultTools, selectedNames: resultTools.map(t => t.name) };
+    }
+
+    // User input detected — run intelligent selection
+    const queryText = lastMsg?.text || '';
+    logger.debug('User turn detected. Query text for LLM selection:', queryText);
     const selectedMcpTools = await selectToolsWithLLM(queryText, state.selectedAgentType, mcpTools, maxMcpPerTurn);
 
-    console.log('[TOOL_SELECTION_DEBUG] LLM selected MCP tools:', {
+    logger.debug('LLM selected MCP tools:', {
       selectedToolsCount: selectedMcpTools.length,
       selectedToolNames: selectedMcpTools.map(t => t.name),
       maxMcpPerTurn
     });
 
     resultTools = uniqByName([...resultTools, ...selectedMcpTools]).slice(0, maxToolsPerTurn);
-    console.log('[TOOL_SELECTION_DEBUG] Final result (ROUTER mode):', {
+    logger.debug('Final result (ROUTER mode):', {
       toolCount: resultTools.length,
       toolNames: resultTools.map(t => t.name),
       maxToolsPerTurn

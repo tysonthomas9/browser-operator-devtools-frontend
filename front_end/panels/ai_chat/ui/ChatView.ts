@@ -49,7 +49,8 @@ export interface Props {
   onSendMessage: (text: string, imageInput?: ImageInputData) => void;
   onPromptSelected: (promptType: string | null) => void;
   state: State;
-  isTextInputEmpty: boolean;
+  // Deprecated: ChatView owns input-empty state internally
+  isTextInputEmpty?: boolean;
   imageInput?: ImageInputData;
   onImageInputClear?: () => void;
   onImageInputChange?: (imageInput: ImageInputData) => void;
@@ -273,7 +274,6 @@ export class ChatView extends HTMLElement {
 
     this.#messages = data.messages;
     this.#state = data.state;
-    this.#isTextInputEmpty = data.isTextInputEmpty;
     this.#imageInput = data.imageInput;
     this.#onSendMessage = data.onSendMessage;
     this.#onImageInputClear = data.onImageInputClear;
@@ -985,7 +985,7 @@ export class ChatView extends HTMLElement {
       <ai-input-bar
         .placeholder=${this.#inputPlaceholder}
         .disabled=${this.#isInputDisabled}
-        .sendDisabled=${this.#isTextInputEmpty || this.#isInputDisabled}
+        .sendDisabled=${this.#isTextInputEmpty || this.#isInputDisabled || this.#state === State.LOADING}
         .imageInput=${this.#imageInput}
         .modelOptions=${this.#modelOptions}
         .selectedModel=${this.#selectedModel}

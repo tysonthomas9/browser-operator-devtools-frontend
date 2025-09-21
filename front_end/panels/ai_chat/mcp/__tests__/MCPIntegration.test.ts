@@ -8,6 +8,9 @@ import * as ToolNameMap from '../../core/ToolNameMap.js';
 import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
 import type { AgentState } from '../../core/State.js';
 import { ChatMessageEntity } from '../../models/ChatTypes.js';
+import { createLogger } from '../../core/Logger.js';
+
+const logger = createLogger('MCPIntegrationTest');
 
 /* eslint-env mocha */
 
@@ -86,11 +89,11 @@ describe('MCP Integration Test', () => {
       }));
 
       // Step 2: Refresh to register tools
-      console.log('Step 2: Refresh registry to register tools');
+      logger.info('Step 2: Refresh registry to register tools');
       await MCPRegistry.refresh();
 
       const status = MCPRegistry.getStatus();
-      console.log('  Registry status:', {
+      logger.debug('Registry status:', {
         enabled: status.enabled,
         serverCount: status.servers.length,
         toolCount: status.registeredToolNames.length,
@@ -102,11 +105,11 @@ describe('MCP Integration Test', () => {
 
       // Should have smart names, not long namespaced names
       const hasShortNames = status.registeredToolNames.some(name => !name.includes('mcp:'));
-      console.log('  Has short names:', hasShortNames);
-      console.log('  Registered tools:', status.registeredToolNames);
+      logger.debug('Has short names:', hasShortNames);
+      logger.debug('Registered tools:', status.registeredToolNames);
 
       // Step 3: Simulate tool execution request
-      console.log('Step 3: Test tool resolution and execution');
+      logger.info('Step 3: Test tool resolution and execution');
 
       // Try both namespaced and smart names
       const testCases = [
@@ -125,8 +128,8 @@ describe('MCP Integration Test', () => {
       ];
 
       for (const testCase of testCases) {
-        console.log(`\n  Testing: ${testCase.name}`);
-        console.log(`    Requesting tool: ${testCase.toolName}`);
+        logger.info(`Testing: ${testCase.name}`);
+        logger.debug(`Requesting tool: ${testCase.toolName}`);
 
         const state: AgentState = {
           messages: [

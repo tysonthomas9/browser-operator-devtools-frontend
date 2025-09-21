@@ -105,7 +105,7 @@ export class StateGraph<TState extends { context?: { tracingContext?: any }, mes
 
       try {
         // Invoke the *node* which is still a Promise-based Runnable
-        currentState = await node.invoke(currentState);
+        currentState = await node.invoke(currentState, signal);
         
         // Create completion event for the node
         if (spanId && tracingContext?.traceId) {

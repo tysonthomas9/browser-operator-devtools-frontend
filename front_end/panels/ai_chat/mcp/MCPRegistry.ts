@@ -532,29 +532,23 @@ class RegistryImpl {
     }
 
     // Second pass: register tools with smart naming
-    const usedNames = new Map<string, number>(); // Track which suffix numbers are used
+    const usedNames = new Map<string, number>(); // Track occurrence count per base name (starts at 0)
 
     for (const { srv, def } of allServerTools) {
       // Generate smart tool name
-      let toolName = def.name;
-      const toolInfo = toolNameRegistry.get(def.name)!;
+      const baseName = def.name;
 
-      // If there are multiple tools with the same name, add numeric suffix
-      if (toolInfo.count > 1) {
-        // Get next available suffix for this tool name
-        const baseName = def.name;
-        const currentCount = usedNames.get(baseName) || 1;
+      // Get current occurrence count (starts at 0)
+      const occurrenceCount = usedNames.get(baseName) || 0;
 
-        if (toolInfo.serverId === srv.id && currentCount === 1) {
-          // First occurrence gets no suffix
-          toolName = baseName;
-        } else {
-          // Subsequent occurrences get numbered suffix
-          const suffix = currentCount + 1;
-          toolName = `${baseName}_${suffix}`;
-        }
+      // Increment occurrence count for this tool
+      const newCount = occurrenceCount + 1;
+      usedNames.set(baseName, newCount);
 
-        usedNames.set(baseName, currentCount + 1);
+      // Generate tool name with suffix only for 2nd+ occurrences
+      let toolName = baseName;
+      if (newCount > 1) {
+        toolName = `${baseName}_${newCount}`;
       }
 
       // Create namespaced name for internal tracking but use smart name for registration

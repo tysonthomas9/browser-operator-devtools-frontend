@@ -8,7 +8,7 @@ import type {AgentState} from './State.js';
  * Interface for a runnable unit of work.
  */
 export interface Runnable<TInput, TOutput> {
-  invoke(input: TInput): Promise<TOutput>;
+  invoke(input: TInput, signal?: AbortSignal): Promise<TOutput>;
 }
 
 /**

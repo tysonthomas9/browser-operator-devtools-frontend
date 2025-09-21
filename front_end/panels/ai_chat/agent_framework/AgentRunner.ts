@@ -1010,6 +1010,7 @@ export class AgentRunner {
                 miniModel: config.miniModel,
                 nanoModel: config.nanoModel,
                 getVisionCapability: config.getVisionCapability,
+                abortSignal: abortSignal,
                 overrideSessionId: preallocatedChildId,
                 overrideParentSessionId: currentSession.sessionId,
                 overrideTraceId: execTracingContext?.traceId,

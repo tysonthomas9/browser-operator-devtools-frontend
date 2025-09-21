@@ -68,7 +68,11 @@ export function createAgentGraphFromConfig(
     final: () => createFinalNode(),
     toolExecutor: (nodeCfg) => {
       return {
-        invoke: async (state: AgentState) => {
+        invoke: async (state: AgentState, signal?: AbortSignal) => {
+          if (signal?.aborted) {
+            logger.info('ToolExecutorNode dummy implementation aborted');
+            throw new DOMException('Tool execution was cancelled', 'AbortError');
+          }
           logger.warn(`ToolExecutorNode "${nodeCfg.name}" invoked without being dynamically replaced. This indicates an issue.`);
           return { ...state, error: `ToolExecutor ${nodeCfg.name} not properly initialized.` };
         }
@@ -85,7 +89,11 @@ export function createAgentGraphFromConfig(
     } else {
       logger.warn(`Unknown node type: ${nodeConfig.type} for node ${nodeConfig.name}. Adding a dummy error node.`);
       graph.addNode(nodeConfig.name, {
-        invoke: async (state: AgentState) => {
+        invoke: async (state: AgentState, signal?: AbortSignal) => {
+          if (signal?.aborted) {
+            logger.info('Dummy error node aborted');
+            throw new DOMException('Execution was cancelled', 'AbortError');
+          }
           logger.error(`Dummy node ${nodeConfig.name} invoked due to unknown type ${nodeConfig.type}`);
           return { ...state, error: `Unknown node type ${nodeConfig.type} for ${nodeConfig.name}` };
         }

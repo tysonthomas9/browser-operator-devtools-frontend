@@ -11,6 +11,7 @@ import("../visibility.gni")
 generate_css("css_files") {
   sources = [
     "ui/chatView.css",
+    "ui/mcp/mcpConnectorsCatalogDialog.css",
   ]
 }
 
@@ -339,6 +340,7 @@ generated_file("ai_chat_release_js_metadata") {
 _css_module_target_gen_dir = get_label_info(":css_files", "target_gen_dir")
 _css_outputs_for_metadata = [
   "$_css_module_target_gen_dir/ui/chatView.css.js",
+  "$_css_module_target_gen_dir/ui/mcp/mcpConnectorsCatalogDialog.css.js",
 ]
 
 generated_file("ai_chat_release_css_metadata") {

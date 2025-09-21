@@ -720,7 +720,6 @@ export class AIChatPanel extends UI.Panel.Panel {
   #chatView!: ChatView; // Using the definite assignment assertion
   #toolbarContainer!: HTMLDivElement;
   #chatViewContainer!: HTMLDivElement;
-  #isTextInputEmpty = true;
   #agentService = AgentService.getInstance();
   #isProcessing = false;
   #imageInput?: ImageInputData;
@@ -1928,7 +1927,6 @@ export class AIChatPanel extends UI.Panel.Panel {
    */
   #setProcessingState(isProcessing: boolean): void {
     this.#isProcessing = isProcessing;
-    this.#isTextInputEmpty = isProcessing ? true : this.#isTextInputEmpty;
     this.#imageInput = isProcessing ? undefined : this.#imageInput;
     this.performUpdate();
   }
@@ -2028,7 +2026,6 @@ export class AIChatPanel extends UI.Panel.Panel {
         messages: this.#messages,
         onSendMessage: this.sendMessage.bind(this),
         state: this.#isProcessing ? ChatViewState.LOADING : ChatViewState.IDLE,
-        isTextInputEmpty: this.#isTextInputEmpty,
         imageInput: this.#imageInput,
         modelOptions: MODEL_OPTIONS,
         selectedModel: this.#selectedModel,

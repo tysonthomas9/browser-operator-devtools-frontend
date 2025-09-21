@@ -107,6 +107,8 @@ Remember to adapt your analysis based on the product category - different attrib
     tools: [
       'navigate_url',
       'get_page_content',
+      'extract_data',
+      'search_content',
     ],
     maxIterations: 5,
     modelName: MODEL_SENTINELS.USE_MINI,
@@ -117,6 +119,10 @@ Remember to adapt your analysis based on the product category - different attrib
         url: {
           type: 'string',
           description: 'Optional URL of the product page to navigate to before extracting information.'
+        },
+        product_query: {
+          type: 'string',
+          description: 'Optional specific product query` to refine the information extraction.'
         },
         reasoning: {
           type: 'string',
