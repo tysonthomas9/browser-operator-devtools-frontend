@@ -295,8 +295,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
     version: '2025-09-17',
     availableTools: [
       ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
-      ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
-      ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
+      ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
       ToolRegistry.getToolInstance('research_agent') || (() => { throw new Error('research_agent tool not found'); })(),
       new FinalizeWithCritiqueTool(),
       new SearchVisitHistoryTool(),
@@ -314,6 +313,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
       ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
       ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
+      ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
       new FinalizeWithCritiqueTool(),
     ]
   },

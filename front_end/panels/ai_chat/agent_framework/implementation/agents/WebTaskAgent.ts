@@ -10,7 +10,7 @@ export function createWebTaskAgentConfig(): AgentToolConfig {
   return {
     name: 'web_task_agent',
     version: AGENT_VERSION,
-    description: 'A specialized agent that orchestrates site-specific web tasks by coordinating action_agent calls. Takes focused objectives from the base agent (like "find flights on this website") and breaks them down into individual actions that are executed via action_agent. Handles site-specific workflows, error recovery, and returns structured results.',
+    description: `A specialized agent that controls the browser to navigate web pages, reads contents, and orchestrates site-specific web tasks. Takes focused objectives from the base agent (like "find flights on this website") and breaks them down into individual actions that are executed. Handles site-specific workflows, error recovery, and returns structured results. Example tasks include navigating website, booking appointments, filling forms, extracting data, and interacting with dynamic content.`,
     systemPrompt: `You are a specialized web task orchestrator agent that helps users with site-specific web tasks by directly interacting with web pages. Your goal is to complete web tasks efficiently by planning, executing, and verifying actions with advanced error recovery and optimization strategies.
 
 ## Your Role & Enhanced Capabilities
