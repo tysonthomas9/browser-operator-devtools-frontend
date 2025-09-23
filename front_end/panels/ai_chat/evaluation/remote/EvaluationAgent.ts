@@ -5,7 +5,7 @@
 
 import { BUILD_CONFIG } from '../../core/BuildConfig.js';
 import { WebSocketRPCClient } from '../../common/WebSocketRPCClient.js';
-import { LLMConfigurationManager } from '../../core/LLMConfigurationManager.js';
+import { LLMConfigurationManager, type LLMConfig } from '../../core/LLMConfigurationManager.js';
 import { getEvaluationConfig, getEvaluationClientId } from '../../common/EvaluationConfig.js';
 import { ToolRegistry, ConfigurableAgentTool } from '../../agent_framework/ConfigurableAgentTool.js';
 import { AgentService } from '../../core/AgentService.js';
@@ -1056,24 +1056,35 @@ export class EvaluationAgent {
       // Get configuration manager
       const configManager = LLMConfigurationManager.getInstance();
 
-      // Load existing configuration for partial updates
+      // Store current config for potential rollback
       const currentConfig = configManager.loadConfiguration();
 
-      // Merge configurations based on partial flag
-      const mergedConfig = {
-        provider: params.partial ? (params.provider ?? currentConfig.provider) : params.provider,
-        apiKey: params.partial ? (params.apiKey ?? currentConfig.apiKey) : params.apiKey,
-        endpoint: params.partial ? (params.endpoint ?? currentConfig.endpoint) : params.endpoint,
-        mainModel: params.partial ? (params.models?.main ?? currentConfig.mainModel) : params.models.main,
-        miniModel: params.partial ? (params.models?.mini ?? currentConfig.miniModel) : params.models?.mini,
-        nanoModel: params.partial ? (params.models?.nano ?? currentConfig.nanoModel) : params.models?.nano
-      };
+      // Handle configuration update based on partial flag
+      if (params.partial) {
+        // Use the new partial configuration method
+        const partialConfig: Partial<LLMConfig> = {};
+        if (params.provider !== undefined) partialConfig.provider = params.provider;
+        if (params.apiKey !== undefined) partialConfig.apiKey = params.apiKey;
+        if (params.endpoint !== undefined) partialConfig.endpoint = params.endpoint;
+        if (params.models?.main !== undefined) partialConfig.mainModel = params.models.main;
+        if (params.models?.mini !== undefined) partialConfig.miniModel = params.models.mini;
+        if (params.models?.nano !== undefined) partialConfig.nanoModel = params.models.nano;
 
-      // Validate the merged configuration
-      const validation = configManager.validateConfiguration();
+        configManager.applyPartialConfiguration(partialConfig);
+      } else {
+        // Full configuration update
+        const fullConfig: LLMConfig = {
+          provider: params.provider,
+          apiKey: params.apiKey,
+          endpoint: params.endpoint,
+          mainModel: params.models.main,
+          miniModel: params.models?.mini,
+          nanoModel: params.models?.nano
+        };
+        configManager.saveConfiguration(fullConfig);
+      }
 
-      // Check validation after setting the merged config temporarily
-      configManager.saveConfiguration(mergedConfig);
+      // Validate the saved configuration
       const postSaveValidation = configManager.validateConfiguration();
 
       if (!postSaveValidation.isValid) {
@@ -1103,13 +1114,16 @@ export class EvaluationAgent {
       const agentService = AgentService.getInstance();
       await agentService.refreshCredentials();
 
+      // Get the applied configuration
+      const appliedConfiguration = configManager.loadConfiguration();
+
       // Prepare response with applied configuration
       const appliedConfig = {
-        provider: mergedConfig.provider,
+        provider: appliedConfiguration.provider,
         models: {
-          main: mergedConfig.mainModel,
-          mini: mergedConfig.miniModel || '',
-          nano: mergedConfig.nanoModel || ''
+          main: appliedConfiguration.mainModel,
+          mini: appliedConfiguration.miniModel || '',
+          nano: appliedConfiguration.nanoModel || ''
         }
       };
 
@@ -1121,8 +1135,8 @@ export class EvaluationAgent {
       }
 
       logger.info('LLM configuration applied successfully', {
-        provider: mergedConfig.provider,
-        mainModel: mergedConfig.mainModel
+        provider: appliedConfiguration.provider,
+        mainModel: appliedConfiguration.mainModel
       });
 
     } catch (error) {

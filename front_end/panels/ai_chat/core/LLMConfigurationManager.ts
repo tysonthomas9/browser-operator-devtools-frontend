@@ -220,6 +220,44 @@ export class LLMConfigurationManager {
   }
 
   /**
+   * Apply partial configuration updates (merges with existing configuration)
+   */
+  applyPartialConfiguration(partial: Partial<LLMConfig>): void {
+    const current = this.loadConfiguration();
+
+    // Merge configurations, preserving existing values where partial doesn't provide them
+    const merged: LLMConfig = {
+      provider: partial.provider ?? current.provider,
+      mainModel: partial.mainModel ?? current.mainModel,
+      miniModel: partial.miniModel ?? current.miniModel,
+      nanoModel: partial.nanoModel ?? current.nanoModel,
+      apiKey: partial.apiKey ?? current.apiKey,
+      endpoint: partial.endpoint ?? current.endpoint,
+    };
+
+    logger.info('Applying partial configuration update', {
+      current: {
+        provider: current.provider,
+        mainModel: current.mainModel,
+        hasApiKey: !!current.apiKey
+      },
+      partial: {
+        provider: partial.provider,
+        mainModel: partial.mainModel,
+        hasApiKey: !!partial.apiKey
+      },
+      merged: {
+        provider: merged.provider,
+        mainModel: merged.mainModel,
+        hasApiKey: !!merged.apiKey
+      }
+    });
+
+    // Save the merged configuration
+    this.saveConfiguration(merged);
+  }
+
+  /**
    * Load configuration from localStorage
    */
   loadConfiguration(): LLMConfig {
