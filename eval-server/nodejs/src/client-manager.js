@@ -51,27 +51,26 @@ class ClientManager {
    * Precedence logic:
    * 1. API calls OR individual test YAML models (highest priority - either overrides everything)
    * 2. config.yaml defaults (fallback only when neither API nor test YAML specify models)
+   * @param {Object} evaluation - Evaluation object with optional model configuration
+   * @param {import('../types/model-config').ModelConfig} apiModelOverride - Optional API model override
+   * @returns {import('../types/model-config').ModelConfig} Final model configuration
    */
   applyModelPrecedence(evaluation, apiModelOverride = null) {
     // Check if API override is provided
     if (apiModelOverride) {
       // API model override takes precedence over everything
-      return {
-        ...(this.configDefaults?.model || {}), // Use config as base
-        ...apiModelOverride // API overrides everything
-      };
+      // Ensure nested format is used
+      return apiModelOverride;
     }
-    
+
     // Check if evaluation has its own model config from YAML
     const testModel = evaluation.model;
     if (testModel && Object.keys(testModel).length > 0) {
-      // Test YAML model takes precedence, use config.yaml only for missing fields
-      return {
-        ...(this.configDefaults?.model || {}), // Config as fallback base
-        ...testModel // Test YAML overrides config
-      };
+      // Test YAML model takes precedence
+      // Ensure nested format is returned
+      return testModel;
     }
-    
+
     // Neither API nor test YAML specified models, use config.yaml defaults only
     return this.configDefaults?.model || {};
   }

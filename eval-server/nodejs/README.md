@@ -145,7 +145,23 @@ server.onConnect(async client => {
       message: "Your question here"
     },
     timeout: 30000,             // Optional timeout (ms)
-    model: {},                  // Optional model config
+    model: {                    // Optional nested model config
+      main_model: {
+        provider: "openai",
+        model: "gpt-4",
+        api_key: "sk-..."
+      },
+      mini_model: {
+        provider: "openai",
+        model: "gpt-4-mini",
+        api_key: "sk-..."
+      },
+      nano_model: {
+        provider: "groq",
+        model: "llama-3.1-8b-instant",
+        api_key: "gsk-..."
+      }
+    },
     metadata: {                 // Optional metadata
       tags: ['api', 'test']
     }

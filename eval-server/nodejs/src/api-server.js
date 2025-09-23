@@ -306,6 +306,8 @@ class APIServer {
 
   /**
    * Process nested model configuration from request body
+   * @param {Object} requestBody - Request body containing optional model configuration
+   * @returns {import('./types/model-config').ModelConfig} Nested model configuration
    */
   processNestedModelConfig(requestBody) {
     const defaults = this.configDefaults?.model || {};
@@ -319,12 +321,6 @@ class APIServer {
       };
     }
 
-    // Legacy flat format support - convert to nested
-    if (requestBody.main_model || requestBody.provider || requestBody.api_key) {
-      const legacyConfig = this.mergeModelConfig(requestBody);
-      return this.convertFlatToNested(legacyConfig);
-    }
-
     // No model config provided, use defaults
     return {
       main_model: this.createDefaultModelConfig('main', defaults),
@@ -335,6 +331,9 @@ class APIServer {
 
   /**
    * Create default model configuration for a tier
+   * @param {'main' | 'mini' | 'nano'} tier - Model tier
+   * @param {Object} defaults - Default configuration from config.yaml
+   * @returns {import('./types/model-config').ModelTierConfig} Model tier configuration
    */
   createDefaultModelConfig(tier, defaults) {
     const defaultModels = {
@@ -350,43 +349,6 @@ class APIServer {
     };
   }
 
-  /**
-   * Convert flat model config to nested format (legacy support)
-   */
-  convertFlatToNested(flatConfig) {
-    return {
-      main_model: {
-        provider: flatConfig.provider,
-        model: flatConfig.main_model,
-        api_key: flatConfig.api_key
-      },
-      mini_model: {
-        provider: flatConfig.provider,
-        model: flatConfig.mini_model,
-        api_key: flatConfig.api_key
-      },
-      nano_model: {
-        provider: flatConfig.provider,
-        model: flatConfig.nano_model,
-        api_key: flatConfig.api_key
-      }
-    };
-  }
-
-  /**
-   * Merge request model parameters with config.yaml defaults (legacy)
-   */
-  mergeModelConfig(requestBody) {
-    const defaults = this.configDefaults?.model || {};
-
-    return {
-      main_model: requestBody.main_model || defaults.main_model || 'gpt-4',
-      mini_model: requestBody.mini_model || defaults.mini_model || 'gpt-4-mini',
-      nano_model: requestBody.nano_model || defaults.nano_model || 'gpt-3.5-turbo',
-      provider: requestBody.provider || defaults.provider || 'openai',
-      api_key: requestBody.api_key || process.env.OPENAI_API_KEY
-    };
-  }
 
   /**
    * Find a connected and ready client
@@ -402,6 +364,9 @@ class APIServer {
 
   /**
    * Create a dynamic evaluation object with nested model configuration
+   * @param {string} input - Input message for the evaluation
+   * @param {import('./types/model-config').ModelConfig} nestedModelConfig - Model configuration
+   * @returns {import('./types/model-config').EvaluationRequest} Evaluation request object
    */
   createDynamicEvaluationNested(input, nestedModelConfig) {
     const evaluationId = `api-eval-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -428,52 +393,6 @@ class APIServer {
     };
   }
 
-  /**
-   * Create a dynamic evaluation object for the API request (legacy)
-   */
-  createDynamicEvaluation(input, modelConfig) {
-    const evaluationId = `api-eval-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-    // Convert flat modelConfig to nested format
-    const nestedModelConfig = {
-      main_model: {
-        provider: modelConfig.provider || 'openai',
-        model: modelConfig.main_model || 'gpt-4',
-        api_key: modelConfig.api_key
-      },
-      mini_model: {
-        provider: modelConfig.provider || 'openai',
-        model: modelConfig.mini_model || modelConfig.main_model || 'gpt-4-mini',
-        api_key: modelConfig.api_key
-      },
-      nano_model: {
-        provider: modelConfig.provider || 'openai',
-        model: modelConfig.nano_model || modelConfig.mini_model || modelConfig.main_model || 'gpt-3.5-turbo',
-        api_key: modelConfig.api_key
-      }
-    };
-
-    return {
-      id: evaluationId,
-      name: 'API Request',
-      description: 'Dynamic evaluation created from API request',
-      enabled: true,
-      tool: 'chat',
-      timeout: 1500000, // 25 minutes
-      input: {
-        message: input
-      },
-      model: nestedModelConfig,
-      validation: {
-        type: 'none' // No validation needed for API responses
-      },
-      metadata: {
-        tags: ['api', 'dynamic'],
-        priority: 'high',
-        source: 'api'
-      }
-    };
-  }
 
   /**
    * Extract response text from evaluation result

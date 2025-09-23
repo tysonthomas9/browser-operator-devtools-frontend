@@ -107,32 +107,27 @@ Agents must implement:
 - `Evaluate(task: string) -> string` method
 - "ready" message to signal availability for evaluations
 
-### LLM Configuration Protocol
+### Model Configuration Schema
 
-The server supports dynamic LLM configuration via the `configure_llm` JSON-RPC method:
+The server uses a canonical nested model configuration format that allows per-tier provider and API key settings:
 
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "configure_llm",
-  "params": {
-    "provider": "openai|groq|openrouter|litellm",
-    "apiKey": "your-api-key",
-    "endpoint": "endpoint-url-for-litellm",
-    "models": {
-      "main": "main-model-name",
-      "mini": "mini-model-name",
-      "nano": "nano-model-name"
-    },
-    "partial": false
-  },
-  "id": "config-request-id"
+#### Model Configuration Structure
+
+```typescript
+interface ModelTierConfig {
+  provider: string;  // "openai" | "groq" | "openrouter" | "litellm"
+  model: string;     // Model name (e.g., "gpt-4", "llama-3.1-8b-instant")
+  api_key: string;   // API key for this tier
+}
+
+interface ModelConfig {
+  main_model: ModelTierConfig;  // Primary model for complex tasks
+  mini_model: ModelTierConfig;  // Secondary model for simpler tasks
+  nano_model: ModelTierConfig;  // Tertiary model for basic tasks
 }
 ```
 
-### Evaluation Model Configuration
-
-Evaluations support nested model configuration for flexible per-tier settings:
+#### Example: Evaluation with Model Configuration
 
 ```json
 {
@@ -159,6 +154,29 @@ Evaluations support nested model configuration for flexible per-tier settings:
       }
     }
   }
+}
+```
+
+### Dynamic LLM Configuration
+
+The server supports runtime LLM configuration via the `configure_llm` JSON-RPC method:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "configure_llm",
+  "params": {
+    "provider": "openai|groq|openrouter|litellm",
+    "apiKey": "your-api-key",
+    "endpoint": "endpoint-url-for-litellm",
+    "models": {
+      "main": "main-model-name",
+      "mini": "mini-model-name",
+      "nano": "nano-model-name"
+    },
+    "partial": false
+  },
+  "id": "config-request-id"
 }
 ```
 
