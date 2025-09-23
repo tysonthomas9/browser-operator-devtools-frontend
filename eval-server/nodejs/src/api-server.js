@@ -267,9 +267,17 @@ class APIServer {
       // Handle nested model configuration directly
       const nestedModelConfig = this.processNestedModelConfig(requestBody);
 
+      const redact = (mk) => ({
+        ...mk,
+        api_key: mk?.api_key ? `${String(mk.api_key).slice(0, 4)}...` : undefined
+      });
       logger.info('Processing responses request:', {
         input: requestBody.input,
-        modelConfig: nestedModelConfig
+        modelConfig: {
+          main_model: redact(nestedModelConfig.main_model),
+          mini_model: redact(nestedModelConfig.mini_model),
+          nano_model: redact(nestedModelConfig.nano_model),
+        }
       });
 
       // Find a connected and ready client

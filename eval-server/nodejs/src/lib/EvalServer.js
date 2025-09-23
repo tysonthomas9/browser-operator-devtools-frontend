@@ -347,7 +347,16 @@ export class EvalServer extends EventEmitter {
           result = await this.handleConfigureLLM(connection, params);
           break;
         default:
-          throw new Error(`Unknown method: ${method}`);
+          // JSON-RPC: Method not found
+          this.sendMessage(connection.ws, {
+            jsonrpc: '2.0',
+            error: {
+              code: -32601,
+              message: `Method not found: ${method}`
+            },
+            id
+          });
+          return;
       }
 
       // Send success response
@@ -388,15 +397,24 @@ export class EvalServer extends EventEmitter {
 
     const { provider, apiKey, endpoint, models, partial = false } = params;
 
-    // Validate provider
+    // Validate inputs
     const supportedProviders = ['openai', 'litellm', 'groq', 'openrouter'];
-    if (!supportedProviders.includes(provider)) {
-      throw new Error(`Unsupported provider: ${provider}. Supported providers: ${supportedProviders.join(', ')}`);
-    }
-
-    // Validate models
-    if (!models || !models.main) {
-      throw new Error('Main model is required');
+    if (partial) {
+      // For partial updates, validate only provided fields
+      if (provider && !supportedProviders.includes(provider)) {
+        throw new Error(`Unsupported provider: ${provider}. Supported providers: ${supportedProviders.join(', ')}`);
+      }
+      if (models && models.main === '') {
+        throw new Error('Main model cannot be empty');
+      }
+    } else {
+      // For full updates, require provider and main model
+      if (!provider || !supportedProviders.includes(provider)) {
+        throw new Error(`Unsupported or missing provider: ${provider ?? '(none)'}. Supported providers: ${supportedProviders.join(', ')}`);
+      }
+      if (!models || !models.main) {
+        throw new Error('Main model is required');
+      }
     }
 
     // Store configuration for this client connection
