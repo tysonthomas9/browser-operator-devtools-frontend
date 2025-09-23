@@ -41,6 +41,21 @@ export class InputBar extends HTMLElement {
 
   connectedCallback(): void { this.#render(); }
 
+  // Public API to set the input value programmatically (e.g., from example suggestions)
+  setInputValue(text: string): void {
+    const inputEl = this.querySelector('ai-chat-input') as (HTMLElement & { value?: string, focusInput?: () => void }) | null;
+    if (inputEl) {
+      // Set value via property setter to update the UI
+      (inputEl as any).value = text ?? '';
+      // Focus textarea for immediate editing
+      if (typeof (inputEl as any).focusInput === 'function') {
+        (inputEl as any).focusInput();
+      }
+      // Bubble an inputchange event so parent updates sendDisabled state
+      this.dispatchEvent(new CustomEvent('inputchange', { bubbles: true, detail: { value: text ?? '' } }));
+    }
+  }
+
   #emitSendAndClear(detail: any): void {
     // Re-emit send upward
     this.dispatchEvent(new CustomEvent('send', { bubbles: true, detail }));

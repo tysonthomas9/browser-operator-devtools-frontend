@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import { enhancePromptWithPageContext } from '../core/PageInfoManager.js';
+import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import type { LLMResponse, LLMMessage, LLMProvider } from '../LLM/LLMTypes.js';
 import type { Tool } from '../tools/Tools.js';
@@ -38,6 +39,8 @@ export interface AgentRunnerConfig {
   miniModel?: string;
   /** Nano model for smallest/fastest operations */
   nanoModel?: string;
+  /** Descriptor describing this agent configuration */
+  agentDescriptor?: AgentDescriptor;
 }
 
 /**
@@ -397,11 +400,12 @@ export class AgentRunner {
     hooks: AgentRunnerHooks,
     executingAgent: ConfigurableAgentTool | null,
     parentSession?: AgentSession, // For natural nesting
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string }
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    abortSignal?: AbortSignal
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
-    const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature } = config;
+    const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
     const { prepareInitialMessages, createSuccessResult, createErrorResult } = hooks;
 
 
@@ -422,7 +426,8 @@ export class AgentRunner {
       config: executingAgent?.config,
       maxIterations,
       modelUsed: modelName,
-      iterationCount: 0
+      iterationCount: 0,
+      descriptor: agentDescriptor
     };
 
     // Use local session variable instead of static
@@ -547,6 +552,13 @@ export class AgentRunner {
     let iteration = 0; // Initialize iteration counter
 
     for (iteration = 0; iteration < maxIterations; iteration++) {
+      // Check if execution has been aborted
+      if (abortSignal?.aborted) {
+        logger.info(`${agentName} execution aborted at iteration ${iteration + 1}/${maxIterations}`);
+        const abortResult = createErrorResult('Execution was cancelled', messages, 'error');
+        return { ...abortResult, agentSession: currentSession };
+      }
+
       // Update session iteration count
       if (currentSession) {
         currentSession.iterationCount = iteration + 1;
@@ -609,7 +621,12 @@ export class AgentRunner {
               agentName,
               iteration: iteration + 1,
               maxIterations,
-              phase: 'llm_generation'
+              phase: 'llm_generation',
+              ...(agentDescriptor ? {
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
             }
           }, tracingContext.traceId);
 
@@ -675,7 +692,12 @@ export class AgentRunner {
               agentName,
               iteration: iteration + 1,
               phase: 'completed',
-              duration: Date.now() - generationStartTime.getTime()
+              duration: Date.now() - generationStartTime.getTime(),
+              ...(agentDescriptor ? {
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
             }
           });
 
@@ -702,7 +724,12 @@ export class AgentRunner {
               source: 'AgentRunner',
               agentName,
               iteration: iteration + 1,
-              phase: 'error'
+              phase: 'error',
+              ...(agentDescriptor ? {
+                agentVersion: agentDescriptor.version,
+                promptHash: agentDescriptor.promptHash,
+                toolsetHash: agentDescriptor.toolsetHash
+              } : {})
             }
           });
         }
@@ -983,6 +1010,7 @@ export class AgentRunner {
                 miniModel: config.miniModel,
                 nanoModel: config.nanoModel,
                 getVisionCapability: config.getVisionCapability,
+                abortSignal: abortSignal,
                 overrideSessionId: preallocatedChildId,
                 overrideParentSessionId: currentSession.sessionId,
                 overrideTraceId: execTracingContext?.traceId,

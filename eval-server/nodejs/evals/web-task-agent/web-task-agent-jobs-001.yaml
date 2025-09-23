@@ -46,7 +46,7 @@ validation:
       - "Either used construct_direct_url for LinkedIn job search OR used traditional form interaction"
       - "If using direct URL: constructed proper LinkedIn job search URL with keywords and location"
       - "If using forms: delegated keyword and location input to action_agent"
-      - "Extracted job listings using schema_based_extractor"
+      - "Extracted job listings using extract_data"
       - "Returned structured job data in readable text format (not JSON)"
       - "Each job listing includes title, company, location, and other relevant fields"
       - "Results are numbered or organized clearly for easy reading"

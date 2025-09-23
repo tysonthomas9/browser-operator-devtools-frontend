@@ -9,7 +9,7 @@ target:
   wait_for: "networkidle"
   wait_timeout: 5000
 
-tool: "extract_schema_data"
+tool: "extract_data"
 timeout: 45000
 
 input:

@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import { createLogger } from "./Logger.js";
+
+const logger = createLogger('ToolNameMap');
+
 // A small, dependency-free utility that maintains a global mapping between
 // original tool identifiers (e.g. "mcp:default:alpha") and provider-compliant
 // function names (^[a-zA-Z0-9_-]{1,64}$). This avoids import cycles between
@@ -13,7 +17,10 @@ const sanitizedToOriginal = new Map<string, string>();
 function sanitize(original: string): string {
   let name = original.replace(/[^a-zA-Z0-9_-]/g, '_');
   if (!name) name = 'tool';
-  if (name.length > 64) name = name.slice(0, 64);
+  if (name.length > 64) {
+    logger.warn(`Tool name too long (${name.length} chars), truncating to 64: ${original}`);
+    name = name.slice(0, 64);
+  }
   return name;
 }
 
@@ -40,15 +47,13 @@ export function addMapping(original: string): string {
   if (sanitizedToOriginal.has(candidate) && sanitizedToOriginal.get(candidate) !== original) {
     const suffix = shortHash(original);
     const base = candidate.replace(/_+$/g, '');
-    const maxBase = Math.max(1, 64 - 1 - suffix.length);
-    candidate = (base.length > maxBase ? base.slice(0, maxBase) : base) + '-' + suffix;
+    candidate = base + '-' + suffix;
   }
   let unique = candidate;
   let counter = 1;
   while (sanitizedToOriginal.has(unique) && sanitizedToOriginal.get(unique) !== original) {
     const add = `_${counter++}`;
-    const maxBase = Math.max(1, 64 - add.length);
-    unique = (candidate.length > maxBase ? candidate.slice(0, maxBase) : candidate) + add;
+    unique = candidate + add;
   }
   originalToSanitized.set(original, unique);
   sanitizedToOriginal.set(unique, original);

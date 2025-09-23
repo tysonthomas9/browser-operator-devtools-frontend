@@ -4,6 +4,7 @@
 
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
 import * as Lit from '../../../ui/lit/lit.js';
+import * as SDK from '../../../core/sdk/sdk.js';
 import * as BaseOrchestratorAgent from '../core/BaseOrchestratorAgent.js';
 import { TIMING_CONSTANTS } from '../core/Constants.js';
 import { PromptEditDialog } from './PromptEditDialog.js';
@@ -48,7 +49,8 @@ export interface Props {
   onSendMessage: (text: string, imageInput?: ImageInputData) => void;
   onPromptSelected: (promptType: string | null) => void;
   state: State;
-  isTextInputEmpty: boolean;
+  // Deprecated: ChatView owns input-empty state internally
+  isTextInputEmpty?: boolean;
   imageInput?: ImageInputData;
   onImageInputClear?: () => void;
   onImageInputChange?: (imageInput: ImageInputData) => void;
@@ -95,6 +97,9 @@ export class ChatView extends HTMLElement {
   #onModelSelectorFocus?: () => void;
   #selectedAgentType?: string | null;
   #isModelSelectorDisabled = false;
+  // URL change listener
+  #onInspectedURLChangedBound?: (event: Event) => void;
+  #lastSuggestionHost: string | null = null;
 
   // Scroll behavior delegated to <ai-message-list>
 
@@ -133,11 +138,24 @@ export class ChatView extends HTMLElement {
     // Check for updates when component is connected
     this.#checkForUpdates();
 
+    // Attach URL listener only when in new-chat state
+    this.#updateUrlListener();
+
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
   }
 
   disconnectedCallback(): void {
-    // Nothing to cleanup currently
+    // Remove URL change listener
+    try {
+      if (this.#onInspectedURLChangedBound) {
+        SDK.TargetManager.TargetManager.instance().removeEventListener(
+          SDK.TargetManager.Events.INSPECTED_URL_CHANGED,
+          this.#onInspectedURLChangedBound as any,
+        );
+        this.#onInspectedURLChangedBound = undefined;
+        this.#lastSuggestionHost = null;
+      }
+    } catch {}
   }
 
   // Test-only helper to introspect cached live agent sessions
@@ -256,7 +274,6 @@ export class ChatView extends HTMLElement {
 
     this.#messages = data.messages;
     this.#state = data.state;
-    this.#isTextInputEmpty = data.isTextInputEmpty;
     this.#imageInput = data.imageInput;
     this.#onSendMessage = data.onSendMessage;
     this.#onImageInputClear = data.onImageInputClear;
@@ -300,9 +317,62 @@ export class ChatView extends HTMLElement {
     // Update the prompt button handler with new props
     this.#updatePromptButtonClickHandler();
 
+    // Ensure URL listener is active only when in new-chat view
+    this.#updateUrlListener();
+
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
 
     // Message list handles pin-to-bottom; no explicit scroll needed here
+  }
+
+  // Manage URL change listener lifecycle based on new-chat state
+  #updateUrlListener(): void {
+    try {
+      const tm = SDK.TargetManager.TargetManager.instance();
+      if (this.#isFirstMessageView) {
+        if (!this.#onInspectedURLChangedBound) {
+          this.#onInspectedURLChangedBound = () => {
+            if (!this.#isFirstMessageView) {
+              return;
+            }
+            const url = this.#getCurrentPageURL();
+            let host = '';
+            try { host = url ? new URL(url).hostname : ''; } catch {}
+
+            if (!host || host === this.#lastSuggestionHost) {
+              return;
+            }
+            this.#lastSuggestionHost = host;
+
+            // Auto-select Deep Research on search sites if nothing selected yet
+            try {
+              if (!this.#selectedPromptType) {
+                const isSearchSite = /(^|\.)((google|bing|duckduckgo|yahoo|yandex|baidu)\.(com|co\.[a-z]+|[a-z]+))$/i.test(host);
+                if (isSearchSite) {
+                  this.#autoSelectAgent(BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH);
+                }
+              }
+            } catch {}
+
+            // Re-render to update suggestions for the new page
+            void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+          };
+          tm.addEventListener(
+            SDK.TargetManager.Events.INSPECTED_URL_CHANGED,
+            this.#onInspectedURLChangedBound as any,
+          );
+          // Prime once on attach
+          try { this.#onInspectedURLChangedBound?.(new Event('init')); } catch {}
+        }
+      } else if (this.#onInspectedURLChangedBound) {
+        tm.removeEventListener(
+          SDK.TargetManager.Events.INSPECTED_URL_CHANGED,
+          this.#onInspectedURLChangedBound as any,
+        );
+        this.#onInspectedURLChangedBound = undefined;
+        this.#lastSuggestionHost = null;
+      }
+    } catch {}
   }
 
   // Ensure that for each cached live agent session there is a corresponding
@@ -653,11 +723,14 @@ export class ChatView extends HTMLElement {
       // Render centered first message view
       const welcomeMessage = this.#messages.length > 0 ? this.#messages[0] : null;
 
+      const suggestions = this.#renderExampleSuggestions();
       Lit.render(html`
         <div class="chat-view-container centered-view">
           ${this.#renderVersionBanner()}
           <div class="centered-content">
             ${welcomeMessage ? this.#renderMessage(welcomeMessage, 0) : Lit.nothing}
+            
+            ${suggestions}
             
             ${this.#showOAuthLogin ? html`
               <ai-oauth-connect
@@ -718,6 +791,136 @@ export class ChatView extends HTMLElement {
       `, this.#shadow, {host: this});
     }
     // clang-format on
+  }
+
+  // Compute and render example suggestions for the centered view
+  #renderExampleSuggestions(): Lit.TemplateResult {
+    // If we're not in the first-message view or OAuth login is shown, show nothing
+    if (!this.#isFirstMessageView || this.#showOAuthLogin) {
+      return html``;
+    }
+
+    const examples = this.#getExampleSuggestions();
+    if (!examples.length) {
+      return html``;
+    }
+
+    return html`
+      <div class="examples-container">
+        <div class="examples-title">Try one of these</div>
+        <div class="examples-list">
+          ${examples.map(ex => html`
+            <button class="example-chip" @click=${() => this.#handleExampleClick(ex.text, ex.agentType)} title=${ex.text}>${ex.text}</button>
+          `)}
+        </div>
+      </div>
+    `;
+  }
+
+  // On suggestion click, fill input field and focus it
+  #handleExampleClick(text: string, agentType?: string): void {
+    const bar = this.#shadow.querySelector('ai-input-bar') as (HTMLElement & { setInputValue?: (t: string) => void }) | null;
+    if (bar && typeof (bar as any).setInputValue === 'function') {
+      (bar as any).setInputValue(text);
+    } else {
+      // Fallback: try to set directly on ai-chat-input if present
+      const input = bar?.querySelector('ai-chat-input') as (HTMLElement & { value?: string, focusInput?: () => void }) | null;
+      if (input) {
+        (input as any).value = text;
+        if (typeof (input as any).focusInput === 'function') {
+          (input as any).focusInput();
+        }
+        // Bubble change up so parent state updates
+        bar?.dispatchEvent(new CustomEvent('inputchange', { bubbles: true, detail: { value: text }}));
+      }
+    }
+
+    // Auto-select agent type if provided
+    if (agentType) {
+      this.#autoSelectAgent(agentType);
+    }
+  }
+
+  // Programmatically select an agent type in the UI and notify parent
+  #autoSelectAgent(agentType: string | null): void {
+    this.#selectedPromptType = agentType;
+    if (this.#onPromptSelected) {
+      this.#onPromptSelected(agentType);
+    }
+    // Re-render to update agent button selection immediately
+    void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+  }
+
+  // Get current inspected page URL (if available)
+  #getCurrentPageURL(): string | null {
+    try {
+      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      if (!target) {
+        return null;
+      }
+      const resourceTree = target.model(SDK.ResourceTreeModel.ResourceTreeModel);
+      const url = resourceTree?.mainFrame?.url;
+      return url || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Build example suggestions (generic + page-specific if URL is present)
+  #getExampleSuggestions(): Array<{ text: string; agentType?: string }> {
+    const generic: Array<{ text: string; agentType?: string }> = [
+      { text: 'Summarize this page' },
+      { text: 'Extract all links and titles from this page' },
+    ];
+
+    const url = this.#getCurrentPageURL();
+    if (!url) {
+      // Show a smaller set to avoid overcrowding
+      return generic.slice(0, 4);
+    }
+
+    let hostname = '';
+    try { hostname = new URL(url).hostname; } catch {}
+
+    // Detect all Chrome internal pages
+    const isChromeInternalPage = url.startsWith('chrome://');
+
+    if (isChromeInternalPage) {
+      // Provide mixed examples for all Chrome internal pages
+      const researchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH;
+      const searchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.SEARCH;
+      const searchExamples: Array<{ text: string; agentType?: string }> = [
+        { text: 'Deep research latest breakthroughs in AI agents', agentType: researchAgent },
+        { text: 'Find content writers in Seattle, WA', agentType: searchAgent },
+        { text: 'Provide me analysis of Apple stocks?', agentType: researchAgent },
+        { text: 'Summarize today\'s news', agentType: researchAgent },
+      ];
+      return searchExamples;
+    }
+
+    // Detect common search engines
+    const isSearchSite = /(^|\.)((google|bing|duckduckgo|yahoo|yandex|baidu)\.(com|co\.[a-z]+|[a-z]+))$/i.test(hostname);
+
+    if (isSearchSite) {
+      // Provide deep-research oriented examples and pre-select the deep research agent on click
+      const researchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH;
+      const searchExamples: Array<{ text: string; agentType?: string }> = [
+        { text: 'Deep research latest breakthroughs in AI agents', agentType: researchAgent },
+        { text: 'What are the reviews of iPhone 17?', agentType: researchAgent },
+        { text: 'Provide me analysis of Apple stocks?', agentType: researchAgent },
+        { text: 'Summarize today\'s news', agentType: researchAgent },
+      ];
+      return searchExamples;
+    }
+
+    const specific: Array<{ text: string; agentType?: string }> = [
+      { text: `What do you think about ${hostname ? hostname + ' ' : ''}page?` },
+    ];
+
+    // Merge, de-duplicate by text, cap to concise set
+    const map = new Map<string, { text: string; agentType?: string }>();
+    [...specific, ...generic].forEach(item => { if (!map.has(item.text)) map.set(item.text, item); });
+    return Array.from(map.values()).slice(0, 6);
   }
 
   // Helper method to format JSON with syntax highlighting
@@ -782,7 +985,7 @@ export class ChatView extends HTMLElement {
       <ai-input-bar
         .placeholder=${this.#inputPlaceholder}
         .disabled=${this.#isInputDisabled}
-        .sendDisabled=${this.#isTextInputEmpty || this.#isInputDisabled}
+        .sendDisabled=${this.#isTextInputEmpty || this.#isInputDisabled || this.#state === State.LOADING}
         .imageInput=${this.#imageInput}
         .modelOptions=${this.#modelOptions}
         .selectedModel=${this.#selectedModel}

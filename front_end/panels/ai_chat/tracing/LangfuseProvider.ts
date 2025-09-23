@@ -111,7 +111,7 @@ export class LangfuseProvider extends TracingProvider {
     traceId: string
   ): Promise<void> {
     if (!this.enabled) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Tracing disabled, skipping observation creation:`, {
+      logger.debug(`Tracing disabled, skipping observation creation:`, {
         observationId: observation.id,
         name: observation.name,
         type: observation.type
@@ -119,7 +119,7 @@ export class LangfuseProvider extends TracingProvider {
       return;
     }
 
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Creating observation:`, {
+    logger.debug(`Creating observation:`, {
       observationId: observation.id,
       name: observation.name,
       type: observation.type,
@@ -199,7 +199,7 @@ export class LangfuseProvider extends TracingProvider {
     // Periodic cleanup of old observations
     this.cleanupObservationStore();
     
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Successfully created observation:`, {
+    logger.debug(`Successfully created observation:`, {
       observationId: observation.id,
       eventType,
       stored: true,
@@ -212,14 +212,14 @@ export class LangfuseProvider extends TracingProvider {
     updates: Partial<ObservationData>
   ): Promise<void> {
     if (!this.enabled) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Tracing disabled, skipping observation update:`, {
+      logger.debug(`Tracing disabled, skipping observation update:`, {
         observationId,
         updates
       });
       return;
     }
 
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Updating observation:`, {
+    logger.debug(`Updating observation:`, {
       observationId,
       updates,
       hasEndTime: !!updates.endTime,
@@ -230,7 +230,7 @@ export class LangfuseProvider extends TracingProvider {
     // Get the stored observation data
     const stored = this.observationStore.get(observationId);
     if (!stored) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Cannot update observation - not found:`, { 
+      logger.debug(`Cannot update observation - not found:`, {
         observationId,
         availableObservations: Array.from(this.observationStore.keys())
       });
@@ -316,7 +316,7 @@ export class LangfuseProvider extends TracingProvider {
     // Update stored observation data
     this.observationStore.set(observationId, { observation: updatedObservation, traceId: stored.traceId });
     
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Successfully updated observation:`, {
+    logger.debug(`Successfully updated observation:`, {
       observationId,
       eventType,
       eventId: event.id,
@@ -357,12 +357,12 @@ export class LangfuseProvider extends TracingProvider {
   async flush(): Promise<void> {
     // Return existing flush promise if one is in progress
     if (this.isFlushInProgress && this.flushPromise) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Flush already in progress, waiting...`);
+      logger.debug(`Flush already in progress, waiting...`);
       return this.flushPromise;
     }
     
     if (!this.enabled || this.eventBuffer.length === 0) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Flush called but skipped:`, {
+      logger.debug(`Flush called but skipped:`, {
         enabled: this.enabled,
         bufferLength: this.eventBuffer.length
       });
@@ -381,13 +381,13 @@ export class LangfuseProvider extends TracingProvider {
   }
 
   private async performFlush(): Promise<void> {
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Starting atomic flush of ${this.eventBuffer.length} events`);
+    logger.debug(`Starting atomic flush of ${this.eventBuffer.length} events`);
     
     // Atomic buffer clear using splice - prevents race conditions
     const events = this.eventBuffer.splice(0);
     
     if (events.length === 0) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: No events to flush after atomic clear`);
+      logger.debug(`No events to flush after atomic clear`);
       return;
     }
 
@@ -396,19 +396,19 @@ export class LangfuseProvider extends TracingProvider {
       acc[event.type] = (acc[event.type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Event types being flushed:`, eventSummary);
+    logger.debug(`Event types being flushed:`, eventSummary);
 
     try {
       await this.sendBatch(events);
       logger.debug(`Flushed ${events.length} events to Langfuse`);
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Successfully flushed ${events.length} events`);
+      logger.debug(`Successfully flushed ${events.length} events`);
     } catch (error) {
       logger.error('Failed to flush events to Langfuse', error);
       console.error(`[HIERARCHICAL_TRACING] LangfuseProvider: Failed to flush events:`, error);
       
       // Re-add events to front maintaining chronological order
       this.eventBuffer.unshift(...events);
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Restored ${events.length} events to buffer`);
+      logger.debug(`Restored ${events.length} events to buffer`);
       throw error;
     }
   }
@@ -548,11 +548,11 @@ export class LangfuseProvider extends TracingProvider {
         maxBufferSize: this.maxBufferSize,
         maxRetryEvents: this.maxRetryEvents
       });
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Buffer overflow, discarded ${discarded} events`);
+      logger.debug(`Buffer overflow, discarded ${discarded} events`);
     }
     
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Adding event to buffer:`, { 
-      eventType: event.type, 
+    logger.debug(`Adding event to buffer:`, {
+      eventType: event.type,
       eventId: event.id,
       bufferSizeBefore: this.eventBuffer.length,
       bufferSizeAfter: this.eventBuffer.length + 1,
@@ -568,13 +568,13 @@ export class LangfuseProvider extends TracingProvider {
     this.eventBuffer.push(event);
 
     if (this.eventBuffer.length >= this.batchSize) {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Buffer full, triggering auto-flush`);
+      logger.debug(`Buffer full, triggering auto-flush`);
       logger.debug('Buffer full, triggering auto-flush');
       this.flush().catch(error => {
         logger.error('Auto-flush failed', error);
       });
     } else {
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Buffer not full yet:`, {
+      logger.debug(`Buffer not full yet:`, {
         currentSize: this.eventBuffer.length,
         batchSize: this.batchSize,
         remaining: this.batchSize - this.eventBuffer.length
@@ -629,7 +629,7 @@ export class LangfuseProvider extends TracingProvider {
     this.lastCleanup = now;
     if (cleaned > 0) {
       logger.info(`Cleaned up ${cleaned} old observations from store`);
-      console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Cleaned up ${cleaned} old observations`);
+      logger.debug(`Cleaned up ${cleaned} old observations`);
     }
   }
 
@@ -650,6 +650,6 @@ export class LangfuseProvider extends TracingProvider {
       logger.error('Final flush failed during destroy', error);
     });
     
-    console.log(`[HIERARCHICAL_TRACING] LangfuseProvider: Destroyed with ${this.eventBuffer.length} remaining events`);
+    logger.debug(`Destroyed with ${this.eventBuffer.length} remaining events`);
   }
 }

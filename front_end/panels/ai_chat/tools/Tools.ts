@@ -58,6 +58,7 @@ export interface LLMContext {
   getVisionCapability?: (model: string) => Promise<boolean> | boolean;
   miniModel?: string;
   nanoModel?: string;
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -889,7 +890,7 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
     required: ['steps', 'reasoning'],
   };
 
-  async execute(args: { steps: number, reasoning: string }, _ctx?: LLMContext): Promise<NavigateBackResult | ErrorResult> {
+  async execute(args: { steps: number, reasoning: string }, ctx?: LLMContext): Promise<NavigateBackResult | ErrorResult> {
     logger.error('navigate_back', args);
     const steps = args.steps;
     if (typeof steps !== 'number' || steps <= 0) {
@@ -939,10 +940,14 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
       const timeoutMs = 5000; // 5 second timeout
       let isNavigationComplete = false;
 
-      // Poll until navigation completes or times out
+      const signal = ctx?.abortSignal;
+      // Poll until navigation completes, cancels, or times out
       while (!isNavigationComplete && (Date.now() - startTime) < timeoutMs) {
+        if (signal?.aborted) {
+          throw new DOMException('The operation was aborted', 'AbortError');
+        }
         // Short delay between checks
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await abortableSleep(100, signal);
 
         // Check if navigation is complete by testing document readyState
         try {
@@ -1424,6 +1429,30 @@ export class WaitTool implements Tool<{ seconds?: number, duration?: number, rea
   description = 'Waits for a specified number of seconds to allow page content to load, animations to complete, or dynamic content to appear. After waiting, returns a summary of what is currently visible in the viewport to help determine if additional waiting is needed. Provide the number of seconds to wait and an optional reasoning for waiting.';
 
   async execute(args: { seconds?: number, duration?: number, reason?: string, reasoning?: string }, ctx?: LLMContext): Promise<WaitResult | ErrorResult> {
+    const signal = ctx?.abortSignal;
+    const sleep = (ms: number) => new Promise<void>((resolve, reject) => {
+      if (!ms) return resolve();
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        cleanup();
+        reject(new DOMException('The operation was aborted', 'AbortError'));
+      };
+      const cleanup = () => {
+        signal?.removeEventListener('abort', onAbort);
+      };
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(timer);
+          cleanup();
+          return reject(new DOMException('The operation was aborted', 'AbortError'));
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
     // Handle both 'seconds' and 'duration' parameter names for flexibility
     const waitTime = args.seconds ?? args.duration;
     const waitReason = args.reason ?? args.reasoning;
@@ -1444,8 +1473,8 @@ export class WaitTool implements Tool<{ seconds?: number, duration?: number, rea
     // Log the wait reason if provided
     logger.info(`Waiting for ${waitTime} seconds${waitReason ? `: ${waitReason}` : ''}`);
 
-    // Wait for the specified duration
-    await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+    // Wait for the specified duration (abortable)
+    await sleep(waitTime * 1000);
 
     // Get viewport summary after waiting
     let viewportSummary: string | undefined;
@@ -1946,7 +1975,7 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
       await Utils.performAction(target, method, actionArgsArray, xpath, iframeNodeId);
 
       // --- Wait for DOM to stabilize after action ---
-      await this.waitForDOMStability(target, method, isLikelyNavigationElement);
+      await this.waitForDOMStability(target, method, isLikelyNavigationElement, (ctx as LLMContext | undefined)?.abortSignal);
 
       // --- Capture tree state after action and generate diff ---
       try {
@@ -2027,8 +2056,8 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
       // Check for navigation after 'click' on relevant elements
       if (method === 'click' && isLikelyNavigationElement && initialUrl !== undefined) {
         logger.info('Checking for navigation after click');
-        // Wait briefly for potential navigation.
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second wait
+        // Wait briefly for potential navigation (abortable)
+        await abortableSleep(1000, ctx?.abortSignal);
 
         const urlResult = await target.runtimeAgent().invoke_evaluate({
           expression: 'window.location.href',
@@ -2129,8 +2158,8 @@ Provide a clear, concise response about what happened.`
         }
       } else {
         try {
-          // Add some delay to allow UI to refresh
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // Add some delay to allow UI to refresh (abortable)
+          await abortableSleep(300, (ctx as LLMContext | undefined)?.abortSignal);
           
           // Take after screenshot
           const afterScreenshotResult = await target.pageAgent().invoke_captureScreenshot({
@@ -2383,7 +2412,7 @@ Provide a clear, descriptive response about what you observe and whether the act
   };
 
   // DOM stability waiting method
-  private async waitForDOMStability(target: SDK.Target.Target, method: string, isLikelyNavigationElement: boolean): Promise<void> {
+  private async waitForDOMStability(target: SDK.Target.Target, method: string, isLikelyNavigationElement: boolean, signal?: AbortSignal): Promise<void> {
     const maxWaitTime = isLikelyNavigationElement ? 5000 : 2000; // 5s for navigation, 2s for other actions
     const startTime = Date.now();
     
@@ -2392,24 +2421,27 @@ Provide a clear, descriptive response about what you observe and whether the act
     try {
       // For navigation elements, wait for document ready state
       if (isLikelyNavigationElement) {
-        await this.waitForDocumentReady(target, maxWaitTime);
+        await this.waitForDocumentReady(target, maxWaitTime, signal);
       }
       
       // Wait for DOM mutations to settle using polling approach
-      await this.waitForDOMMutationStability(target, maxWaitTime - (Date.now() - startTime));
+      await this.waitForDOMMutationStability(target, maxWaitTime - (Date.now() - startTime), signal);
       
     } catch (error) {
       logger.warn('Error waiting for DOM stability:', error);
       // Fallback to minimal wait
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await abortableSleep(300, signal);
     }
   }
 
-  private async waitForDocumentReady(target: SDK.Target.Target, maxWaitTime: number): Promise<void> {
+  private async waitForDocumentReady(target: SDK.Target.Target, maxWaitTime: number, signal?: AbortSignal): Promise<void> {
     const startTime = Date.now();
     const pollInterval = 100;
     
     while (Date.now() - startTime < maxWaitTime) {
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted', 'AbortError');
+      }
       try {
         const readyStateResult = await target.runtimeAgent().invoke_evaluate({
           expression: 'document.readyState',
@@ -2421,7 +2453,7 @@ Provide a clear, descriptive response about what you observe and whether the act
           return;
         }
         
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await abortableSleep(pollInterval, signal);
       } catch (error) {
         logger.warn('Error checking document ready state:', error);
         break;
@@ -2429,7 +2461,7 @@ Provide a clear, descriptive response about what you observe and whether the act
     }
   }
 
-  private async waitForDOMMutationStability(target: SDK.Target.Target, maxWaitTime: number): Promise<void> {
+  private async waitForDOMMutationStability(target: SDK.Target.Target, maxWaitTime: number, signal?: AbortSignal): Promise<void> {
     const startTime = Date.now();
     const stabilityWindow = 800; // Longer stability window for complex content
     const pollInterval = 100;
@@ -2439,6 +2471,9 @@ Provide a clear, descriptive response about what you observe and whether the act
     const requiredStableChecks = 3;
     
     while (Date.now() - startTime < maxWaitTime) {
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted', 'AbortError');
+      }
       try {
         // Generic DOM stability detection
         const currentTreeResult = await target.runtimeAgent().invoke_evaluate({
@@ -2505,7 +2540,7 @@ Provide a clear, descriptive response about what you observe and whether the act
           }
         }
         
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await abortableSleep(pollInterval, signal);
       } catch (error) {
         logger.warn('Error checking DOM stability:', error);
         break;
@@ -3110,7 +3145,7 @@ Important guidelines:
  * Tool for getting URLs from a list of NodeIDs
  */
 export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToURLsResult | ErrorResult> {
-  name = 'get_urls_from_nodeids';
+  name = 'node_ids_to_urls';
   description = 'Gets URLs associated with DOM elements identified by NodeIDs from accessibility tree.';
 
   async execute(args: { nodeIds: number[] }, _ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
@@ -3206,759 +3241,6 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToU
       }
     },
     required: ['nodeIds']
-  };
-}
-
-/**
- * Tool for structured data extraction based on a provided schema
- */
-export class SchemaBasedDataExtractionTool implements Tool<{
-  objective: string,
-  schema: Record<string, unknown>,
-  offset?: number,
-  chunkSize?: number,
-  maxRetries?: number,
-}, SchemaBasedDataExtractionResult | ErrorResult> {
-  name = 'schema_based_extraction';
-  description = 'Extracts structured data from the page according to a provided schema and objective, returning results in JSON format that resembles JSON structure. Particularly useful for extracting content while maintaining its original structure and relationships. ALWAYS provide a JSON Schema definition that describes the structure of data to extract.';
-
-  // Create system prompt for SchemaBasedDataExtractionTool
-  private getSystemPrompt(): string {
-    return `You are an expert data extraction assistant, specializing in analyzing web page accessibility trees and extracting structured data according to a provided schema and objective.
-
-Your task is to examine the provided simplified accessibility tree, which contains element structures with their accessibility IDs in brackets, and extract NodeIDs that match both the provided objective and schema. Your output must be valid JSON data that resembles HTML structure using NodeIDs instead of content. The objective will guide you on what kind of data to extract and how to interpret the schema in the context of the page content.
-
-Guidelines for extraction:
-1. The schema will serve as a guide for what to extract, but structure the data in a DOM-like hierarchy
-2. Create a JSON object that preserves parent-child relationships similar to HTML
-3. Use tags, attributes, but ONLY include NodeIDs instead of actual content
-4. Maintain proper nesting relationships (e.g., sections containing headings and paragraphs)
-5. Every element that should contain content must have a nodeId property
-6. Preserve the document flow and hierarchy similar to a real HTML document
-7. NodeIDs should be numerical values (integers), not strings
-8. IMPORTANT: You may filter out 'none' and 'generic' nodes that are just structural containers, but PRESERVE any 'none' or 'generic' nodes that have children with meaningful content (e.g., text, headings, links, buttons, etc.)
-
-Example DOM-like schema structure WITH NODEIDS:
-
-Schema: { "elements": ["heading", "paragraph", "list", "table", "link"] }
-
-JSON output:
-{
-  "type": "document",
-  "children": [
-    {
-      "type": "section",
-      "children": [
-        {
-          "type": "heading",
-          "level": 1,
-          "nodeId": 123
-        },
-        {
-          "type": "paragraph",
-          "nodeId": 456
-        },
-        {
-          "type": "list",
-          "listType": "unordered",
-          "items": [
-            { "nodeId": 789 },
-            { "nodeId": 790 },
-            { "nodeId": 791 }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "section",
-      "children": [
-        {
-          "type": "heading",
-          "level": 2,
-          "nodeId": 555
-        },
-        {
-          "type": "paragraph",
-          "nodeId": 556
-        },
-        {
-          "type": "link",
-          "href": "https://example.com",
-          "nodeId": 557
-        },
-        {
-          "type": "table",
-          "headers": [
-            { "nodeId": 560 },
-            { "nodeId": 561 },
-            { "nodeId": 562 }
-          ],
-          "rows": [
-            [
-              { "nodeId": 570 },
-              { "nodeId": 571 },
-              { "nodeId": 572 }
-            ],
-            [
-              { "nodeId": 580 },
-              { "nodeId": 581 },
-              { "nodeId": 582 }
-            ]
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-For more structured content types, use appropriate HTML-like nesting and NodeIDs:
-
-Schema: { "article": { "title": "string", "content": "string", "images": ["string"] } }
-
-JSON output:
-{
-  "type": "article",
-  "children": [
-    {
-      "type": "heading",
-      "level": 1,
-      "nodeId": 123
-    },
-    {
-      "type": "paragraph",
-      "nodeId": 456
-    },
-    {
-      "type": "image",
-      "src": "image1.jpg",
-      "alt": "Description of first image",
-      "nodeId": 789
-    },
-    {
-      "type": "image",
-      "src": "image2.jpg",
-      "alt": "Description of second image",
-      "nodeId": 790
-    }
-  ]
-}
-
-Do not include any explanatory text or markdown syntax in your response. Return only valid JSON.
-
-CRITICAL: 
-1. Your response must ONLY contain valid JSON. Do not include any explanatory text outside the JSON structure.
-2. ALWAYS include nodeId properties for any element that would normally have content.
-3. Do NOT include actual content text - use only the nodeId property instead.
-4. All nodeId values must be numbers, not strings.`;
-  }
-
-  /**
-   * Get content from a specific node in the accessibility tree with intelligent handling
-   * of container nodes and their children
-   * @param nodeId The NodeID to extract content from
-   * @param nodes The accessibility tree nodes
-   * @returns The content as a string or a placeholder if not found
-   */
-  private getNodeContent(nodeId: number, nodes: Protocol.Accessibility.AXNode[]): string | null {
-    const node = nodes.find(n => Number(n.nodeId) === nodeId);
-    if (!node) {
-      logger.warn(`SchemaBasedDataExtractionTool: Node not found for nodeId ${nodeId}`);
-      return null;
-    }
-
-    // Check if this is a container that might have interesting children
-    if (this.isContainerNode(node) && node.childIds?.length) {
-      return this.getAggregatedNodeContent(node, nodes);
-    }
-
-    // Get the name property which contains the accessible text
-    const nameProperty = node.properties?.find(p => String(p.name) === 'name');
-    if (nameProperty && nameProperty.value?.value !== undefined) {
-      return String(nameProperty.value.value);
-    }
-
-    // Some nodes might have text in valueValue
-    const valueProperty = node.properties?.find(p => String(p.name) === 'value');
-    if (valueProperty?.value?.value !== undefined) {
-      return String(valueProperty.value.value);
-    }
-
-    // For nodes with no text content, return role as a fallback
-    return `[${node.role?.value ? String(node.role.value) : 'Element'}]`;
-  }
-
-  /**
-   * Check if a node is a container that might have interesting child content
-   * @param node The accessibility node to check
-   * @returns True if the node is a container role
-   */
-  /**
-   * Determines if a node is a container that might have interesting child content
-   * This is important for intelligent content aggregation from complex elements
-   * @param node The accessibility node to check
-   * @returns True if the node is a container role that should have its children processed
-   */
-  private isContainerNode(node: Protocol.Accessibility.AXNode): boolean {
-    // If node has no children, it's not a container regardless of role
-    if (!node.childIds?.length) {
-      return false;
-    }
-
-    const role = String(node.role?.value || '').toLowerCase();
-
-    // List of roles that typically act as containers for other content
-    const containerRoles = [
-      'paragraph', 'section', 'div', 'header', 'footer', 'aside',
-      'figure', 'blockquote', 'list', 'listitem', 'table', 'row', 'cell', 'columnheader',
-      'rowheader', 'grid', 'document', 'form', 'group', 'region', 'tabpanel'
-    ];
-
-    // Special case: if node has a name property with content but also has children,
-    // we should consider it a container to get the most complete content
-    const nameProperty = node.properties?.find(p => String(p.name) === 'name');
-    const hasDirectContent = nameProperty?.value?.value !== undefined &&
-      String(nameProperty.value.value).trim() !== '';
-
-    return containerRoles.includes(role) ||
-      (role === 'generic' && node.childIds.length > 0) ||
-      (hasDirectContent && node.childIds.length > 0);
-  }
-
-  /**
-   * Intelligently aggregate content from a node and its children
-   * @param node The node to extract content from
-   * @param allNodes All nodes in the accessibility tree
-   * @returns The aggregated content as a string
-   */
-  private getAggregatedNodeContent(node: Protocol.Accessibility.AXNode, allNodes: Protocol.Accessibility.AXNode[]): string {
-    // First, get this node's direct text content
-    let directContent = '';
-
-    // Get the name property which contains the accessible text
-    const nameProperty = node.properties?.find(p => String(p.name) === 'name');
-    if (nameProperty && nameProperty.value?.value !== undefined) {
-      directContent = String(nameProperty.value.value);
-    }
-
-    // Some nodes might have text in valueValue
-    if (!directContent) {
-      const valueProperty = node.properties?.find(p => String(p.name) === 'value');
-      if (valueProperty?.value?.value !== undefined) {
-        directContent = String(valueProperty.value.value);
-      }
-    }
-
-    // If no children, return direct content or role as fallback
-    if (!node.childIds?.length) {
-      return directContent || `[${node.role?.value ? String(node.role.value) : 'Element'}]`;
-    }
-
-    // Process child nodes
-    const childContents: string[] = [];
-    const role = String(node.role?.value || '').toLowerCase();
-
-    // For each child node
-    for (const childId of node.childIds) {
-      const childNode = allNodes.find(n => n.nodeId === childId);
-      if (!childNode) {
-        continue;
-      }
-
-      const childRole = String(childNode.role?.value || '').toLowerCase();
-
-      // Handle different types of child nodes based on their role
-      if (childRole === 'statictext' || childRole === 'text') {
-        // Get direct text from text nodes
-        const childNameProperty = childNode.properties?.find(p => String(p.name) === 'name');
-        if (childNameProperty?.value?.value !== undefined) {
-          childContents.push(String(childNameProperty.value.value));
-        }
-      } else if (childRole === 'linebreak' || childRole === 'br') {
-        // Handle line breaks
-        childContents.push('\n');
-      } else if (['emphasis', 'strong', 'b', 'i', 'em', 'mark', 'code', 'cite'].includes(childRole)) {
-        // Special handling for emphasis nodes - recursively get their content
-        const emphasisContent = this.getAggregatedNodeContent(childNode, allNodes);
-        if (emphasisContent) {
-          childContents.push(emphasisContent);
-        }
-      } else if (childRole === 'link') {
-        // Get text content from links
-        const linkContent = this.getAggregatedNodeContent(childNode, allNodes);
-        if (linkContent) {
-          childContents.push(linkContent);
-        }
-      } else if (this.isContainerNode(childNode)) {
-        // Recursively process container nodes
-        const containerContent = this.getAggregatedNodeContent(childNode, allNodes);
-        if (containerContent) {
-          // For certain container types, add appropriate spacing
-          if (['paragraph', 'div', 'section', 'article'].includes(childRole)) {
-            childContents.push(containerContent + '\n');
-          } else if (['listitem'].includes(childRole)) {
-            childContents.push('• ' + containerContent);
-          } else {
-            childContents.push(containerContent);
-          }
-        }
-      } else {
-        // Default handling for other nodes - try to get their direct content
-        const childContent = this.getNodeContent(Number(childNode.nodeId), allNodes);
-        if (childContent) {
-          childContents.push(childContent);
-        }
-      }
-    }
-
-    // Combine all child content with appropriate formatting based on node type
-    let combinedChildContent = '';
-
-    // Format based on container role
-    if (role === 'paragraph') {
-      // For paragraphs, join with spaces and normalize whitespace
-      combinedChildContent = childContents.join(' ')
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .replace(/ \n /g, '\n') // Fix spacing around line breaks
-        .trim();
-    } else if (role === 'list') {
-      // For lists, join with newlines
-      combinedChildContent = childContents.join('\n');
-    } else if (['table', 'grid'].includes(role)) {
-      // For tables, join with newlines and add extra spacing
-      combinedChildContent = childContents.join('\n');
-    } else {
-      // Default joining with spaces
-      combinedChildContent = childContents.join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    // Return combined content, or direct content if no children had content
-    return combinedChildContent || directContent || `[${node.role?.value ? String(node.role.value) : 'Element'}]`;
-  }
-
-  /**
-   * Process the structure to replace NodeIDs with actual content
-   * @param structure The structure containing NodeIDs (can be a number, array, or object)
-   * @param accessibilityNodes The accessibility tree nodes
-   * @returns The processed structure with content
-   */
-  private async processNodeStructure(structure: unknown, accessibilityNodes: Protocol.Accessibility.AXNode[] = []): Promise<unknown> {
-    // Map CDP nodes to AccessibilityNode format for getFormattedSubtreeByNodeId
-    // Do this mapping once at the top level of the recursion entry point
-    const mappedNodes = accessibilityNodes.map(
-      (node: Protocol.Accessibility.AXNode): AccessibilityNode => {
-        const roleValue =
-          node.role && typeof node.role === 'object' && 'value' in node.role
-            ? String(node.role.value) // Ensure string
-            : '';
-
-        const nameValue =
-          node.name && typeof node.name === 'object' && 'value' in node.name
-            ? String(node.name.value) // Ensure string
-            : undefined;
-
-        const descriptionValue =
-          node.description &&
-            typeof node.description === 'object' &&
-            'value' in node.description
-            ? String(node.description.value) // Ensure string
-            : undefined;
-
-        const valueValue =
-          node.value && typeof node.value === 'object' && 'value' in node.value
-            ? String(node.value.value) // Ensure string
-            : undefined;
-
-        const backendNodeId =
-          typeof node.backendDOMNodeId === 'number'
-            ? node.backendDOMNodeId
-            : undefined;
-
-        return {
-          role: roleValue,
-          name: nameValue,
-          description: descriptionValue,
-          value: valueValue,
-          nodeId: String(node.nodeId), // Ensure nodeId is string
-          backendDOMNodeId: backendNodeId,
-          parentId: node.parentId,
-          childIds: node.childIds,
-        };
-      },
-    );
-
-    // Call a helper function to handle the actual recursive processing
-    // Pass both raw nodes (for getNodeContent) and mapped nodes (for getFormattedSubtreeByNodeId)
-    return await this.processNodeStructureRecursive(structure, accessibilityNodes, mappedNodes);
-  }
-
-  /**
-   * Recursive helper for processing the structure
-   */
-  /**
-   * Check if a node should be skipped based on its role
-   * @param nodeId The NodeID to check
-   * @param nodes The accessibility tree nodes
-   * @returns True if the node should be skipped, false otherwise
-   */
-  private shouldSkipNode(nodeId: number, nodes: Protocol.Accessibility.AXNode[]): boolean {
-    const node = nodes.find(n => Number(n.nodeId) === nodeId);
-    if (!node) {
-      return false; // If node not found, don't skip it
-    }
-
-    const role = String(node.role?.value || '').toLowerCase();
-
-    // Check if this is a 'none' or 'generic' node
-    if (role === 'none' || role === 'generic') {
-      // Only skip if it doesn't have meaningful children
-      return !this.hasRelevantChildren(node, nodes);
-    }
-
-    return false; // Don't skip nodes with specific roles
-  }
-
-  /**
-   * Check if a node has children with meaningful content
-   * @param node The node to check for meaningful children
-   * @param allNodes All nodes in the accessibility tree
-   * @returns True if the node has children with meaningful content
-   */
-  private hasRelevantChildren(node: Protocol.Accessibility.AXNode, allNodes: Protocol.Accessibility.AXNode[]): boolean {
-    // If no children, definitely no meaningful content
-    if (!node.childIds?.length) {
-      return false;
-    }
-
-    // Check direct children first
-    for (const childId of node.childIds) {
-      const childNode = allNodes.find(n => n.nodeId === childId);
-      if (!childNode) { continue; }
-
-      const childRole = String(childNode.role?.value || '').toLowerCase();
-
-      // Check if child has direct content
-      if (this.nodeHasDirectContent(childNode)) {
-        return true;
-      }
-
-      // Skip checking further if child is also a structural node
-      if (childRole === 'none' || childRole === 'generic') {
-        // Recursively check if this child has meaningful descendants
-        if (this.hasRelevantChildren(childNode, allNodes)) {
-          return true;
-        }
-      } else if (childRole !== 'none' && childRole !== 'generic') {
-        // Child has a specific role, which is likely meaningful
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Check if a node has direct text content
-   * @param node The node to check for content
-   * @returns True if the node has direct text content
-   */
-  private nodeHasDirectContent(node: Protocol.Accessibility.AXNode): boolean {
-    // Check for name property with content
-    const nameProperty = node.properties?.find(p => String(p.name) === 'name');
-    if (nameProperty?.value?.value !== undefined && String(nameProperty.value.value).trim() !== '') {
-      return true;
-    }
-
-    // Check for value property with content
-    const valueProperty = node.properties?.find(p => String(p.name) === 'value');
-    if (valueProperty?.value?.value !== undefined && String(valueProperty.value.value).trim() !== '') {
-      return true;
-    }
-
-    // Check role for text-specific roles
-    const role = String(node.role?.value || '').toLowerCase();
-    if (['statictext', 'text', 'heading', 'link', 'button'].includes(role)) {
-      return true;
-    }
-
-    return false;
-  }
-
-  private async processNodeStructureRecursive(structure: unknown, accessibilityNodes: Protocol.Accessibility.AXNode[], mappedNodes: AccessibilityNode[]): Promise<unknown> {
-    if (this.isEmptyOrUndefined(structure)) {
-      return structure;
-    }
-
-    // Handle direct NodeID (a number)
-    if (typeof structure === 'number') {
-      const nodeId = structure;
-
-      // Skip nodes with role 'none' or 'generic'
-      if (this.shouldSkipNode(nodeId, accessibilityNodes)) {
-        return null; // Return null for skipped nodes
-      }
-
-      const content = this.getNodeContent(nodeId, accessibilityNodes);
-      const simplifiedRepresentation = Utils.getFormattedSubtreeByNodeId(String(nodeId), mappedNodes);
-      return {
-        originalNodeId: nodeId,
-        content: content ?? '[Content not found]', // Provide fallback
-        simplifiedRepresentation: simplifiedRepresentation ?? '[Simplified representation not found]', // Provide fallback
-      };
-    }
-
-    if (Array.isArray(structure)) {
-      // Process array of nodes or values
-      const processedArray = [];
-      for (const item of structure) {
-        // Pass mappedNodes down recursively
-        const processedItem = await this.processNodeStructureRecursive(item, accessibilityNodes, mappedNodes);
-        // Only add non-null items (skip null items which are 'none' or 'generic' nodes)
-        if (processedItem !== null) {
-          processedArray.push(processedItem);
-        }
-      }
-      return processedArray;
-    }
-
-    if (typeof structure === 'object' && structure !== null) {
-      // Process object node
-      const processedObject: Record<string, unknown> = {};
-
-      for (const [key, value] of Object.entries(structure)) {
-        // Handle standard nodeId property
-        if (key === 'nodeId' && typeof value === 'number') {
-          const nodeId = value;
-
-          // Skip nodes with role 'none' or 'generic'
-          if (this.shouldSkipNode(nodeId, accessibilityNodes)) {
-            // For nodeId properties, we'll keep the object but mark it as skipped
-            processedObject.skipped = true;
-            processedObject[key] = nodeId; // Keep the original nodeId
-            continue;
-          }
-
-          const content = this.getNodeContent(nodeId, accessibilityNodes);
-          const simplifiedRepresentation = Utils.getFormattedSubtreeByNodeId(String(nodeId), mappedNodes);
-
-          processedObject[key] = nodeId; // Keep the original nodeId
-          processedObject.content = content ?? '[Content not found]'; // Add the content with fallback
-          processedObject.simplifiedRepresentation = simplifiedRepresentation ?? '[Simplified representation not found]'; // Add simplified representation with fallback
-
-        } else if (typeof value === 'number') {
-          // Direct NodeID as value (e.g., "title": 18)
-          const nodeId = value;
-
-          // Skip nodes with role 'none' or 'generic'
-          if (this.shouldSkipNode(nodeId, accessibilityNodes)) {
-            // For direct NodeID values, we'll skip this property entirely
-            continue;
-          }
-
-          const content = this.getNodeContent(nodeId, accessibilityNodes);
-          const simplifiedRepresentation = Utils.getFormattedSubtreeByNodeId(String(nodeId), mappedNodes);
-
-          // Replace the NodeID with an object containing content and simplified representation
-          processedObject[key] = {
-            originalNodeId: nodeId,
-            content: content ?? '[Content not found]', // Provide fallback
-            simplifiedRepresentation: simplifiedRepresentation ?? '[Simplified representation not found]', // Provide fallback
-          };
-        } else {
-          // Recursively process other fields
-          // Pass mappedNodes down recursively
-          processedObject[key] = await this.processNodeStructureRecursive(value, accessibilityNodes, mappedNodes);
-        }
-      }
-
-      // If the object is marked as skipped and has no other properties except nodeId and skipped, return null
-      if (processedObject.skipped && Object.keys(processedObject).length <= 3) {
-        return null;
-      }
-
-      // Remove the skipped flag if it exists
-      if ('skipped' in processedObject) {
-        delete processedObject.skipped;
-      }
-
-      return processedObject;
-    }
-
-    // Return primitive values as is
-    return structure;
-  }
-
-  /**
-   * Helper to check if a value is empty or undefined
-   * @param value The value to check
-   * @returns True if empty or undefined, false otherwise
-   */
-  private isEmptyOrUndefined(value: unknown): boolean {
-    return value === undefined || value === null || value === '';
-  }
-
-
-  async execute(args: { objective: string, schema: Record<string, unknown>, offset?: number, chunkSize?: number, maxRetries?: number }, ctx?: LLMContext): Promise<SchemaBasedDataExtractionResult | ErrorResult> {
-    const { objective, schema, offset = 0, chunkSize = 60000, maxRetries = 1 } = args; // Default offset 0, chunkSize 60000, maxRetries 1
-    let currentTry = 0;
-    let lastError: string | null = null;
-
-    const agentService = AgentService.getInstance();
-    const apiKey = agentService.getApiKey();
-    const providerForExtraction = ctx?.provider;
-    const modelNameForExtraction = ctx?.miniModel || ctx?.model;
-    if (!providerForExtraction || !modelNameForExtraction) {
-      return { error: 'Missing LLM context (provider/model) for SchemaBasedDataExtractionTool' };
-    }
-
-    if (!apiKey) {
-      return { error: 'API key not configured.' };
-    }
-
-    if (!objective || typeof objective !== 'string' || objective.trim() === '') {
-      return { error: 'Objective must be a non-empty string' };
-    }
-
-    if (!schema || typeof schema !== 'object' || Object.keys(schema).length === 0) {
-      return { error: 'Schema must be a non-empty object' };
-    }
-
-    // --- Internal Agentic Loop ---
-    while (currentTry <= maxRetries) {
-      currentTry++;
-      logger.warn(`SchemaBasedDataExtractionTool: Attempt ${currentTry}/${maxRetries + 1}`);
-      let attemptError: Error | null = null;
-
-      try {
-        // --- Step 1: Get Tree ---
-        logger.warn('SchemaBasedDataExtractionTool: Getting Accessibility Tree...');
-        const getAccTreeTool = new GetAccessibilityTreeTool();
-        const treeResult = await getAccTreeTool.execute({ reasoning: `Schema-based extraction attempt ${currentTry}` });
-        if ('error' in treeResult) {throw new Error(`Tree Error: ${treeResult.error}`);}
-        const accessibilityTreeString = treeResult.simplified;
-
-        if (!accessibilityTreeString || accessibilityTreeString.trim() === '') {throw new Error('Tree Error: Empty or blank tree content.');}
-        logger.warn('SchemaBasedDataExtractionTool: Got Accessibility Tree.');
-
-        // --- Step 2: LLM - Extract NodeIDs According to Schema ---
-        logger.warn('SchemaBasedDataExtractionTool: Extracting NodeIDs via LLM...');
-
-        const promptExtractData = `
-Objective: ${objective}
-
-Schema: ${JSON.stringify(schema, null, 2)}
-
-Full tree length: ${accessibilityTreeString.length} chars. Showing chars ${offset}-${offset + chunkSize}:
-Simplified Accessibility Tree Chunk:
-\`\`\`
-${accessibilityTreeString.substring(offset, offset + chunkSize)}
-\`\`\`
-${accessibilityTreeString.length > offset + chunkSize ? `...(tree truncated at ${offset + chunkSize}/${accessibilityTreeString.length})...` : ''}
-${lastError ? `Previous attempt failed with this error: "${lastError}". Consider a different approach.` : ''}
-Extract NodeIDs according to the provided objective and schema, then return a structured JSON with NodeIDs instead of content.`;
-
-        logger.info('SchemaBasedDataExtractionTool: Prompt:', promptExtractData);
-        // Use LLMClient to call the LLM
-        const llm = LLMClient.getInstance();
-        const llmResponse = await llm.call({
-          provider: providerForExtraction,
-          model: modelNameForExtraction,
-          messages: [
-            { role: 'system', content: this.getSystemPrompt() },
-            { role: 'user', content: promptExtractData }
-          ],
-          systemPrompt: this.getSystemPrompt(),
-          temperature: 0.7,
-          retryConfig: { maxRetries: 3, baseDelayMs: 1000 }
-        });
-        const response = llmResponse.text;
-        logger.info('SchemaBasedDataExtractionTool: Response:', response);
-
-        // Process the LLM response - this now contains NodeIDs instead of content
-        const nodeIdStructureJson = response?.trim() || '';
-
-        // Basic validation to ensure we got JSON
-        let nodeIdStructure;
-        try {
-          // Attempt to parse the JSON to validate it
-          nodeIdStructure = JSON.parse(nodeIdStructureJson);
-        } catch (error) {
-          throw new Error(`LLM did not return valid JSON data: ${(error as Error).message}`);
-        }
-
-        // Step 3: Process the NodeID structure to replace IDs with content
-        logger.warn('SchemaBasedDataExtractionTool: Processing NodeIDs to get content...');
-        const processedStructure = await this.processNodeStructure(nodeIdStructure, treeResult.nodes);
-
-        logger.info('SchemaBasedDataExtractionTool: Processed structure:', processedStructure);
-        // Convert back to JSON string with proper formatting
-        const jsonData = JSON.stringify(processedStructure);
-
-        // Fetch page metadata
-        let metadata: { url: string, title: string } | undefined;
-        const pageTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-        if (pageTarget) {
-          const metadataEval = await pageTarget.runtimeAgent().invoke_evaluate({
-            expression: '({ url: window.location.href, title: document.title })',
-            returnByValue: true,
-          });
-          metadata = metadataEval.result.value as { url: string, title: string };
-        }
-
-        // --- Success ---
-        return {
-          success: true,
-          message: 'Successfully extracted data according to the provided schema',
-          jsonData,
-          processedLength: offset + chunkSize,
-          totalLength: accessibilityTreeString.length,
-          truncated: accessibilityTreeString.length > offset + chunkSize,
-          metadata,
-        };
-
-      } catch (error) {
-        // Catch errors from any step within the try block
-        attemptError = error as Error;
-        logger.warn(`SchemaBasedDataExtractionTool: Attempt ${currentTry} failed:`, attemptError.message);
-        lastError = attemptError.message; // Store error message for the next attempt's prompt
-      }
-    } // End while loop
-
-    // If loop finishes without success (i.e., all retries failed)
-    return {
-      error: `Failed data extraction after ${currentTry} attempts. Last error: ${lastError || 'Unknown error during final attempt.'}`
-    };
-  }
-
-  schema = {
-    type: 'object',
-    properties: {
-      objective: {
-        type: 'string',
-        description: 'The objective or goal of the extraction, explaining what information to find and why it is needed.',
-      },
-      schema: {
-        type: 'object',
-        description: 'Schema defining the structure of data to extract. Can include nested objects and arrays.',
-      },
-      offset: {
-        type: 'number',
-        description: 'Offset for the accessibility tree chunk (default: 0)',
-        default: 0
-      },
-      chunkSize: {
-        type: 'number',
-        description: 'Size of the accessibility tree chunk (default: 60000)',
-        default: 60000
-      },
-      maxRetries: {
-        type: 'number',
-        description: 'Maximum number of retries if an attempt fails (default: 1, meaning 2 total attempts).',
-        default: 1,
-      }
-    },
-    required: ['objective', 'schema'],
   };
 }
 
@@ -4218,3 +3500,20 @@ export function getTools(): Array<(
 
 // Export the SequentialThinkingTool
 export { SequentialThinkingTool } from './SequentialThinkingTool.js';
+// Abortable sleep utility for tools that need delays/polling
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (!ms) return resolve();
+    const timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(timer); cleanup(); reject(new DOMException('The operation was aborted', 'AbortError')); };
+    const cleanup = () => { signal?.removeEventListener('abort', onAbort); };
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timer);
+        cleanup();
+        return reject(new DOMException('The operation was aborted', 'AbortError'));
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}

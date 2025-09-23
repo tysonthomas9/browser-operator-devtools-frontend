@@ -11,6 +11,7 @@ import("../visibility.gni")
 generate_css("css_files") {
   sources = [
     "ui/chatView.css",
+    "ui/mcp/mcpConnectorsCatalogDialog.css",
   ]
 }
 
@@ -53,6 +54,7 @@ devtools_module("ai_chat") {
     "core/GraphConfigs.ts",
     "core/ConfigurableGraph.ts",
     "core/BaseOrchestratorAgent.ts",
+    "core/AgentDescriptorRegistry.ts",
     "core/PageInfoManager.ts",
     "core/AgentNodes.ts",
     "core/GraphHelpers.ts",
@@ -95,6 +97,20 @@ devtools_module("ai_chat") {
     "agent_framework/AgentRunner.ts",
     "agent_framework/AgentRunnerEventBus.ts",
     "agent_framework/AgentSessionTypes.ts",
+    "agent_framework/implementation/agents/AgentVersion.ts",
+    "agent_framework/implementation/agents/DirectURLNavigatorAgent.ts",
+    "agent_framework/implementation/agents/ResearchAgent.ts",
+    "agent_framework/implementation/agents/ContentWriterAgent.ts",
+    "agent_framework/implementation/agents/ActionAgent.ts",
+    "agent_framework/implementation/agents/ActionVerificationAgent.ts",
+    "agent_framework/implementation/agents/ClickActionAgent.ts",
+    "agent_framework/implementation/agents/FormFillActionAgent.ts",
+    "agent_framework/implementation/agents/KeyboardInputActionAgent.ts",
+    "agent_framework/implementation/agents/HoverActionAgent.ts",
+    "agent_framework/implementation/agents/ScrollActionAgent.ts",
+    "agent_framework/implementation/agents/WebTaskAgent.ts",
+    "agent_framework/implementation/agents/EcommerceProductInfoAgent.ts",
+    "agent_framework/implementation/agents/SearchAgent.ts",
     "agent_framework/implementation/ConfiguredAgents.ts",
     "evaluation/framework/types.ts",
     "evaluation/framework/judges/LLMEvaluator.ts",
@@ -130,6 +146,8 @@ devtools_module("ai_chat") {
     "mcp/MCPToolAdapter.ts",
     "mcp/MCPRegistry.ts",
     "mcp/MCPMetaTools.ts",
+    "ui/mcp/MCPConnectionsDialog.ts",
+    "ui/mcp/MCPConnectorsCatalogDialog.ts",
   ]
 
   deps = [
@@ -140,6 +158,7 @@ devtools_module("ai_chat") {
     "../../generated:protocol",
     "../../models/logs:bundle",
     "../../third_party/mcp-sdk:bundle",
+    "../../third_party/mcp-sdk:bundle_v2",
     "../../ui/components/helpers:bundle",
     "../../ui/components/markdown_view:bundle",
     "../../ui/components/snackbars:bundle",
@@ -178,6 +197,8 @@ _ai_chat_sources = [
     "ui/PromptEditDialog.ts",
     "ui/SettingsDialog.ts",
     "ui/EvaluationDialog.ts",
+    "ui/mcp/MCPConnectionsDialog.ts",
+    "ui/mcp/MCPConnectorsCatalogDialog.ts",
     "ai_chat_impl.ts",
     "models/ChatTypes.ts",
     "core/Graph.ts",
@@ -190,6 +211,7 @@ _ai_chat_sources = [
     "core/GraphConfigs.ts",
     "core/ConfigurableGraph.ts",
     "core/BaseOrchestratorAgent.ts",
+    "core/AgentDescriptorRegistry.ts",
     "core/PageInfoManager.ts",
     "core/AgentNodes.ts",
     "core/GraphHelpers.ts",
@@ -233,6 +255,20 @@ _ai_chat_sources = [
     "agent_framework/AgentRunnerEventBus.ts",
     "agent_framework/AgentSessionTypes.ts",
     "agent_framework/implementation/ConfiguredAgents.ts",
+    "agent_framework/implementation/agents/ActionAgent.ts",
+    "agent_framework/implementation/agents/ActionVerificationAgent.ts",
+    "agent_framework/implementation/agents/AgentVersion.ts",
+    "agent_framework/implementation/agents/ClickActionAgent.ts",
+    "agent_framework/implementation/agents/ContentWriterAgent.ts",
+    "agent_framework/implementation/agents/DirectURLNavigatorAgent.ts",
+    "agent_framework/implementation/agents/EcommerceProductInfoAgent.ts",
+    "agent_framework/implementation/agents/FormFillActionAgent.ts",
+    "agent_framework/implementation/agents/HoverActionAgent.ts",
+    "agent_framework/implementation/agents/KeyboardInputActionAgent.ts",
+    "agent_framework/implementation/agents/ResearchAgent.ts",
+    "agent_framework/implementation/agents/ScrollActionAgent.ts",
+    "agent_framework/implementation/agents/SearchAgent.ts",
+    "agent_framework/implementation/agents/WebTaskAgent.ts",
     "evaluation/framework/types.ts",
     "evaluation/framework/judges/LLMEvaluator.ts",
     "evaluation/framework/GenericToolEvaluator.ts",
@@ -306,6 +342,7 @@ generated_file("ai_chat_release_js_metadata") {
 _css_module_target_gen_dir = get_label_info(":css_files", "target_gen_dir")
 _css_outputs_for_metadata = [
   "$_css_module_target_gen_dir/ui/chatView.css.js",
+  "$_css_module_target_gen_dir/ui/mcp/mcpConnectorsCatalogDialog.css.js",
 ]
 
 generated_file("ai_chat_release_css_metadata") {
@@ -363,8 +400,19 @@ ts_library("unittests") {
     "agent_framework/__tests__/AgentRunner.sanitizeToolResult.test.ts",
     "agent_framework/__tests__/AgentRunner.computeToolResultText.test.ts",
     "agent_framework/__tests__/AgentRunner.run.flows.test.ts",
-    "mcp/MCPClientSDK.test.ts",
-    "core/ToolSurfaceProvider.test.ts",
+    "mcp/__tests__/MCPClientSDK.test.ts",
+    "mcp/__tests__/MCPConfig.test.ts",
+    "mcp/__tests__/MCPIntegration.test.ts",
+    "mcp/__tests__/MCPToolRegistration.test.ts",
+    "core/__tests__/AgentNodes.test.ts",
+    "core/__tests__/AgentNodesSanitize.test.ts",
+    "core/__tests__/ToolExecutorNode.test.ts",
+    "core/__tests__/ToolNameMap.test.ts",
+    "core/__tests__/ToolNameMapping.test.ts",
+    "core/__tests__/ToolSurfaceProvider.test.ts",
+    "ui/__tests__/AIChatPanel.test.ts",
+    "ui/__tests__/LiveAgentSessionComponent.test.ts",
+    "ui/message/__tests__/MessageList.test.ts",
   ]
 
   deps = [

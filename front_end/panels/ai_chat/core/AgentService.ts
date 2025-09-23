@@ -11,6 +11,7 @@ import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelCha
 
 import {createAgentGraph} from './Graph.js';
 import { createLogger } from './Logger.js';
+import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 import {type AgentState, createInitialState, createUserMessage} from './State.js';
 import type {CompiledGraph} from './Types.js';
 import { LLMClient } from '../LLM/LLMClient.js';
@@ -56,10 +57,47 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   #apiKey: string|null = null;
   #isInitialized = false;
   #runningGraphStatePromise?: AsyncGenerator<AgentState, AgentState, void>;
+  #abortController?: AbortController;
+  #executionId?: string;
   #tracingProvider!: TracingProvider;
   #sessionId: string;
   #activeAgentSessions = new Map<string, AgentSession>();
   #configManager: LLMConfigurationManager;
+
+  // Global registry for all active executions
+  private static activeExecutions = new Map<string, AbortController>();
+
+  /**
+   * Register an abort controller for execution tracking
+   */
+  static registerExecution(executionId: string, controller: AbortController): void {
+    AgentService.activeExecutions.set(executionId, controller);
+  }
+
+  /**
+   * Unregister an execution
+   */
+  static unregisterExecution(executionId: string): void {
+    AgentService.activeExecutions.delete(executionId);
+  }
+
+  /**
+   * Abort all active executions
+   */
+  static abortAllExecutions(): void {
+    for (const [executionId, controller] of AgentService.activeExecutions) {
+      logger.info(`Aborting execution: ${executionId}`);
+      controller.abort();
+    }
+    AgentService.activeExecutions.clear();
+  }
+
+  /**
+   * Get abort controller for execution
+   */
+  static getExecutionController(executionId: string): AbortController | undefined {
+    return AgentService.activeExecutions.get(executionId);
+  }
 
   constructor() {
     super();
@@ -362,6 +400,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     const currentPageUrl = await this.#getCurrentPageUrl();
     const currentPageTitle = await this.#getCurrentPageTitle();
 
+    const orchestratorKey = selectedAgentType ? `orchestrator:${selectedAgentType}` : 'orchestrator:default';
+    const orchestratorDescriptor = await AgentDescriptorRegistry.getDescriptor(orchestratorKey) ||
+      await AgentDescriptorRegistry.getDescriptor('orchestrator:default');
+    if (orchestratorDescriptor) {
+      this.#state.context.agentDescriptor = orchestratorDescriptor;
+    }
+
     // Check if there's an existing tracing context (e.g., from evaluation)
     const existingContext = getCurrentTracingContext() as TracingContext | null;
     
@@ -397,7 +442,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         {
           selectedAgentType,
           currentPageUrl,
-          currentPageTitle
+          currentPageTitle,
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         },
         undefined, // userId
         [selectedAgentType || 'default'].filter(Boolean)
@@ -431,7 +482,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         currentPageUrl,
         currentPageTitle,
         messageCount: this.#state.messages.length,
-        isEvaluationContext: !!existingContext
+        isEvaluationContext: !!existingContext,
+        ...(orchestratorDescriptor ? {
+          agentVersion: orchestratorDescriptor.version,
+          agentName: orchestratorDescriptor.name,
+          promptHash: orchestratorDescriptor.promptHash,
+          toolsetHash: orchestratorDescriptor.toolsetHash
+        } : {})
       },
       ...(parentObservationId && { parentObservationId })
     }, traceId);
@@ -445,7 +502,10 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
             sessionId: existingContext?.sessionId || this.#sessionId,
             traceId,
             parentObservationId: parentObservationId
-          }
+          },
+          executionId: this.#executionId,
+          abortSignal: this.#abortController?.signal,
+          ...(orchestratorDescriptor ? { agentDescriptor: orchestratorDescriptor } : {})
         },
         selectedAgentType: selectedAgentType ?? null, // Set the agent type for this run
         currentPageUrl,
@@ -463,13 +523,23 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         messageCount: this.#state.messages.length
       });
 
+      // Create AbortController for this execution
+      this.#executionId = `execution-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      this.#abortController = new AbortController();
+      AgentService.registerExecution(this.#executionId, this.#abortController);
+      // Ensure the abort signal is present in the state context for tools
+      try {
+        (state as any).context.abortSignal = this.#abortController.signal;
+        (state as any).context.executionId = this.#executionId;
+      } catch {}
+
       // Run the agent graph on the state
       console.warn('[AGENT SERVICE DEBUG] About to invoke graph with state:', {
         traceId,
         messagesCount: state.messages.length,
         hasTracingContext: !!state.context?.tracingContext
       });
-      this.#runningGraphStatePromise = this.#graph?.invoke(state);
+      this.#runningGraphStatePromise = this.#graph?.invoke(state, this.#abortController.signal);
 
       // Wait for the result
       if (!this.#runningGraphStatePromise) {
@@ -504,7 +574,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         },
         metadata: {
           totalMessages: this.#state.messages.length,
-          responseType: 'success'
+          responseType: 'success',
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         }
       }, traceId);
 
@@ -519,6 +595,14 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           { status: 'success' }
         );
       }
+
+      // Clean up execution state
+      if (this.#executionId) {
+        AgentService.unregisterExecution(this.#executionId);
+        this.#executionId = undefined;
+      }
+      this.#abortController = undefined;
+      this.#runningGraphStatePromise = undefined;
 
       // Return the most recent message (could be final answer, tool call, or error)
       return finalMessage;
@@ -550,7 +634,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         error: error instanceof Error ? error.message : String(error),
         metadata: {
           totalMessages: this.#state.messages.length,
-          responseType: 'error'
+          responseType: 'error',
+          ...(orchestratorDescriptor ? {
+            agentVersion: orchestratorDescriptor.version,
+            agentName: orchestratorDescriptor.name,
+            promptHash: orchestratorDescriptor.promptHash,
+            toolsetHash: orchestratorDescriptor.toolsetHash
+          } : {})
         }
       }, traceId);
 
@@ -563,6 +653,14 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         );
       }
 
+      // Clean up execution state
+      if (this.#executionId) {
+        AgentService.unregisterExecution(this.#executionId);
+        this.#executionId = undefined;
+      }
+      this.#abortController = undefined;
+      this.#runningGraphStatePromise = undefined;
+
       return errorMessage;
     }
   }
@@ -571,6 +669,15 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    * Clears the conversation history
    */
   clearConversation(): void {
+    // Abort ALL running agent executions globally
+    logger.info('Aborting all running agent executions due to conversation clear');
+    AgentService.abortAllExecutions();
+
+    // Clear local state
+    this.#abortController = undefined;
+    this.#runningGraphStatePromise = undefined;
+    this.#executionId = undefined;
+
     // Create a fresh state
     this.#state = createInitialState();
 
@@ -584,6 +691,22 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
 
     // Notify listeners that messages have changed
     this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+  }
+
+  /**
+   * Cancels any in-flight agent execution without clearing conversation state.
+   */
+  cancelRun(): void {
+    logger.info('Cancelling current agent execution (without clearing messages)');
+    if (this.#executionId) {
+      const controller = AgentService.getExecutionController(this.#executionId);
+      try { controller?.abort(); } catch {}
+      AgentService.unregisterExecution(this.#executionId);
+      this.#executionId = undefined;
+    }
+    try { this.#abortController?.abort(); } catch {}
+    this.#abortController = undefined;
+    this.#runningGraphStatePromise = undefined;
   }
 
   /**

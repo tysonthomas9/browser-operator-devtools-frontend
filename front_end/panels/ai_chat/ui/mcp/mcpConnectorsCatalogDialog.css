@@ -1,0 +1,411 @@
+/*
+ * Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
+.mcp-connectors-catalog-dialog {
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  color: var(--color-text-primary);
+  background: var(--color-background);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  border: 1px solid var(--color-details-hairline);
+}
+.mcp-catalog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-details-hairline);
+  background: var(--color-background);
+}
+.mcp-catalog-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+.mcp-catalog-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 6px;
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+.mcp-catalog-close:hover {
+  color: var(--color-text-primary);
+  background: var(--color-background-elevation-1);
+}
+.mcp-catalog-body {
+  overflow-y: auto;
+  flex: 1;
+  max-height: 60vh;
+}
+.mcp-catalog-search-section {
+  padding: 16px 20px 0;
+  border-bottom: 1px solid var(--color-details-hairline);
+  background: var(--color-background);
+}
+.mcp-catalog-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-details-hairline);
+  border-radius: 6px;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.mcp-catalog-search-input:focus {
+  border-color: var(--color-primary);
+}
+.mcp-catalog-search-input::placeholder {
+  color: var(--color-text-secondary);
+}
+.mcp-catalog-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: var(--color-background-elevation-0);
+  border-bottom: 1px solid var(--color-details-hairline);
+}
+.mcp-catalog-status-count {
+  font-weight: 500;
+}
+.mcp-category-section {
+  border-bottom: 1px solid var(--color-details-hairline-light);
+}
+.mcp-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--color-background-elevation-0);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+.mcp-category-header:hover {
+  background: var(--color-background-elevation-1);
+}
+.mcp-category-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+.mcp-category-toggle {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+}
+.mcp-category-toggle.collapsed {
+  transform: rotate(-90deg);
+}
+.mcp-category-connectors {
+  background: var(--color-background);
+}
+.mcp-category-connectors.collapsed {
+  display: none;
+}
+.mcp-connector-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-details-hairline-light);
+  transition: background 0.2s ease;
+  min-height: 60px;
+}
+.mcp-connector-item:hover {
+  background: var(--color-background-elevation-1);
+}
+.mcp-connector-item.connected {
+  background: var(--color-primary-container);
+  border-left: 3px solid var(--color-primary);
+}
+.mcp-connector-item.connecting {
+  background: var(--color-background-elevation-1);
+  opacity: 0.8;
+}
+.mcp-connector-item.error {
+  background: var(--color-background-elevation-1);
+  border-left: 3px solid var(--color-error);
+}
+.mcp-connector-logo {
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+.mcp-connector-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.mcp-connector-content {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-connector-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 2px 0;
+  line-height: 1.2;
+}
+.mcp-connector-description {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-connector-toggle {
+  margin-left: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: var(--color-details-hairline);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border: none;
+  outline: none;
+}
+.mcp-toggle-switch.enabled {
+  background: var(--color-primary);
+}
+.mcp-toggle-switch.connecting {
+  background: var(--color-primary-container-border);
+  cursor: wait;
+}
+.mcp-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.mcp-toggle-switch.enabled::after {
+  transform: translateX(16px);
+}
+.mcp-toggle-switch.error {
+  background: var(--color-error);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.mcp-toggle-switch.error::after {
+  background: #ffdddd;
+}
+.mcp-toggle-switch.disabled {
+  background: var(--color-details-hairline);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mcp-toggle-switch.disabled::after {
+  background: var(--color-background-elevation-1);
+}
+.mcp-connector-status {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.mcp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  margin-right: 4px;
+  cursor: help;
+}
+.mcp-status-dot.error {
+  background: var(--color-error);
+}
+.mcp-connector-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--color-error-container);
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--color-error-text);
+  line-height: 1.3;
+}
+.mcp-error-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.mcp-error-type {
+  font-weight: 600;
+  color: var(--color-error);
+}
+.mcp-error-message {
+  margin-bottom: 6px;
+}
+.mcp-error-details {
+  background: var(--color-background-elevation-1);
+  border: 1px solid var(--color-details-hairline);
+  border-radius: 3px;
+  padding: 6px 8px;
+  margin: 6px 0;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.mcp-error-actions {
+  display: flex;
+  gap: 8px;
+}
+.mcp-error-toggle {
+  background: none;
+  border: none;
+  color: var(--color-error);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.mcp-error-toggle:hover {
+  color: var(--color-error-variant);
+}
+.mcp-error-retry-button, .mcp-error-clear-button {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.mcp-error-retry-button {
+  background: var(--color-error);
+  color: var(--color-text-inverted);
+}
+.mcp-error-retry-button:hover {
+  background: var(--color-error-variant);
+}
+.mcp-error-clear-button {
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-details-hairline);
+}
+.mcp-error-clear-button:hover {
+  background: var(--color-background-elevation-1);
+}
+.mcp-loading-indicator {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  cursor: help;
+}
+.mcp-loading-indicator::after {
+  content: '...';
+  animation: mcp-loading-dots 1.5s steps(4, end) infinite;
+}
+@keyframes mcp-loading-dots {
+  0%, 20% { content: ''; }
+  40% { content: '.'; }
+  60% { content: '..'; }
+  80%, 100% { content: '...'; }
+}
+.mcp-connector-item.globally-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.mcp-no-results {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+.mcp-catalog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-details-hairline);
+  background: var(--color-background-elevation-0);
+}
+.mcp-manage-button {
+  padding: 8px 16px;
+  border: 1px solid var(--color-primary);
+  background: var(--color-background);
+  color: var(--color-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.mcp-manage-button:hover {
+  background: var(--color-primary);
+  color: var(--color-text-inverted);
+}
+.mcp-close-button {
+  padding: 8px 16px;
+  border: 1px solid var(--color-details-hairline);
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.mcp-close-button:hover {
+  background: var(--color-background-elevation-1);
+  border-color: var(--color-primary-container-border);
+}
+.mcp-catalog-body::-webkit-scrollbar {
+  width: 6px;
+}
+.mcp-catalog-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mcp-catalog-body::-webkit-scrollbar-thumb {
+  background: var(--color-details-hairline);
+  border-radius: 3px;
+}
+.mcp-catalog-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}

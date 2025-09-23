@@ -1,6 +1,6 @@
 import type { Tool } from '../tools/Tools.js';
 import { createLogger } from '../core/Logger.js';
-import type { MCPClient, MCPToolDef } from '../../../third_party/mcp-sdk/mcp-sdk.js';
+import type { MCPClient, MCPToolDef } from '../../../third_party/mcp-sdk/mcp-sdk-v2.js';
 
 const logger = createLogger('MCPToolAdapter');
 

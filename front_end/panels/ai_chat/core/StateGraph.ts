@@ -50,7 +50,7 @@ export class StateGraph<TState extends { context?: { tracingContext?: any }, mes
     this.entryPoint = name;
   }
 
-  async *invoke(state: TState): AsyncGenerator<TState, TState, void> {
+  async *invoke(state: TState, signal?: AbortSignal): AsyncGenerator<TState, TState, void> {
     logger.debug(`Starting graph execution from entry point: ${this.entryPoint}`);
     console.warn(`Graph "${this.name}" started with entry point "${this.entryPoint}"`);
 
@@ -59,6 +59,12 @@ export class StateGraph<TState extends { context?: { tracingContext?: any }, mes
     let step = 0;
 
     while (currentNodeName !== END_NODE_MARKER) {
+      // Check if execution has been aborted
+      if (signal?.aborted) {
+        logger.info(`Graph execution aborted at step ${step}, node: ${currentNodeName}`);
+        throw new DOMException('Agent execution was cancelled', 'AbortError');
+      }
+
       logger.debug(`Step ${step}: Current Node = ${currentNodeName}`);
       const node = this.nodes.get(currentNodeName);
       if (!node) {
@@ -99,7 +105,7 @@ export class StateGraph<TState extends { context?: { tracingContext?: any }, mes
 
       try {
         // Invoke the *node* which is still a Promise-based Runnable
-        currentState = await node.invoke(currentState);
+        currentState = await node.invoke(currentState, signal);
         
         // Create completion event for the node
         if (spanId && tracingContext?.traceId) {

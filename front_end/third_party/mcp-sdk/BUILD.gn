@@ -16,25 +16,42 @@ devtools_pre_built("mcp-sdk") {
     # AJV JSON Schema validator (dependency)
     "ajv/dist/ajv.d.ts",
     "ajv/dist/ajv.js",
+    "ajv/dist/ajv.bundle.js",
+    "ajv/dist/ajv-esm.js",
     "ajv/package.json",
     
     # Zod schema validation library (dependency)
     "zod/index.d.ts",
     "zod/lib/index.js",
     "zod/lib/index.mjs",
+    "zod/zod-esm.js",
+    # Compat wrapper for environments that resolve relative imports under dist/
+    "dist/zod/zod-esm.js",
     "zod/package.json",
     
-    # Main MCP SDK files
-    "package/dist/client/index.d.ts",
-    "package/dist/client/index.js",
-    "package/dist/client/sse.d.ts",
-    "package/dist/client/sse.js",
-    "package/dist/shared/transport.d.ts",
-    "package/dist/shared/transport.js",
-    "package/dist/shared/protocol.d.ts",
-    "package/dist/shared/protocol.js",
-    "package/dist/types.d.ts",
-    "package/dist/types.js",
+    # Main MCP SDK files (new dist/esm location with patches)
+    "dist/esm/client/auth.d.ts",
+    "dist/esm/client/auth.js",
+    "dist/esm/client/index.d.ts",
+    "dist/esm/client/index.js",
+    "dist/esm/client/sse.d.ts",
+    "dist/esm/client/sse.js",
+    "dist/esm/client/streamableHttp.d.ts",
+    "dist/esm/client/streamableHttp.js",
+    "dist/esm/server/index.d.ts",
+    "dist/esm/server/index.js",
+    "dist/esm/server/auth/errors.d.ts",
+    "dist/esm/server/auth/errors.js",
+    "dist/esm/shared/auth.d.ts",
+    "dist/esm/shared/auth.js",
+    "dist/esm/shared/auth-utils.d.ts",
+    "dist/esm/shared/auth-utils.js",
+    "dist/esm/shared/transport.d.ts",
+    "dist/esm/shared/transport.js",
+    "dist/esm/shared/protocol.d.ts",
+    "dist/esm/shared/protocol.js",
+    "dist/esm/types.d.ts",
+    "dist/esm/types.js",
     
     # EventSource parser dependency
     "eventsource-parser/package/dist/index.d.ts",
@@ -47,7 +64,26 @@ devtools_pre_built("mcp-sdk") {
 devtools_entrypoint("bundle") {
   entrypoint = "mcp-sdk.ts"
 
-  deps = [ ":mcp-sdk" ]
+  deps = [ ":mcp-sdk",
+    # Required by MCPOAuthProvider for navigation & URL monitoring
+    "../../core/sdk:bundle",
+    "../../core/platform:bundle",
+  ]
+
+  visibility = [
+    "../../panels/ai_chat/*",
+  ]
+
+  visibility += devtools_third_party_visibility
+}
+
+devtools_entrypoint("bundle_v2") {
+  entrypoint = "mcp-sdk-v2.ts"
+
+  deps = [ ":mcp-sdk",
+    "../../core/sdk:bundle",
+    "../../core/platform:bundle",
+  ]
 
   visibility = [
     "../../panels/ai_chat/*",
