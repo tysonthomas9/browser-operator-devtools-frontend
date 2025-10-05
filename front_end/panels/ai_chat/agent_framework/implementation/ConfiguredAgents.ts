@@ -8,7 +8,7 @@ import { SchemaBasedExtractorTool } from '../../tools/SchemaBasedExtractorTool.j
 import { StreamlinedSchemaExtractorTool } from '../../tools/StreamlinedSchemaExtractorTool.js';
 import { BookmarkStoreTool } from '../../tools/BookmarkStoreTool.js';
 import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
-import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool } from '../../tools/Tools.js';
+import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool, RenderWebAppTool, GetWebAppDataTool, RemoveWebAppTool } from '../../tools/Tools.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
@@ -49,7 +49,12 @@ export function initializeConfiguredAgents(): void {
   ToolRegistry.registerToolFactory('scroll_page', () => new ScrollPageTool());
   ToolRegistry.registerToolFactory('wait_for_page_load', () => new WaitTool());
   ToolRegistry.registerToolFactory('thinking', () => new ThinkingTool());
-  
+
+  // Register webapp rendering tools
+  ToolRegistry.registerToolFactory('render_webapp', () => new RenderWebAppTool());
+  ToolRegistry.registerToolFactory('get_webapp_data', () => new GetWebAppDataTool());
+  ToolRegistry.registerToolFactory('remove_webapp', () => new RemoveWebAppTool());
+
   // Register bookmark and document search tools
   ToolRegistry.registerToolFactory('bookmark_store', () => new BookmarkStoreTool());
   ToolRegistry.registerToolFactory('document_search', () => new DocumentSearchTool());

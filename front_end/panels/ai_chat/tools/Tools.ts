@@ -33,6 +33,9 @@ import { HTMLToMarkdownTool, type HTMLToMarkdownResult } from './HTMLToMarkdownT
 import { SchemaBasedExtractorTool, type SchemaExtractionResult, type SchemaDefinition } from './SchemaBasedExtractorTool.js';
 import { VisitHistoryManager, type VisitData } from './VisitHistoryManager.js';
 import { SequentialThinkingTool, type SequentialThinkingResult, type SequentialThinkingArgs, type ExecutedStep } from './SequentialThinkingTool.js';
+import { RenderWebAppTool, type RenderWebAppArgs, type RenderWebAppResult } from './RenderWebAppTool.js';
+import { GetWebAppDataTool, type GetWebAppDataArgs, type GetWebAppDataResult } from './GetWebAppDataTool.js';
+import { RemoveWebAppTool, type RemoveWebAppArgs, type RemoveWebAppResult } from './RemoveWebAppTool.js';
 
 /**
  * Base interface for all tools
@@ -3500,6 +3503,14 @@ export function getTools(): Array<(
 
 // Export the SequentialThinkingTool
 export { SequentialThinkingTool } from './SequentialThinkingTool.js';
+
+// Export HTML injection tools
+export { RenderWebAppTool } from './RenderWebAppTool.js';
+export type { RenderWebAppArgs, RenderWebAppResult } from './RenderWebAppTool.js';
+export { GetWebAppDataTool } from './GetWebAppDataTool.js';
+export type { GetWebAppDataArgs, GetWebAppDataResult } from './GetWebAppDataTool.js';
+export { RemoveWebAppTool } from './RemoveWebAppTool.js';
+export type { RemoveWebAppArgs, RemoveWebAppResult } from './RemoveWebAppTool.js';
 // Abortable sleep utility for tools that need delays/polling
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {

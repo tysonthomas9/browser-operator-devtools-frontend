@@ -24,7 +24,11 @@ import {
   NodeIDsToURLsTool,
   GetVisitsByDomainTool,
   GetVisitsByKeywordTool,
-  SearchVisitHistoryTool, type Tool
+  SearchVisitHistoryTool,
+  RenderWebAppTool,
+  GetWebAppDataTool,
+  RemoveWebAppTool,
+  type Tool
 } from '../tools/Tools.js';
 // Imports from their own files
 
@@ -299,6 +303,9 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       ToolRegistry.getToolInstance('research_agent') || (() => { throw new Error('research_agent tool not found'); })(),
       new FinalizeWithCritiqueTool(),
       new SearchVisitHistoryTool(),
+      new RenderWebAppTool(),
+      new GetWebAppDataTool(),
+      new RemoveWebAppTool(),
     ]
   },
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: {
@@ -315,6 +322,9 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
       ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
       new FinalizeWithCritiqueTool(),
+      new RenderWebAppTool(),
+      new GetWebAppDataTool(),
+      new RemoveWebAppTool(),
     ]
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {
