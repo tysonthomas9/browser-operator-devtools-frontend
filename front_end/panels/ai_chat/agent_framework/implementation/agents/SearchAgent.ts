@@ -128,7 +128,12 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
       'extract_data',
       'scroll_page',
       'action_agent',
-      'html_to_markdown'
+      'html_to_markdown',
+      'create_file',
+      'update_file',
+      'delete_file',
+      'read_file',
+      'list_files',
     ],
     maxIterations: 12,
     modelName: MODEL_SENTINELS.USE_MINI,

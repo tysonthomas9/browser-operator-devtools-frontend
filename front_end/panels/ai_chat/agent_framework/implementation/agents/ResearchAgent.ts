@@ -152,7 +152,12 @@ Remember: You gather data, content_writer_agent writes the report. Always hand o
       'node_ids_to_urls',
       'bookmark_store',
       'document_search',
-      'html_to_markdown'
+      'html_to_markdown',
+      'create_file',
+      'update_file',
+      'delete_file',
+      'read_file',
+      'list_files',
     ],
     maxIterations: 15,
     modelName: MODEL_SENTINELS.USE_MINI,

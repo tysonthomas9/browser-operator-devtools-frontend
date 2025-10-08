@@ -49,7 +49,13 @@ Your process should follow these steps:
 10. **References**: Properly formatted citations for all sources used
 
 The final output should be in markdown format, and it should be lengthy and detailed. Aim for 5-10 pages of content, at least 1000 words.`,
-    tools: [],
+    tools: [
+      'read_file',
+      'list_files',
+      'create_file',
+      'update_file',
+      'delete_file',
+    ],
     maxIterations: 3,
     modelName: MODEL_SENTINELS.USE_MINI,
     temperature: 0.3,

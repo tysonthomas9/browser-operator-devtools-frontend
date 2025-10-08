@@ -28,6 +28,11 @@ import {
   RenderWebAppTool,
   GetWebAppDataTool,
   RemoveWebAppTool,
+  CreateFileTool,
+  UpdateFileTool,
+  DeleteFileTool,
+  ReadFileTool,
+  ListFilesTool,
   type Tool
 } from '../tools/Tools.js';
 // Imports from their own files
@@ -306,6 +311,11 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new RenderWebAppTool(),
       new GetWebAppDataTool(),
       new RemoveWebAppTool(),
+      new CreateFileTool(),
+      new UpdateFileTool(),
+      new DeleteFileTool(),
+      new ReadFileTool(),
+      new ListFilesTool(),
     ]
   },
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: {
@@ -325,6 +335,11 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new RenderWebAppTool(),
       new GetWebAppDataTool(),
       new RemoveWebAppTool(),
+      new CreateFileTool(),
+      new UpdateFileTool(),
+      new DeleteFileTool(),
+      new ReadFileTool(),
+      new ListFilesTool(),
     ]
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {
@@ -510,6 +525,11 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     ToolRegistry.getToolInstance('research_agent') || (() => { throw new Error('research_agent tool not found'); })(),
     new FinalizeWithCritiqueTool(),
     new SearchVisitHistoryTool(),
+    new CreateFileTool(),
+    new UpdateFileTool(),
+    new DeleteFileTool(),
+    new ReadFileTool(),
+    new ListFilesTool(),
   ];
 }
 

@@ -3511,6 +3511,16 @@ export { GetWebAppDataTool } from './GetWebAppDataTool.js';
 export type { GetWebAppDataArgs, GetWebAppDataResult } from './GetWebAppDataTool.js';
 export { RemoveWebAppTool } from './RemoveWebAppTool.js';
 export type { RemoveWebAppArgs, RemoveWebAppResult } from './RemoveWebAppTool.js';
+export { CreateFileTool } from './CreateFileTool.js';
+export type { CreateFileArgs, CreateFileResult } from './CreateFileTool.js';
+export { UpdateFileTool } from './UpdateFileTool.js';
+export type { UpdateFileArgs, UpdateFileResult } from './UpdateFileTool.js';
+export { DeleteFileTool } from './DeleteFileTool.js';
+export type { DeleteFileArgs, DeleteFileResult } from './DeleteFileTool.js';
+export { ReadFileTool } from './ReadFileTool.js';
+export type { ReadFileArgs, ReadFileResult } from './ReadFileTool.js';
+export { ListFilesTool } from './ListFilesTool.js';
+export type { ListFilesArgs, ListFilesResult } from './ListFilesTool.js';
 // Abortable sleep utility for tools that need delays/polling
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
