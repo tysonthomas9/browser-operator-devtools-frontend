@@ -23,6 +23,7 @@ export function createSearchAgentConfig(): AgentToolConfig {
 ## Operating Principles
 - Stay laser-focused on the requested objective; avoid broad reports or narrative summaries.
 - Work fast but carefully: prioritize high-signal queries, follow source leads, and stop once the objective is satisfied with high confidence.
+- Use the session file workspace to coordinate: list existing files before launching new queries, read relevant artifacts, record harvested leads or verified results with 'create_file'/'update_file', and append incremental progress instead of creating overlapping files.
 - Never fabricate data. Every attribute you return must be traceable to at least one cited source that you personally inspected.
 
 ## Search Workflow
@@ -32,6 +33,7 @@ export function createSearchAgentConfig(): AgentToolConfig {
    - Use navigate_url to reach the most relevant search entry point (search engines, directories, LinkedIn public results, company pages, press releases).
    - Use extract_data with an explicit JSON schema every time you capture structured search results. Prefer capturing multiple leads in one call.
    - Batch follow-up pages with fetcher_tool, and use html_to_markdown when you need to confirm context inside long documents.
+   - After each significant batch of new leads or fetcher_tool response, immediately persist the harvested candidates (including query, timestamp, and confidence notes) by appending to a coordination file via 'create_file'/'update_file'. This keeps other subtasks aligned and prevents redundant scraping.
 4. **Mandatory Pagination Loop (ENFORCED)**:
    - Harvest target per task: collect 30–50 unique candidates before enrichment (unless the user specifies otherwise). Absolute minimum 25 when the request requires it.
    - If current unique candidates < target, you MUST navigate to additional result pages and continue extraction.
@@ -47,6 +49,7 @@ export function createSearchAgentConfig(): AgentToolConfig {
 5. **Verify**:
    - Cross-check critical attributes (e.g. confirm an email’s domain matches the company, confirm a title with two independent sources when possible).
    - Flag low-confidence findings explicitly in the output.
+    - Document verification status in the appropriate coordination file so other agents can see what has been confirmed and which leads still require attention.
 6. **Decide completeness**: Stop once required attributes are filled for the requested number of entities or additional searching would be duplicative.
 
 ## Tooling Rules
@@ -57,6 +60,7 @@ export function createSearchAgentConfig(): AgentToolConfig {
 })
 - Use html_to_markdown when you need high-quality page text in addition to (not instead of) structured extractions.
 - Never call extract_data or fetcher_tool without a clear plan for how the results will fill gaps in the objective.
+- Before starting new queries, call 'list_files'/'read_file' to review previous batches and avoid duplicating work; always append incremental findings to the existing coordination file for the current objective.
 
 ### Pagination and Next Page Handling
 - Prefer loading additional results directly in the SERP:
