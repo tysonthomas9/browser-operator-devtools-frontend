@@ -15,20 +15,37 @@ export class ToolResultComponent extends HTMLElement {
   private readonly shadow = this.attachShadow({mode: 'open'});
   
   private toolResult: AgentMessage | null = null;
+  private toolCallArgs: Record<string, any> | null = null;
   private isExpanded = false;
 
   connectedCallback(): void {
     this.render();
   }
 
-  setResult(toolResult: AgentMessage): void {
+  setResult(toolResult: AgentMessage, toolCallArgs?: Record<string, any>): void {
     this.toolResult = toolResult;
+    this.toolCallArgs = toolCallArgs || null;
     this.render();
   }
 
   private toggleExpanded(): void {
     this.isExpanded = !this.isExpanded;
     this.render();
+  }
+
+  private handleReRender(): void {
+    if (!this.toolCallArgs) return;
+
+    const event = new CustomEvent('re-render-webapp', {
+      detail: {
+        toolName: 'render_webapp',
+        toolArgs: this.toolCallArgs
+      },
+      bubbles: true,
+      composed: true
+    });
+
+    this.dispatchEvent(event);
   }
 
   private render(): void {
@@ -90,6 +107,36 @@ export class ToolResultComponent extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 6px;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .re-render-button {
+          background: var(--sys-color-primary);
+          color: var(--sys-color-on-primary);
+          border: none;
+          border-radius: 4px;
+          padding: 4px 8px;
+          font-size: 11px;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          transition: background 0.2s;
+        }
+
+        .re-render-button:hover {
+          background: var(--sys-color-primary-bright);
+          opacity: 0.9;
+        }
+
+        .re-render-button:active {
+          transform: scale(0.95);
         }
 
         .expand-toggle {
@@ -174,9 +221,23 @@ export class ToolResultComponent extends HTMLElement {
           <div class="result-title">
             ${statusIcon} ${ToolDescriptionFormatter.formatToolName(toolName)} result
           </div>
-          ${isLongResult ? html`
-            <span class="expand-toggle ${this.isExpanded ? 'expanded' : ''}">▼</span>
-          ` : Lit.nothing}
+          <div class="header-actions">
+            ${toolName === 'render_webapp' && success && this.toolCallArgs ? html`
+              <button
+                class="re-render-button"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this.handleReRender();
+                }}
+                title="Re-render web app"
+              >
+                🔄 Re-render
+              </button>
+            ` : Lit.nothing}
+            ${isLongResult ? html`
+              <span class="expand-toggle ${this.isExpanded ? 'expanded' : ''}">▼</span>
+            ` : Lit.nothing}
+          </div>
         </div>
 
         ${result ? html`

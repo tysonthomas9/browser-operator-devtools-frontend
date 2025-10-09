@@ -2195,7 +2195,7 @@ devtools-snackbar.bookmark-notification .container {
   border: 1px solid var(--sys-color-outline-variant);
 }
 
-/* Integrated tool result within timeline item */
+/* Integrated tool result within timeline item - matches timeline aesthetic */
 .tool-result-integrated {
   overflow: auto;
   margin-top: 8px;
@@ -2203,18 +2203,122 @@ devtools-snackbar.bookmark-notification .container {
   padding: 8px 12px;
   font-size: 12px;
   color: var(--sys-color-on-surface);
+  background: rgba(var(--sys-color-surface-variant-rgb), 0.3);
+  border: 1px solid transparent;
+  border-left: 3px solid var(--sys-color-divider);
+  border-radius: 4px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
+.tool-result-integrated:hover {
+  background: rgba(var(--sys-color-surface-variant-rgb), 0.5);
+}
+
+/* Status-based border colors - matches timeline status markers */
+.tool-result-integrated.completed {
+  border-left-color: var(--sys-color-green-bright);
+}
+
+.tool-result-integrated.error {
+  border-left-color: var(--sys-color-error);
+  background: rgba(var(--sys-color-error-rgb), 0.05);
+}
+
+.tool-result-integrated.running {
+  border-left-color: var(--sys-color-yellow-bright);
+  animation: subtlePulse 2s ease-in-out infinite;
+}
+
+@keyframes subtlePulse {
+  0%, 100% {
+    background: rgba(var(--sys-color-surface-variant-rgb), 0.3);
+  }
+  50% {
+    background: rgba(var(--sys-color-surface-variant-rgb), 0.45);
+  }
+}
+
+.result-header-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--sys-color-on-surface);
+}
+
+.result-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.re-render-webapp-button,
+.webapp-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.re-render-webapp-button {
+  background: rgba(var(--sys-color-primary-rgb), 0.1);
+  color: var(--sys-color-primary);
+  border-color: rgba(var(--sys-color-primary-rgb), 0.2);
+}
+
+.re-render-webapp-button:hover {
+  background: rgba(var(--sys-color-primary-rgb), 0.2);
+  border-color: rgba(var(--sys-color-primary-rgb), 0.3);
+}
+
+.re-render-webapp-button:active {
+  background: rgba(var(--sys-color-primary-rgb), 0.25);
+}
+
+.webapp-action-btn {
+  background: rgba(var(--sys-color-tertiary-rgb), 0.1);
+  color: var(--sys-color-tertiary);
+  border-color: rgba(var(--sys-color-tertiary-rgb), 0.2);
+}
+
+.webapp-action-btn:hover {
+  background: rgba(var(--sys-color-tertiary-rgb), 0.2);
+  border-color: rgba(var(--sys-color-tertiary-rgb), 0.3);
+}
+
+.webapp-action-btn:active {
+  background: rgba(var(--sys-color-tertiary-rgb), 0.25);
+}
 
 .tool-result-integrated .json-error {
-  background: none;
-  padding: 0;
-  margin: 0;
+  background: rgba(var(--sys-color-error-rgb), 0.08);
+  border: none;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 6px 0 0 0;
 }
 
 .tool-result-integrated .error-message {
   color: var(--sys-color-error);
   font-weight: 500;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-result-integrated .error-message::before {
+  content: '●';
+  font-size: 10px;
 }
 
 /* Tool loading spinner */
@@ -2233,9 +2337,36 @@ devtools-snackbar.bookmark-notification .container {
 }
 
 .tool-result-integrated .json-result {
-  background: none;
-  padding: 0;
-  margin: 0;
+  background: rgba(var(--sys-color-surface-variant-rgb), 0.4);
+  border: none;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 6px 0 0 0;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Custom scrollbar for JSON result */
+.tool-result-integrated .json-result::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.tool-result-integrated .json-result::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tool-result-integrated .json-result::-webkit-scrollbar-thumb {
+  background: var(--sys-color-divider);
+  border-radius: 3px;
+}
+
+.tool-result-integrated .json-result::-webkit-scrollbar-thumb:hover {
+  background: var(--sys-color-outline);
 }
 
 /* Show less button */

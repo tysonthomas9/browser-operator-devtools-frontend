@@ -577,7 +577,27 @@ export class ChatView extends HTMLElement {
                     <!-- Result Block - Integrated within timeline item -->
                     ${isCombined && resultText ? html`
                       <div class="tool-result-integrated ${status}">
-                        Response:
+                        <div class="result-header-with-actions">
+                          <span>Response:</span>
+                          ${toolName === 'render_webapp' && status === 'completed' ? html`
+                            <div class="result-actions-group">
+                              <button
+                                class="re-render-webapp-button"
+                                @click=${() => this.#handleReRenderWebApp(toolArgs)}
+                                title="Re-render web app"
+                              >
+                                🔄 Re-render
+                              </button>
+                              <button
+                                class="webapp-action-btn"
+                                @click=${() => this.#handleViewWebAppCode(toolArgs)}
+                                title="View source code"
+                              >
+                                📋 View Code
+                              </button>
+                            </div>
+                          ` : Lit.nothing}
+                        </div>
                         ${this.#formatJsonWithSyntaxHighlighting(resultText)}
                       </div>
                     ` : Lit.nothing}
@@ -1153,7 +1173,7 @@ export class ChatView extends HTMLElement {
     const timeline = button.closest('.agent-execution-timeline');
     const items = timeline?.querySelector('.timeline-items') as HTMLElement;
     const icon = button.querySelector('.toggle-icon') as HTMLElement;
-    
+
     if (items) {
       if (items.style.display === 'none') {
         items.style.display = 'block';
@@ -1164,6 +1184,51 @@ export class ChatView extends HTMLElement {
       }
     }
   }
+
+  /**
+   * Re-render web app with the same arguments
+   */
+  async #handleReRenderWebApp(toolArgs: Record<string, any>): Promise<void> {
+    try {
+      // Import RenderWebAppTool
+      const { RenderWebAppTool } = await import('../tools/RenderWebAppTool.js');
+
+      // Create a new instance of the tool
+      const tool = new RenderWebAppTool();
+
+      // Execute the tool with the same arguments
+      logger.info('Re-rendering web app with args:', toolArgs);
+      const result = await tool.execute(toolArgs as any);
+
+      // Check if the result has an error
+      if ('error' in result) {
+        logger.error('Failed to re-render web app:', result.error);
+        // Show error feedback to user
+        // TODO: Add user-visible error notification
+      } else {
+        logger.info('Successfully re-rendered web app:', result);
+        // Show success feedback to user
+        // TODO: Add user-visible success notification
+      }
+    } catch (error) {
+      logger.error('Error re-rendering web app:', error);
+      // Show error feedback to user
+      // TODO: Add user-visible error notification
+    }
+  }
+
+  /**
+   * View web app code using WebAppCodeViewer component
+   */
+  async #handleViewWebAppCode(toolArgs: Record<string, any>): Promise<void> {
+    try {
+      const { WebAppCodeViewer } = await import('./WebAppCodeViewer.js');
+      await WebAppCodeViewer.show(toolArgs);
+    } catch (error) {
+      logger.error('Error opening code viewer:', error);
+    }
+  }
+
 
   // Stable key for message list rendering to avoid node reuse glitches
   #messageKey(m: CombinedMessage, index: number): string {
