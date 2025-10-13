@@ -1272,7 +1272,10 @@ export class AIChatPanel extends UI.Panel.Panel {
         const config = getEvaluationConfig();
         const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
         const tabId = target?.id() || 'unknown';
-        const compositeClientId = `${config.clientId}:${tabId}`;
+
+        // Generate a new random client ID for each tab connection
+        const randomId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        const compositeClientId = `${config.clientId}:${tabId}:${randomId}`;
 
         logger.info('Creating EvaluationAgent for tab', {
           tabId,
