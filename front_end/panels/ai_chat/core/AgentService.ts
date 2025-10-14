@@ -387,6 +387,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       await this.initialize('', config.mainModel, config.miniModel || '', config.nanoModel || '');
     }
 
+    // In normal mode, check if graph needs reinitialization (e.g., after config change)
+    if (!BUILD_CONFIG.AUTOMATED_MODE && (!this.#isInitialized || !this.#graph)) {
+      const config = this.#configManager.getConfiguration();
+      await this.initialize(this.#apiKey, config.mainModel, config.miniModel || '', config.nanoModel || '');
+    }
+
     // Create a user message
     const userMessage = createUserMessage(text, imageInput);
 
