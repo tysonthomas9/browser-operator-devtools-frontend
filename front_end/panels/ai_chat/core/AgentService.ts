@@ -275,6 +275,17 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   }
 
   /**
+   * Resets the initialization state to allow re-initialization with new configuration.
+   * This is useful when configuration overrides are set (e.g., API keys from request payload).
+   */
+  resetInitialization(): void {
+    this.#isInitialized = false;
+    this.#graph = undefined;
+    this.#apiKey = null;
+    logger.info('AgentService initialization state reset');
+  }
+
+  /**
    * Gets the current state of the agent
    */
   getState(): AgentState {
@@ -383,8 +394,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     // In AUTOMATED_MODE, ensure the graph is initialized even without API key
     if (BUILD_CONFIG.AUTOMATED_MODE && !this.#graph) {
       const config = this.#configManager.getConfiguration();
-      // Initialize with empty API key in AUTOMATED_MODE - will be overridden by request
-      await this.initialize('', config.mainModel, config.miniModel || '', config.nanoModel || '');
+      // Initialize with API key from config (includes overrides set by EvaluationAgent)
+      await this.initialize(config.apiKey || '', config.mainModel, config.miniModel || '', config.nanoModel || '');
     }
 
     // In normal mode, check if graph needs reinitialization (e.g., after config change)

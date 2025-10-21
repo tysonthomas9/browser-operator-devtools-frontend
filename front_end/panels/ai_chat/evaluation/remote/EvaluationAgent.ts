@@ -395,7 +395,11 @@ export class EvaluationAgent {
         });
         hasSetEarlyOverride = true;
 
-        logger.info('DEBUG: Early override set successfully', {
+        // Reset AgentService to force re-initialization with new configuration
+        const agentService = AgentService.getInstance();
+        agentService.resetInitialization();
+
+        logger.info('DEBUG: Early override set and AgentService reset successfully', {
           evaluationId: params.evaluationId
         });
       } else {
