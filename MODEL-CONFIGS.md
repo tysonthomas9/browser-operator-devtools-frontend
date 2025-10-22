@@ -267,12 +267,12 @@ private async handleLLMConfigurationRequest(request: LLMConfigurationRequest): P
 
 ### Per-Request Override (Temporary)
 ```typescript
-// eval-server sends evaluation with custom config
+// agent-server sends request with custom config
 {
   "jsonrpc": "2.0",
   "method": "evaluate",
   "params": {
-    "evaluationId": "eval-123",
+    "requestId": "req-123",
     "tool": "chat",
     "input": { "message": "Hello" },
     "model": {
@@ -287,7 +287,7 @@ private async handleLLMConfigurationRequest(request: LLMConfigurationRequest): P
 
 ### Persistent Configuration
 ```typescript
-// eval-server sets persistent configuration
+// agent-server sets persistent configuration
 {
   "jsonrpc": "2.0",
   "method": "configure_llm",
@@ -346,7 +346,7 @@ private async handleLLMConfigurationRequest(request: LLMConfigurationRequest): P
 ### ✅ Phase 3: Persistent Configuration API (COMPLETED)
 8. ✅ **Extend EvaluationProtocol** with `configure_llm` method
 9. ✅ **Implement `configure_llm` handler** in EvaluationAgent
-10. 🔄 **Add eval-server support** for persistent configuration (server-side implementation needed)
+10. 🔄 **Add agent-server support** for persistent configuration (server-side implementation needed)
 11. ✅ **Add configuration validation** and error handling
 
 ### 🔄 Phase 4: Testing & Documentation (NEXT)
