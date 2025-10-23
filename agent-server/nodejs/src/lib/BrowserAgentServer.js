@@ -773,11 +773,66 @@ export class BrowserAgentServer extends EventEmitter {
    */
   async getCDPBrowserEndpoint() {
     try {
-      const cdpUrl = `http://${CONFIG.cdp.host}:${CONFIG.cdp.port}/json/version`;
-      logger.info('Attempting to connect to CDP', { cdpUrl });
-      const response = await fetch(cdpUrl);
-      const data = await response.json();
-      return data.webSocketDebuggerUrl;
+      const path = '/json/version';
+      logger.info('Attempting to connect to CDP', {
+        host: CONFIG.cdp.host,
+        port: CONFIG.cdp.port,
+        path
+      });
+
+      // When connecting via host.docker.internal, we need to set Host header to localhost
+      // because Chrome only accepts CDP requests with localhost/127.0.0.1 in the Host header
+      const headers = {};
+      if (CONFIG.cdp.host === 'host.docker.internal') {
+        headers['Host'] = `localhost:${CONFIG.cdp.port}`;
+        logger.info('Using Host header override for host.docker.internal', headers);
+      }
+
+      const options = {
+        hostname: CONFIG.cdp.host,
+        port: CONFIG.cdp.port,
+        path: path,
+        method: 'GET',
+        headers: headers
+      };
+
+      const http = await import('http');
+
+      return new Promise((resolve, reject) => {
+        const req = http.default.request(options, (res) => {
+          let data = '';
+
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+
+          res.on('end', () => {
+            try {
+              const jsonData = JSON.parse(data);
+              let wsUrl = jsonData.webSocketDebuggerUrl;
+
+              // Replace localhost with host.docker.internal when running in Docker
+              if (CONFIG.cdp.host === 'host.docker.internal' && wsUrl) {
+                wsUrl = wsUrl.replace('ws://localhost:', 'ws://host.docker.internal:');
+                wsUrl = wsUrl.replace('ws://127.0.0.1:', 'ws://host.docker.internal:');
+                logger.info('Rewrote WebSocket URL for Docker', { original: jsonData.webSocketDebuggerUrl, rewritten: wsUrl });
+              }
+
+              resolve(wsUrl);
+            } catch (parseError) {
+              logger.error('Failed to parse CDP response', { error: parseError.message, data });
+              reject(new Error('Failed to connect to Chrome DevTools Protocol'));
+            }
+          });
+        });
+
+        req.on('error', (error) => {
+          logger.error('Failed to get CDP browser endpoint', { error: error.message });
+          reject(new Error('Failed to connect to Chrome DevTools Protocol'));
+        });
+
+        req.end();
+      });
     } catch (error) {
       logger.error('Failed to get CDP browser endpoint', { error: error.message });
       throw new Error('Failed to connect to Chrome DevTools Protocol');
