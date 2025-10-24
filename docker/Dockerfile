@@ -83,10 +83,6 @@ COPY --from=builder /workspace/devtools/devtools-frontend/out/Default/gen/front_
 # Copy agent-server from builder stage
 COPY --from=agent-server-builder /workspace/agent-server /opt/agent-server
 
-# Copy client initialization script
-COPY agent-server/nodejs/init-client.sh /opt/agent-server/init-client.sh
-RUN chmod +x /opt/agent-server/init-client.sh
-
 # Copy nginx config
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
@@ -94,10 +90,6 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 RUN cat > /usr/local/bin/start-services.sh <<'EOFSCRIPT'
 #!/bin/bash
 set -e
-
-# Initialize client configuration if needed
-echo "Initializing client configuration..."
-/opt/agent-server/init-client.sh
 
 # Start nginx in background
 echo "Starting nginx..."
