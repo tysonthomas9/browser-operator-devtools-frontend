@@ -29,8 +29,13 @@ class ClientManager {
           // Only load base client YAML files, not composite ones with tab IDs
           const clientId = path.basename(f, path.extname(f));
           return !clientId.includes(':');
+        })
+        .filter(f => {
+          // Skip example client template file
+          const filename = path.basename(f, path.extname(f));
+          return filename !== 'example-client';
         });
-      
+
       for (const file of files) {
         const clientId = path.basename(file, path.extname(file));
         try {
@@ -39,7 +44,7 @@ class ClientManager {
           logger.error(`Failed to load client ${clientId}:`, error);
         }
       }
-      
+
       logger.info(`Loaded ${this.clients.size} clients`);
     } catch (error) {
       logger.error('Failed to load clients:', error);
