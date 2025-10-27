@@ -30,6 +30,8 @@ import './input/InputBar.js';
 import './model_selector/ModelSelector.js';
 import { combineMessages } from './message/MessageCombiner.js';
 import { StructuredResponseController } from './message/StructuredResponseController.js';
+import { WorkflowVisualizer } from './WorkflowVisualizer.js';
+import { defaultAgentGraphConfig } from '../core/GraphConfigs.js';
 
 // Shared chat types
 import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData } from '../models/ChatTypes.js';
@@ -806,7 +808,24 @@ export class ChatView extends HTMLElement {
             }) : Lit.nothing}
           </ai-message-list>
           ${this.#renderInputBar(false)}
-          
+
+          <!-- Workflow Visualization Button -->
+          ${this.#messages.length > 0 ? html`
+            <button
+              class="workflow-fab-button"
+              @click=${this.#handleViewWorkflow}
+              title="View Workflow Graph"
+              aria-label="View workflow graph"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+            </button>
+          ` : Lit.nothing}
         </div>
       `, this.#shadow, {host: this});
     }
@@ -1226,6 +1245,37 @@ export class ChatView extends HTMLElement {
       await WebAppCodeViewer.show(toolArgs);
     } catch (error) {
       logger.error('Error opening code viewer:', error);
+    }
+  }
+
+  /**
+   * Handle View Workflow button click
+   */
+  async #handleViewWorkflow(): Promise<void> {
+    try {
+      logger.info('Opening workflow visualization');
+
+      // Use defaultAgentGraphConfig for now
+      // TODO: Get current graph config from agent service if available
+      const graphConfig = defaultAgentGraphConfig;
+
+      // Show visualization
+      const result = await WorkflowVisualizer.show(graphConfig, {
+        readonly: true,
+        showMiniMap: true,
+        showControls: true,
+        fitView: true
+      });
+
+      if (!result.success) {
+        logger.error('Failed to show workflow visualization', result.error);
+      } else {
+        logger.info('Workflow visualization opened', {
+          webappId: result.webappId
+        });
+      }
+    } catch (error) {
+      logger.error('Error opening workflow visualization', error);
     }
   }
 

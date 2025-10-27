@@ -3137,3 +3137,56 @@ devtools-snackbar.bookmark-notification .container {
 .version-banner-dismiss:hover {
   opacity: 1;
 }
+
+/* ========================================
+   WORKFLOW VISUALIZATION FAB BUTTON
+   ======================================== */
+
+.workflow-fab-button {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  background: var(--primary-color, #00a4fe);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 999;
+}
+
+.workflow-fab-button:hover {
+  background: var(--primary-color-hover, #0094e8);
+  transform: scale(1.05);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15), 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.workflow-fab-button:active {
+  transform: scale(0.95);
+}
+
+.workflow-fab-button svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .workflow-fab-button {
+    bottom: 80px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+  }
+
+  .workflow-fab-button svg {
+    width: 24px;
+    height: 24px;
+  }
+}
