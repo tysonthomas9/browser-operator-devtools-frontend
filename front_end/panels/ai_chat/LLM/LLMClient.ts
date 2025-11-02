@@ -8,6 +8,7 @@ import { OpenAIProvider } from './OpenAIProvider.js';
 import { LiteLLMProvider } from './LiteLLMProvider.js';
 import { GroqProvider } from './GroqProvider.js';
 import { OpenRouterProvider } from './OpenRouterProvider.js';
+import { BrowserOperatorProvider } from './BrowserOperatorProvider.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
 
@@ -40,6 +41,7 @@ export interface LLMCallRequest {
   tools?: any[];
   temperature?: number;
   retryConfig?: Partial<RetryConfig>;
+  agentName?: string; // Name of the calling agent for provider-specific routing
 }
 
 /**
@@ -91,6 +93,12 @@ export class LLMClient {
             break;
           case 'openrouter':
             providerInstance = new OpenRouterProvider(providerConfig.apiKey);
+            break;
+          case 'browseroperator':
+            providerInstance = new BrowserOperatorProvider(
+              providerConfig.apiKey || null,
+              providerConfig.providerURL  // Optional override for testing
+            );
             break;
           default:
             logger.warn(`Unknown provider type: ${providerConfig.provider}`);
@@ -153,6 +161,10 @@ export class LLMClient {
     }
     if (request.retryConfig) {
       options.retryConfig = request.retryConfig;
+    }
+    // Forward agent name for provider-specific routing
+    if ((request as any).agentName) {
+      options.agentName = (request as any).agentName;
     }
 
     return provider.callWithMessages(request.model, messages, options);
@@ -344,6 +356,34 @@ export class LLMClient {
   }
 
   /**
+   * Static method to test BrowserOperator connection (for UI use without initialization)
+   */
+  static async testBrowserOperatorConnection(endpoint: string): Promise<{success: boolean, message: string}> {
+    try {
+      const healthUrl = endpoint.replace(/\/v1\/?$/, '') + '/health';
+      const response = await fetch(healthUrl);
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message: `Health check failed: ${response.statusText}`
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        message: `Connected to BrowserOperator API server. Status: ${data.status}`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
    * Static method to validate credentials for a specific provider
    */
   static validateProviderCredentials(providerType: string): {isValid: boolean, message: string, missingItems?: string[]} {
@@ -363,6 +403,9 @@ export class LLMClient {
           break;
         case 'openrouter':
           provider = new OpenRouterProvider('');
+          break;
+        case 'browseroperator':
+          provider = new BrowserOperatorProvider(null, '');
           break;
         default:
           return {

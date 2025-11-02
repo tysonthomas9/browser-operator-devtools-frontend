@@ -33,6 +33,7 @@ const STORAGE_KEYS = {
   LITELLM_API_KEY: 'ai_chat_litellm_api_key',
   GROQ_API_KEY: 'ai_chat_groq_api_key',
   OPENROUTER_API_KEY: 'ai_chat_openrouter_api_key',
+  BROWSEROPERATOR_API_KEY: 'ai_chat_browseroperator_api_key',
 } as const;
 
 /**
@@ -118,6 +119,8 @@ export class LLMConfigurationManager {
         return localStorage.getItem(STORAGE_KEYS.GROQ_API_KEY) || '';
       case 'openrouter':
         return localStorage.getItem(STORAGE_KEYS.OPENROUTER_API_KEY) || '';
+      case 'browseroperator':
+        return localStorage.getItem(STORAGE_KEYS.BROWSEROPERATOR_API_KEY) || '';
       default:
         return '';
     }

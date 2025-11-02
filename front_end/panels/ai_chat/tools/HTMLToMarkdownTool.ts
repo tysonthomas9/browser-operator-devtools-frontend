@@ -64,7 +64,13 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
     const apiKey = agentService.getApiKey();
     const READINESS_TIMEOUT_MS = 15000; // 15 seconds timeout for page readiness
 
-    if (!apiKey) {
+    // Get provider from context
+    const provider = ctx?.provider;
+
+    // BrowserOperator doesn't require API key
+    const requiresApiKey = provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
       return {
         success: false,
         markdownContent: null,
@@ -116,7 +122,7 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
       const extractionResult = await this.callExtractionLLM({
         systemPrompt,
         userPrompt,
-        apiKey,
+        apiKey: apiKey || '',  // Use empty string for BrowserOperator
         provider: ctx.provider,
         model: ctx.nanoModel,
       });

@@ -18,6 +18,7 @@ import { OpenAIProvider } from '../LLM/OpenAIProvider.js';
 import { LiteLLMProvider } from '../LLM/LiteLLMProvider.js';
 import { GroqProvider } from '../LLM/GroqProvider.js';
 import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
+import { BrowserOperatorProvider } from '../LLM/BrowserOperatorProvider.js';
 import { createLogger } from '../core/Logger.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
@@ -99,7 +100,7 @@ const {html} = Lit;
 export interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter';
+  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
 }
 
 // Add model options constant - these are the default OpenAI models
@@ -135,6 +136,11 @@ export const DEFAULT_PROVIDER_MODELS: Record<string, {main: string, mini?: strin
     main: 'anthropic/claude-sonnet-4',
     mini: 'google/gemini-2.5-flash',
     nano: 'google/gemini-2.5-flash-lite-preview-06-17'
+  },
+  browseroperator: {
+    main: 'main',
+    mini: 'mini',
+    nano: 'nano'
   }
 };
 
@@ -350,7 +356,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     return nanoModel || miniModel || mainModel;
   }
 
-  static getNanoModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' } {
+  static getNanoModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' } {
     const configManager = LLMConfigurationManager.getInstance();
     const modelName = AIChatPanel.getNanoModel();
     const provider = configManager.getProvider();
@@ -361,7 +367,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     };
   }
 
-  static getMiniModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' } {
+  static getMiniModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' } {
     const configManager = LLMConfigurationManager.getInstance();
     const modelName = AIChatPanel.getMiniModel();
     const provider = configManager.getProvider();
@@ -372,11 +378,11 @@ export class AIChatPanel extends UI.Panel.Panel {
     };
   }
 
-  static getProviderForModel(modelName: string): 'openai' | 'litellm' | 'groq' | 'openrouter' {
+  static getProviderForModel(modelName: string): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' {
     // Get model options lookup
     const allModelOptions = AIChatPanel.getModelOptions();
     const modelOption = allModelOptions.find(option => option.value === modelName);
-    const originalProvider = (modelOption?.type as 'openai' | 'litellm' | 'groq' | 'openrouter') || 'openai';
+    const originalProvider = (modelOption?.type as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator') || 'openai';
     
     // Check if the model's original provider is available in the registry
     if (LLMProviderRegistry.hasProvider(originalProvider)) {
@@ -386,15 +392,15 @@ export class AIChatPanel extends UI.Panel.Panel {
     // If the original provider isn't available, fall back to the currently selected provider
     const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     logger.debug(`Provider ${originalProvider} not available for model ${modelName}, falling back to current provider: ${currentProvider}`);
-    return currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter';
+    return currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
   }
 
   /**
    * Gets the currently selected provider from localStorage
    * @returns The currently selected provider
    */
-  static getCurrentProvider(): 'openai' | 'litellm' | 'groq' | 'openrouter' {
-    return (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter';
+  static getCurrentProvider(): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' {
+    return (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
   }
 
   /**
@@ -467,7 +473,7 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @param provider Optional provider to filter by
    * @returns Array of model options
    */
-  static getModelOptions(provider?: 'openai' | 'litellm' | 'groq' | 'openrouter'): ModelOption[] {
+  static getModelOptions(provider?: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator'): ModelOption[] {
     // Try to get from all_model_options first (comprehensive list)
     const allModelOptionsStr = localStorage.getItem('ai_chat_all_model_options');
     if (allModelOptionsStr) {
@@ -538,14 +544,16 @@ export class AIChatPanel extends UI.Panel.Panel {
     const existingLiteLLMModels = existingAllModels.filter((m: ModelOption) => m.type === 'litellm');
     const existingGroqModels = existingAllModels.filter((m: ModelOption) => m.type === 'groq');
     const existingOpenRouterModels = existingAllModels.filter((m: ModelOption) => m.type === 'openrouter');
-    
+    const existingBrowserOperatorModels = existingAllModels.filter((m: ModelOption) => m.type === 'browseroperator');
+
     // Update models based on what type of models we're adding
     // Always use DEFAULT_OPENAI_MODELS for OpenAI to ensure we have the latest hardcoded list
     let updatedOpenAIModels = DEFAULT_OPENAI_MODELS;
     let updatedLiteLLMModels = existingLiteLLMModels;
     let updatedGroqModels = existingGroqModels;
     let updatedOpenRouterModels = existingOpenRouterModels;
-    
+    let updatedBrowserOperatorModels = existingBrowserOperatorModels;
+
     // Replace models for the provider type we're updating
     if (providerModels.length > 0) {
       const firstModelType = providerModels[0].type;
@@ -557,6 +565,8 @@ export class AIChatPanel extends UI.Panel.Panel {
         updatedOpenRouterModels = providerModels;
       } else if (firstModelType === 'openai') {
         updatedOpenAIModels = providerModels;
+      } else if (firstModelType === 'browseroperator') {
+        updatedBrowserOperatorModels = providerModels;
       }
     }
     
@@ -565,7 +575,8 @@ export class AIChatPanel extends UI.Panel.Panel {
       ...updatedOpenAIModels,
       ...updatedLiteLLMModels,
       ...updatedGroqModels,
-      ...updatedOpenRouterModels
+      ...updatedOpenRouterModels,
+      ...updatedBrowserOperatorModels
     ];
     
     // Save the comprehensive list to localStorage
@@ -588,7 +599,7 @@ export class AIChatPanel extends UI.Panel.Panel {
       }
     } else if (selectedProvider === 'openrouter') {
       MODEL_OPTIONS = updatedOpenRouterModels;
-      
+
       // Add placeholder if no OpenRouter models available
       if (MODEL_OPTIONS.length === 0) {
         MODEL_OPTIONS.push({
@@ -597,10 +608,21 @@ export class AIChatPanel extends UI.Panel.Panel {
           type: 'openrouter' as const
         });
       }
+    } else if (selectedProvider === 'browseroperator') {
+      MODEL_OPTIONS = updatedBrowserOperatorModels;
+
+      // Add placeholder if no BrowserOperator models available
+      if (MODEL_OPTIONS.length === 0) {
+        MODEL_OPTIONS.push({
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
+          label: 'BrowserOperator: Models not loaded',
+          type: 'browseroperator' as const
+        });
+      }
     } else {
       // For LiteLLM provider, include custom models and fetched models
       MODEL_OPTIONS = updatedLiteLLMModels;
-      
+
       // Add placeholder if needed for LiteLLM when we have no models
       if (hadWildcard && MODEL_OPTIONS.length === 0) {
         MODEL_OPTIONS.push({
@@ -633,7 +655,7 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @param modelType Type of the model ('openai' or 'litellm')
    * @returns Updated model options
    */
-  static addCustomModelOption(modelName: string, modelType: 'openai' | 'litellm' | 'groq' | 'openrouter' = 'litellm'): ModelOption[] {
+  static addCustomModelOption(modelName: string, modelType: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' = 'litellm'): ModelOption[] {
     // Get existing custom models
     const savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
     
@@ -973,7 +995,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     
     const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     const providerDefaults = DEFAULT_PROVIDER_MODELS[currentProvider] || DEFAULT_PROVIDER_MODELS.openai;
-    const availableModels = AIChatPanel.getModelOptions(currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter');
+    const availableModels = AIChatPanel.getModelOptions(currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator');
     
     let allValid = true;
     
@@ -1463,24 +1485,24 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @returns true if at least one provider has valid credentials
    */
   #hasAnyProviderCredentials(): boolean {
-    
+
     const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    
+
     // Check all providers except LiteLLM (unless LiteLLM is selected)
-    const providers = ['openai', 'groq', 'openrouter'];
-    
+    const providers = ['openai', 'groq', 'openrouter', 'browseroperator'];
+
     // Only include LiteLLM if it's the selected provider
     if (selectedProvider === 'litellm') {
       providers.push('litellm');
     }
-    
+
     for (const provider of providers) {
       const validation = LLMClient.validateProviderCredentials(provider);
       if (validation.isValid) {
         return true;
       }
     }
-    
+
     return false;
   }
 
@@ -1523,6 +1545,9 @@ export class AIChatPanel extends UI.Panel.Panel {
             break;
           case 'openrouter':
             tempProvider = new OpenRouterProvider('');
+            break;
+          case 'browseroperator':
+            tempProvider = new BrowserOperatorProvider(null, '');
             break;
           default:
             logger.warn(`Unknown provider: ${provider}`);
@@ -2059,6 +2084,7 @@ export class AIChatPanel extends UI.Panel.Panel {
         isModelSelectorDisabled: this.#isProcessing,
         isInputDisabled: false,
         inputPlaceholder: this.#getInputPlaceholderText(),
+        currentProvider: localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai',
         // Add OAuth login state
         showOAuthLogin: (() => {
           if (BUILD_CONFIG.AUTOMATED_MODE) {

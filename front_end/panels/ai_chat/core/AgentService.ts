@@ -201,6 +201,14 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           });
         }
         break;
+      case 'browseroperator':
+        // BrowserOperator doesn't require apiKey
+        // But we pass it if available for optional authentication
+        providers.push({
+          provider: 'browseroperator' as const,
+          apiKey: apiKey || ''
+        });
+        break;
     }
 
     if (providers.length === 0) {
@@ -238,6 +246,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           providerName = 'Groq';
         } else if (provider === 'openrouter') {
           providerName = 'OpenRouter';
+        } else if (provider === 'browseroperator') {
+          providerName = 'BrowserOperator';
         }
         throw new Error(`${providerName} API key is required for this configuration`);
       }
@@ -787,14 +797,19 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       if (selectedProvider === 'openrouter') {
         return true;
       }
-      
+
+      // BrowserOperator provider doesn't require an API key (endpoint is hardcoded)
+      if (selectedProvider === 'browseroperator') {
+        return false;
+      }
+
       // For LiteLLM, only require API key if no endpoint is configured
       if (selectedProvider === 'litellm') {
         const hasLiteLLMEndpoint = Boolean(localStorage.getItem('ai_chat_litellm_endpoint'));
         // If we have an endpoint, API key is optional
         return !hasLiteLLMEndpoint;
       }
-      
+
       // Default to requiring API key for any unknown provider
       return true;
     } catch (error) {

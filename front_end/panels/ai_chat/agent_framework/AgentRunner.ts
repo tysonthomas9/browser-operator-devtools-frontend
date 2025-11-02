@@ -666,6 +666,7 @@ export class AgentRunner {
           systemPrompt: currentSystemPrompt,
           tools: toolSchemas,
           temperature: temperature ?? 0,
+          agentName: agentName,  // Pass agent identity for provider-specific routing
         });
 
         // Complete the generation observation

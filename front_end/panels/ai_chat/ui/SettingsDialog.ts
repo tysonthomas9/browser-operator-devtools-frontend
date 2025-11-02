@@ -21,7 +21,7 @@ const logger = createLogger('SettingsDialog');
 interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter';
+  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
 }
 
 // Local storage keys
@@ -113,6 +113,30 @@ const UIStrings = {
    *@description Fetch OpenRouter models button text
    */
   fetchOpenRouterModelsButton: 'Fetch OpenRouter Models',
+  /**
+   *@description BrowserOperator provider option
+   */
+  browseroperatorProvider: 'BrowserOperator',
+  /**
+   *@description BrowserOperator endpoint label
+   */
+  browseroperatorEndpointLabel: 'BrowserOperator Endpoint',
+  /**
+   *@description BrowserOperator endpoint hint
+   */
+  browseroperatorEndpointHint: 'URL for your BrowserOperator API server (e.g., http://localhost:8080/v1)',
+  /**
+   *@description BrowserOperator agent label
+   */
+  browseroperatorAgentLabel: 'Default Agent',
+  /**
+   *@description BrowserOperator agent hint
+   */
+  browseroperatorAgentHint: 'Agent for routing: deep-research (Cerebras), web-agent (OpenAI), code-assist (Groq), chat, fast, default',
+  /**
+   *@description Test BrowserOperator connection button
+   */
+  testBrowseroperatorConnection: 'Test Connection',
   /**
    *@description OpenAI API Key label
    */
@@ -502,6 +526,8 @@ export class SettingsDialog {
   static #groqNanoModelSelect: any | null = null;
   static #openrouterMiniModelSelect: any | null = null;
   static #openrouterNanoModelSelect: any | null = null;
+  static #browseroperatorMiniModelSelect: any | null = null;
+  static #browseroperatorNanoModelSelect: any | null = null;
   
   static async show(
     selectedModel: string,
@@ -572,7 +598,7 @@ export class SettingsDialog {
     providerSection.appendChild(providerHint);
     
     // Use the stored provider from localStorage
-    const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter';
+    const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
     
     // Create provider selection dropdown
     const providerSelect = document.createElement('select');
@@ -604,6 +630,12 @@ export class SettingsDialog {
     openrouterOption.selected = currentProvider === 'openrouter';
     providerSelect.appendChild(openrouterOption);
 
+    const browseroperatorOption = document.createElement('option');
+    browseroperatorOption.value = 'browseroperator';
+    browseroperatorOption.textContent = i18nString(UIStrings.browseroperatorProvider);
+    browseroperatorOption.selected = currentProvider === 'browseroperator';
+    providerSelect.appendChild(browseroperatorOption);
+
     // Ensure the select's value reflects the computed currentProvider
     providerSelect.value = currentProvider;
     
@@ -627,7 +659,12 @@ export class SettingsDialog {
     openrouterContent.className = 'provider-content openrouter-content';
     openrouterContent.style.display = currentProvider === 'openrouter' ? 'block' : 'none';
     contentDiv.appendChild(openrouterContent);
-    
+
+    const browseroperatorContent = document.createElement('div');
+    browseroperatorContent.className = 'provider-content browseroperator-content';
+    browseroperatorContent.style.display = currentProvider === 'browseroperator' ? 'block' : 'none';
+    contentDiv.appendChild(browseroperatorContent);
+
     // Event listener for provider change
     providerSelect.addEventListener('change', async () => {
       const selectedProvider = providerSelect.value;
@@ -637,7 +674,7 @@ export class SettingsDialog {
       litellmContent.style.display = selectedProvider === 'litellm' ? 'block' : 'none';
       groqContent.style.display = selectedProvider === 'groq' ? 'block' : 'none';
       openrouterContent.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
-      
+      browseroperatorContent.style.display = selectedProvider === 'browseroperator' ? 'block' : 'none';
 
       // If switching to LiteLLM, fetch the latest models if endpoint is configured
       if (selectedProvider === 'litellm') {
@@ -1983,9 +2020,9 @@ export class SettingsDialog {
     
     // Generic helper function to get valid model for provider
     function getValidModelForProvider(
-      currentModel: string, 
-      providerModels: ModelOption[], 
-      provider: 'openai' | 'litellm' | 'groq' | 'openrouter',
+      currentModel: string,
+      providerModels: ModelOption[],
+      provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator',
       modelType: 'mini' | 'nano'
     ): string {
       // Check if current model is valid for this provider
@@ -2539,7 +2576,71 @@ export class SettingsDialog {
     
     // Initialize OpenRouter model selectors
     await updateOpenRouterModelSelectors();
-    
+
+    // Setup BrowserOperator content
+    const browseroperatorSettingsSection = document.createElement('div');
+    browseroperatorSettingsSection.className = 'settings-section';
+    browseroperatorContent.appendChild(browseroperatorSettingsSection);
+
+    // Info display - endpoint and agent routing are automatic
+    const browseroperatorInfoLabel = document.createElement('div');
+    browseroperatorInfoLabel.className = 'settings-label';
+    browseroperatorInfoLabel.textContent = 'Configuration';
+    browseroperatorSettingsSection.appendChild(browseroperatorInfoLabel);
+
+    const browseroperatorInfoText = document.createElement('div');
+    browseroperatorInfoText.className = 'settings-hint';
+    browseroperatorInfoText.innerHTML = `
+      <strong>Endpoint:</strong> http://localhost:8080/v1 (hardcoded)<br>
+      <strong>Agent Routing:</strong> Automatic based on calling agent (e.g., research_agent, action_agent)
+    `;
+    browseroperatorInfoText.style.marginBottom = '16px';
+    browseroperatorSettingsSection.appendChild(browseroperatorInfoText);
+
+    // Model selection section
+    const browseroperatorModelSection = document.createElement('div');
+    browseroperatorModelSection.className = 'settings-section model-selection-section';
+    browseroperatorContent.appendChild(browseroperatorModelSection);
+
+    // Static model list for BrowserOperator
+    const browseroperatorModels: ModelOption[] = [
+      { value: 'main', label: 'Auto', type: 'browseroperator' },
+      { value: 'mini', label: 'Auto', type: 'browseroperator' },
+      { value: 'nano', label: 'Auto', type: 'browseroperator' }
+    ];
+
+    // Add models to global model options
+    updateModelOptions(browseroperatorModels, false);
+
+    const validMiniModel = getValidModelForProvider(miniModel, browseroperatorModels, 'browseroperator', 'mini');
+    const validNanoModel = getValidModelForProvider(nanoModel, browseroperatorModels, 'browseroperator', 'nano');
+
+    SettingsDialog.#browseroperatorMiniModelSelect = createModelSelector(
+      browseroperatorModelSection,
+      i18nString(UIStrings.miniModelLabel),
+      i18nString(UIStrings.miniModelDescription),
+      'browseroperator-mini-model-select',
+      browseroperatorModels,
+      validMiniModel,
+      i18nString(UIStrings.defaultMiniOption),
+      undefined
+    );
+    // Disable the selector since BrowserOperator uses automatic routing
+    SettingsDialog.#browseroperatorMiniModelSelect.disabled = true;
+
+    SettingsDialog.#browseroperatorNanoModelSelect = createModelSelector(
+      browseroperatorModelSection,
+      i18nString(UIStrings.nanoModelLabel),
+      i18nString(UIStrings.nanoModelDescription),
+      'browseroperator-nano-model-select',
+      browseroperatorModels,
+      validNanoModel,
+      i18nString(UIStrings.defaultNanoOption),
+      undefined
+    );
+    // Disable the selector since BrowserOperator uses automatic routing
+    SettingsDialog.#browseroperatorNanoModelSelect.disabled = true;
+
     // Add Vector DB configuration section
     const vectorDBSection = document.createElement('div');
     vectorDBSection.className = 'settings-section vector-db-section';
@@ -3292,7 +3393,9 @@ export class SettingsDialog {
       } else {
         localStorage.removeItem(OPENROUTER_API_KEY_STORAGE_KEY);
       }
-      
+
+      // BrowserOperator settings are hardcoded - no need to save endpoint or agent
+
       // Determine which mini/nano model selectors to use based on current provider
       let miniModelValue = '';
       let nanoModelValue = '';
@@ -3328,6 +3431,14 @@ export class SettingsDialog {
         }
         if (SettingsDialog.#openrouterNanoModelSelect) {
           nanoModelValue = SettingsDialog.#openrouterNanoModelSelect.value;
+        }
+      } else if (selectedProvider === 'browseroperator') {
+        // Get values from BrowserOperator selectors
+        if (SettingsDialog.#browseroperatorMiniModelSelect) {
+          miniModelValue = SettingsDialog.#browseroperatorMiniModelSelect.value;
+        }
+        if (SettingsDialog.#browseroperatorNanoModelSelect) {
+          nanoModelValue = SettingsDialog.#browseroperatorNanoModelSelect.value;
         }
       }
       

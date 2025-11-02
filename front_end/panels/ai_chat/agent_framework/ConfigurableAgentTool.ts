@@ -428,8 +428,13 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     const tracingContext = getCurrentTracingContext();
     const callCtx = (_ctx || {}) as CallCtx;
     const apiKey = callCtx.apiKey;
+    const provider = callCtx.provider;
 
-    if (!apiKey) {
+    // Check if this provider requires an API key
+    // BrowserOperator doesn't require an API key (endpoint is hardcoded)
+    const requiresApiKey = provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
       const errorResult = this.createErrorResult(`API key not configured for ${this.name}`, [], 'error');
       // Create minimal error session
       const errorSession: AgentSession = {
@@ -493,7 +498,7 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     // Prepare initial messages
     const internalMessages = this.prepareInitialMessages(args);
     const runnerConfig: AgentRunnerConfig = {
-      apiKey,
+      apiKey: apiKey || '',  // Use empty string if undefined for BrowserOperator
       modelName,
       systemPrompt,
       tools,

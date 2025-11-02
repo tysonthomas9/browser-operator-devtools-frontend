@@ -82,7 +82,7 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
 
   async execute(args: StreamlinedSchemaExtractionArgs, ctx?: LLMContext): Promise<StreamlinedExtractionResult> {
     try {
-      const context = await this.setupExecution(args);
+      const context = await this.setupExecution(args, ctx);
       if (context.success !== true) {
         return context as StreamlinedExtractionResult;
       }
@@ -105,12 +105,18 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
     }
   }
 
-  private async setupExecution(args: StreamlinedSchemaExtractionArgs): Promise<ExecutionContext | StreamlinedExtractionResult> {
+  private async setupExecution(args: StreamlinedSchemaExtractionArgs, ctx?: LLMContext): Promise<ExecutionContext | StreamlinedExtractionResult> {
     const { schema, instruction } = args;
     const agentService = AgentService.getInstance();
     const apiKey = agentService.getApiKey();
 
-    if (!apiKey) {
+    // Get provider from context
+    const provider = ctx?.provider;
+
+    // BrowserOperator doesn't require API key
+    const requiresApiKey = provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
       return {
         success: false,
         data: null,
@@ -141,7 +147,7 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
       success: true,
       schema,
       instruction,
-      apiKey,
+      apiKey: apiKey || '',  // Use empty string for BrowserOperator
       urlMappings: accessibilityData.urlMappings,
       treeText: accessibilityData.treeText
     };
@@ -157,10 +163,10 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
 
   private async performExtraction(context: ExecutionContext, ctx?: LLMContext): Promise<any> {
     return await this.extractWithJsonRetry(
-      context.schema, 
-      context.treeText, 
-      context.instruction, 
-      context.apiKey,
+      context.schema,
+      context.treeText,
+      context.instruction,
+      context.apiKey || '',  // Use empty string for BrowserOperator
       this.MAX_JSON_RETRIES,
       ctx
     );
@@ -191,7 +197,7 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
         context.instruction,
         extractionResult,
         unresolvedNodeIds,
-        context.apiKey,
+        context.apiKey || '',  // Use empty string for BrowserOperator
         attempt,
         ctx
       );

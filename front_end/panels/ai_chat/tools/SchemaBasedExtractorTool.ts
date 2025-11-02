@@ -77,12 +77,18 @@ Schema Examples:
 
   async execute(args: SchemaExtractionArgs, ctx?: LLMContext): Promise<SchemaExtractionResult> {
     logger.debug('Executing with args', args);
-    
+
     const { schema, instruction, reasoning } = args;
     const agentService = AgentService.getInstance();
     const apiKey = agentService.getApiKey();
 
-    if (!apiKey) {
+    // Get provider from context
+    const provider = ctx?.provider;
+
+    // BrowserOperator doesn't require API key
+    const requiresApiKey = provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
       return {
         success: false,
         data: null,
@@ -173,7 +179,7 @@ Schema Examples:
         instruction: instruction || 'Extract data according to schema',
         domContent: treeText,
         schema: transformedSchema,
-        apiKey,
+        apiKey: apiKey || '',  // Use empty string for BrowserOperator
         ctx,
       });
 
@@ -185,13 +191,21 @@ Schema Examples:
           data: null,
         };
       }
+      // Check if extraction returned a parsing error
+      if (initialExtraction.__parsing_failed__) {
+        return {
+          success: false,
+          error: initialExtraction.__error__ || 'JSON parsing failed during extraction',
+          data: null,
+        };
+      }
 
       // 6. Refine Call
       const refinedData = await this.callRefinementLLM({
         instruction: instruction || 'Refine the extracted data based on the original request',
         schema: transformedSchema, // Use the same transformed schema
         initialData: initialExtraction,
-        apiKey,
+        apiKey: apiKey || '',  // Use empty string for BrowserOperator
         ctx,
       });
 
@@ -203,11 +217,19 @@ Schema Examples:
           data: null,
         };
       }
+      // Check if refinement returned a parsing error
+      if (refinedData.__parsing_failed__) {
+        return {
+          success: false,
+          error: refinedData.__error__ || 'JSON parsing failed during refinement',
+          data: null,
+        };
+      }
 
       // 7. LLM + Tool Call for URL Resolution - New approach
       const finalData = await this.resolveUrlsWithLLM({
         data: refinedData,
-        apiKey,
+        apiKey: apiKey || '',  // Use empty string for BrowserOperator
         schema, // Original schema to understand what fields are URLs
       });
 
@@ -229,7 +251,7 @@ Schema Examples:
         extractedData: finalData, // Use the final data with URLs for assessment
         domContent: treeText, // Pass the DOM content for context
         schema, // Pass the schema to understand what was requested
-        apiKey,
+        apiKey: apiKey || '',  // Use empty string for BrowserOperator
         ctx,
       });
 
@@ -487,8 +509,16 @@ Only output the JSON object with real data from the accessibility tree.`;
         try {
           return LLMResponseParser.parseJSONWithFallbacks(response);
         } catch (e) {
+          const errorMsg = e instanceof Error ? e.message : String(e);
           logger.error('Failed to parse extraction JSON:', e);
-          return null;
+          logger.warn('Raw LLM response:', response.substring(0, 500));
+          // Return error object with embedded raw response
+          return {
+            __parsing_failed__: true,
+            __error__: `JSON parsing failed during extraction: ${errorMsg}\n\nRaw LLM Response:\n${response}`,
+            __raw_response__: response,
+            __step__: 'extraction'
+          };
         }
       }
     } catch (error) {
@@ -579,8 +609,16 @@ Do not add any conversational text or explanations or thinking tags.`;
         try {
           return LLMResponseParser.parseJSONWithFallbacks(response);
         } catch (e) {
+          const errorMsg = e instanceof Error ? e.message : String(e);
           logger.error('Failed to parse refinement JSON:', e);
-          return null;
+          logger.warn('Raw LLM response:', response.substring(0, 500));
+          // Return error object with embedded raw response
+          return {
+            __parsing_failed__: true,
+            __error__: `JSON parsing failed during refinement: ${errorMsg}\n\nRaw LLM Response:\n${response}`,
+            __raw_response__: response,
+            __step__: 'refinement'
+          };
         }
       }
     } catch (error) {

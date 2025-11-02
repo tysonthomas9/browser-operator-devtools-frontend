@@ -24,6 +24,7 @@ export class InputBar extends HTMLElement {
   #modelOptions?: Array<{value: string, label: string}>;
   #selectedModel?: string;
   #modelSelectorDisabled = false;
+  #currentProvider?: string;
   #selectedPromptType?: string|null;
   #agentButtonsHandler: (event: Event) => void = () => {};
   #centered = false;
@@ -35,6 +36,7 @@ export class InputBar extends HTMLElement {
   set modelOptions(v: Array<{value: string, label: string}>|undefined) { this.#modelOptions = v; this.#render(); }
   set selectedModel(v: string|undefined) { this.#selectedModel = v; this.#render(); }
   set modelSelectorDisabled(v: boolean) { this.#modelSelectorDisabled = !!v; this.#render(); }
+  set currentProvider(v: string|undefined) { this.#currentProvider = v; this.#render(); }
   set selectedPromptType(v: string|null|undefined) { this.#selectedPromptType = v ?? null; this.#render(); }
   set agentButtonsHandler(fn: (event: Event) => void) { this.#agentButtonsHandler = fn || (() => {}); this.#render(); }
   set centered(v: boolean) { this.#centered = !!v; this.#render(); }
@@ -106,7 +108,12 @@ export class InputBar extends HTMLElement {
 
     const agentButtons = BaseOrchestratorAgent.renderAgentTypeButtons(this.#selectedPromptType ?? null, this.#agentButtonsHandler, this.#centered);
 
-    const modelSelector = (this.#modelOptions && this.#modelOptions.length && this.#selectedModel) ? html`
+    const modelSelector = (
+      this.#currentProvider !== 'browseroperator' &&
+      this.#modelOptions &&
+      this.#modelOptions.length &&
+      this.#selectedModel
+    ) ? html`
       <ai-model-selector
         .options=${this.#modelOptions}
         .selected=${this.#selectedModel}

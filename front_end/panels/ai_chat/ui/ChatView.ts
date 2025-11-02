@@ -67,6 +67,8 @@ export interface Props {
   // Add OAuth login related properties
   showOAuthLogin?: boolean;
   onOAuthLogin?: () => void;
+  // Add current provider for model selector behavior
+  currentProvider?: string;
 }
 
 @customElement('devtools-chat-view')
@@ -97,6 +99,7 @@ export class ChatView extends HTMLElement {
   #onModelSelectorFocus?: () => void;
   #selectedAgentType?: string | null;
   #isModelSelectorDisabled = false;
+  #currentProvider?: string;
   // URL change listener
   #onInspectedURLChangedBound?: (event: Event) => void;
   #lastSuggestionHost: string | null = null;
@@ -285,6 +288,7 @@ export class ChatView extends HTMLElement {
     this.#onModelSelectorFocus = data.onModelSelectorFocus;
     this.#selectedAgentType = data.selectedAgentType;
     this.#isModelSelectorDisabled = data.isModelSelectorDisabled || false;
+    this.#currentProvider = data.currentProvider;
 
     // Store input disabled state and placeholder
     this.#isInputDisabled = data.isInputDisabled || false;
@@ -975,7 +979,13 @@ export class ChatView extends HTMLElement {
 
   // Render model selector via dedicated component
   #renderModelSelectorInline() {
-    if (!this.#modelOptions || !this.#modelOptions.length || !this.#selectedModel || !this.#onModelChanged) {
+    if (
+      this.#currentProvider === 'browseroperator' ||
+      !this.#modelOptions ||
+      !this.#modelOptions.length ||
+      !this.#selectedModel ||
+      !this.#onModelChanged
+    ) {
       return '';
     }
     return html`
@@ -1010,6 +1020,7 @@ export class ChatView extends HTMLElement {
         .modelOptions=${this.#modelOptions}
         .selectedModel=${this.#selectedModel}
         .modelSelectorDisabled=${this.#isModelSelectorDisabled}
+        .currentProvider=${this.#currentProvider}
         .selectedPromptType=${this.#selectedPromptType}
         .agentButtonsHandler=${this.#handlePromptButtonClickBound}
         .centered=${centered}

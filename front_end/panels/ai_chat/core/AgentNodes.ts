@@ -217,6 +217,9 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
           availableTools: tools.map(t => t.name)
         });
         
+        // Resolve agent name for provider-specific routing
+        const agentName = agentDescriptor?.name || state.selectedAgentType || 'default';
+
         // Execute LLM call with retry logic
         const retryResult = await errorHandler.executeWithRetry(
           async () => {
@@ -235,6 +238,7 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
                 }
               })),
               temperature: this.temperature,
+              agentName: agentName,
             });
             
             // Parse the response
@@ -1014,7 +1018,8 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         isError,
         toolCallId, // Link back to the tool call for OpenAI format
         ...(isError && { error: resultText }),
-        uiLane: isAgentTool ? 'agent' as const : 'chat',
+        // On errors, surface the tool result in the main chat lane so users see it
+        uiLane: (isAgentTool && !isError) ? 'agent' as const : 'chat',
       };
 
       logger.debug('ToolExecutorNode: Adding tool result message with toolCallId:', { toolCallId, toolResultMessage });

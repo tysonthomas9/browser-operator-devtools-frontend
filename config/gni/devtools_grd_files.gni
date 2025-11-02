@@ -688,6 +688,7 @@ grd_files_bundled_sources = [
   "front_end/panels/ai_chat/LLM/LiteLLMProvider.js",
   "front_end/panels/ai_chat/LLM/GroqProvider.js",
   "front_end/panels/ai_chat/LLM/OpenRouterProvider.js",
+  "front_end/panels/ai_chat/LLM/BrowserOperatorProvider.js",
   "front_end/panels/ai_chat/LLM/LLMClient.js",
   "front_end/panels/ai_chat/LLM/MessageSanitizer.js",
   "front_end/panels/ai_chat/tools/Tools.js",

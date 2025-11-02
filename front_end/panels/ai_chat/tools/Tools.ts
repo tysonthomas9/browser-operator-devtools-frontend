@@ -2910,7 +2910,10 @@ Important guidelines:
       return { error: 'Missing LLM context (provider/model) for ObjectiveDrivenActionTool' };
     }
 
-    if (!apiKey) {return { error: 'API key not configured.' };}
+    // BrowserOperator doesn't require API key
+    const requiresApiKey = providerForAction !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {return { error: 'API key not configured.' };}
     if (typeof objective !== 'string' || objective.trim() === '') {
       return { error: 'Objective must be a non-empty string' };
     }
