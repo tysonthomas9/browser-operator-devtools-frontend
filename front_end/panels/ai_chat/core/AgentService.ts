@@ -23,6 +23,7 @@ import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { BUILD_CONFIG } from './BuildConfig.js';
+import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -36,6 +37,7 @@ export enum Events {
   AGENT_TOOL_STARTED = 'agent-tool-started',
   AGENT_TOOL_COMPLETED = 'agent-tool-completed',
   AGENT_SESSION_UPDATED = 'agent-session-updated',
+  AGENT_SESSION_COMPLETED = 'agent-session-completed',
   CHILD_AGENT_STARTED = 'child-agent-started',
 }
 
@@ -48,6 +50,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   [Events.AGENT_TOOL_STARTED]: { session: AgentSession, toolCall: AgentMessage },
   [Events.AGENT_TOOL_COMPLETED]: { session: AgentSession, toolResult: AgentMessage },
   [Events.AGENT_SESSION_UPDATED]: AgentSession,
+  [Events.AGENT_SESSION_COMPLETED]: AgentSession,
   [Events.CHILD_AGENT_STARTED]: { parentSession: AgentSession, childAgentName: string, childSessionId: string },
 }> {
   static instance: AgentService;
@@ -120,9 +123,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     
     // Initialize AgentRunner event system
     AgentRunner.initializeEventBus();
-    
+
     // Subscribe to AgentRunner events
     AgentRunnerEventBus.getInstance().addEventListener('agent-progress', this.#handleAgentProgress.bind(this));
+
+    // Initialize visual indicator system
+    VisualIndicatorManager.getInstance().initialize();
 
     // Subscribe to configuration changes
     this.#configManager.addChangeListener(this.#handleConfigurationChange.bind(this));
@@ -855,6 +861,39 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           if (parent) {
             this.#upsertAgentSessionInMessages(parent);
           }
+        }
+        break;
+      case 'session_completed':
+        // Get the completed session from the event data or active sessions
+        const completedSession = progressEvent.data?.session ||
+                                this.#activeAgentSessions.get(progressEvent.sessionId);
+
+        if (completedSession) {
+          logger.info('[AgentService] Session completed:', {
+            sessionId: progressEvent.sessionId,
+            status: completedSession.status,
+            terminationReason: completedSession.terminationReason
+          });
+
+          // Update the session in our tracking with the completed state
+          this.#activeAgentSessions.set(progressEvent.sessionId, completedSession);
+
+          // Upsert the completed session to messages (shows final_answer in transcript)
+          this.#upsertAgentSessionInMessages(completedSession);
+
+          // Dispatch completion event for UI components
+          this.dispatchEventToListeners(Events.AGENT_SESSION_COMPLETED, completedSession);
+
+          // Also dispatch session updated for components listening to that
+          this.dispatchEventToListeners(Events.AGENT_SESSION_UPDATED, completedSession);
+
+          // Trigger messages changed to update the chat transcript
+          this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+
+          // Clean up after a short delay (5 seconds) to allow UI to finish rendering
+          this.#cleanupCompletedSession(progressEvent.sessionId);
+        } else {
+          logger.warn('[AgentService] Session completed but session not found:', progressEvent.sessionId);
         }
         break;
     }

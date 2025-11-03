@@ -15,6 +15,7 @@ import { AgentErrorHandler } from '../core/AgentErrorHandler.js';
 import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';
 import { callLLMWithTracing } from '../tools/LLMTracingWrapper.js';
 import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
+import { FileStorageManager } from '../tools/FileStorageManager.js';
 
 const logger = createLogger('AgentRunner');
 
@@ -555,6 +556,24 @@ export class AgentRunner {
       // Check if execution has been aborted
       if (abortSignal?.aborted) {
         logger.info(`${agentName} execution aborted at iteration ${iteration + 1}/${maxIterations}`);
+
+        // Complete session with abort
+        currentSession.status = 'error';
+        currentSession.endTime = new Date();
+        currentSession.terminationReason = 'error';
+
+        // Emit session completed event
+        if (AgentRunner.eventBus) {
+          AgentRunner.eventBus.emitProgress({
+            type: 'session_completed',
+            sessionId: currentSession.sessionId,
+            parentSessionId: currentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: currentSession, reason: 'aborted' }
+          });
+        }
+
         const abortResult = createErrorResult('Execution was cancelled', messages, 'error');
         return { ...abortResult, agentSession: currentSession };
       }
@@ -571,9 +590,25 @@ export class AgentRunner {
 - You are currently on step ${iteration + 1} of ${maxIterations} maximum steps.
 - Focus on making meaningful progress with each step.`;
 
-      // Enhance system prompt with iteration info and page context
+      // Inject todos into system prompt if they exist
+      let todosContext = '';
+      try {
+        const fileManager = FileStorageManager.getInstance();
+        const todosFile = await fileManager.readFile('todos.md');
+
+        if (todosFile?.content) {
+          todosContext = `\n\n## CURRENT TODO LIST\n${todosFile.content}\n\nUpdate the todo list using the 'update_todo' tool as you complete tasks. Mark completed items with [x].`;
+        } else {
+          todosContext = `\n\n## TODO LIST\nNo todo list exists yet. If this is a multi-step task, create a todo list using the 'update_todo' tool to track your progress.`;
+        }
+      } catch (error) {
+        logger.debug('Failed to read todos, skipping injection:', error);
+        // Continue without todos if reading fails
+      }
+
+      // Enhance system prompt with iteration info, todos, and page context
       // This includes updating the accessibility tree inside enhancePromptWithPageContext
-      const currentSystemPrompt = await enhancePromptWithPageContext(systemPrompt + iterationInfo);
+      const currentSystemPrompt = await enhancePromptWithPageContext(systemPrompt + iterationInfo + todosContext);
 
       let llmResponse: LLMResponse;
       let generationId: string | undefined; // Declare in iteration scope for tool call access
@@ -753,6 +788,18 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
+        // Emit session completed event
+        if (AgentRunner.eventBus) {
+          AgentRunner.eventBus.emitProgress({
+            type: 'session_completed',
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: agentSession, reason: 'error' }
+          });
+        }
+
         // Use error hook with structured summary
         const result = createErrorResult(errorMsg, messages, 'error');
         result.summary = {
@@ -908,6 +955,18 @@ export class AgentRunner {
               agentSession.status = 'completed';
               agentSession.endTime = new Date();
               agentSession.terminationReason = 'handed_off';
+
+              // Emit session completed event
+              if (AgentRunner.eventBus) {
+                AgentRunner.eventBus.emitProgress({
+                  type: 'session_completed',
+                  sessionId: agentSession.sessionId,
+                  parentSessionId: agentSession.parentSessionId,
+                  agentName,
+                  timestamp: new Date(),
+                  data: { session: agentSession, reason: 'handed_off' }
+                });
+              }
 
               return { ...handoffResult, agentSession };
 
@@ -1195,6 +1254,18 @@ export class AgentRunner {
           agentSession.endTime = new Date();
           agentSession.terminationReason = 'final_answer';
 
+          // Emit session completed event
+          if (AgentRunner.eventBus) {
+            AgentRunner.eventBus.emitProgress({
+              type: 'session_completed',
+              sessionId: agentSession.sessionId,
+              parentSessionId: agentSession.parentSessionId,
+              agentName,
+              timestamp: new Date(),
+              data: { session: agentSession, reason: 'final_answer' }
+            });
+          }
+
           // Exit loop and return success with structured summary
           const result = createSuccessResult(answer, messages, 'final_answer');
           result.summary = {
@@ -1237,6 +1308,18 @@ export class AgentRunner {
         agentSession.status = 'error';
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
+
+        // Emit session completed event
+        if (AgentRunner.eventBus) {
+          AgentRunner.eventBus.emitProgress({
+            type: 'session_completed',
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: agentSession, reason: 'error' }
+          });
+        }
 
         // Use error hook with structured summary
         const result = createErrorResult(errorMsg, messages, 'error');
@@ -1286,6 +1369,18 @@ export class AgentRunner {
             agentSession.endTime = new Date();
             agentSession.terminationReason = 'handed_off';
 
+            // Emit session completed event
+            if (AgentRunner.eventBus) {
+              AgentRunner.eventBus.emitProgress({
+                type: 'session_completed',
+                sessionId: agentSession.sessionId,
+                parentSessionId: agentSession.parentSessionId,
+                agentName,
+                timestamp: new Date(),
+                data: { session: agentSession, reason: 'handed_off' }
+              });
+            }
+
             return { ...actualResult, agentSession }; // Return the result from the handoff target
         }
     }
@@ -1297,6 +1392,18 @@ export class AgentRunner {
     agentSession.status = 'error';
     agentSession.endTime = new Date();
     agentSession.terminationReason = 'max_iterations';
+
+    // Emit session completed event
+    if (AgentRunner.eventBus) {
+      AgentRunner.eventBus.emitProgress({
+        type: 'session_completed',
+        sessionId: agentSession.sessionId,
+        parentSessionId: agentSession.parentSessionId,
+        agentName,
+        timestamp: new Date(),
+        data: { session: agentSession, reason: 'max_iterations' }
+      });
+    }
 
     // Generate summary of agent progress instead of generic error message
     const progressSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'max_iterations', config.provider, config.getVisionCapability);

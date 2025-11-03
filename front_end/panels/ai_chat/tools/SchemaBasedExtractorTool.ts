@@ -15,6 +15,24 @@ import { NodeIDsToURLsTool, type Tool } from './Tools.js';
 
 const logger = createLogger('Tool:SchemaBasedExtractor');
 
+// Chunking interfaces
+interface ContentChunk {
+  id: number;
+  content: string;
+  tokenCount: number;
+  sectionInfo?: {
+    heading?: string;
+    level?: number;
+    startNodeId?: string;
+  };
+}
+
+interface ChunkExtractionResult {
+  chunkId: number;
+  data: any;
+  itemCount: number;
+}
+
 // Define the structure for the metadata LLM call's expected response
 interface ExtractionMetadata {
   progress: string;
@@ -36,6 +54,11 @@ export interface SchemaExtractionResult {
  * Tool for extracting structured data from DOM based on schema definitions
  */
 export class SchemaBasedExtractorTool implements Tool<SchemaExtractionArgs, SchemaExtractionResult> {
+  // Chunking configuration
+  private readonly CHUNK_TOKEN_LIMIT = 40000; // ~160k characters per chunk
+  private readonly CHARS_PER_TOKEN = 4; // Conservative estimate
+  private readonly TOKEN_LIMIT_FOR_CHUNKING = 65000; // Auto-chunk if tree exceeds this
+
   name = 'extract_data';
   description = `Extracts structured data from a web page's DOM using a user-provided JSON schema and natural language instruction.
   - The schema defines the exact structure and types of data to extract (e.g., text, numbers, URLs).
@@ -171,85 +194,151 @@ Schema Examples:
       logger.debug('Processed Accessibility Tree Text (length):', treeText.length);
       // logger.debug('[SchemaBasedExtractorTool] Tree Text:', treeText); // Uncomment for full tree text
 
-      // ---- Start Multi-step LLM Process ----
+      // Auto-detection: Check if we need to chunk
+      const estimatedTokens = this.estimateTokenCount(treeText);
+      logger.info(`Tree token count: ${estimatedTokens} (threshold: ${this.TOKEN_LIMIT_FOR_CHUNKING})`);
 
-      // 5. Initial Extract Call
-      logger.debug('Starting initial LLM extraction...');
-      const initialExtraction = await this.callExtractionLLM({
-        instruction: instruction || 'Extract data according to schema',
-        domContent: treeText,
-        schema: transformedSchema,
-        apiKey: apiKey || '',  // Use empty string for BrowserOperator
-        ctx,
-      });
+      let finalData: any;
 
-      logger.debug('Initial extraction result:', initialExtraction);
-      if (!initialExtraction) { // Check if initial extraction failed
-        return {
-          success: false,
-          error: 'Initial data extraction failed',
-          data: null,
-        };
+      if (estimatedTokens > this.TOKEN_LIMIT_FOR_CHUNKING) {
+        // ---- Chunked Extraction Flow ----
+        logger.info('Tree exceeds token limit, using chunked extraction');
+
+        // Create chunks (tries sections first, falls back to tokens)
+        const chunks = this.chunkBySections(treeText);
+        logger.info(`Created ${chunks.length} chunks`, chunks.map(c => ({
+          id: c.id,
+          tokens: c.tokenCount,
+          heading: c.sectionInfo?.heading
+        })));
+
+        // Extract from each chunk
+        const chunkResults: any[] = [];
+        for (const chunk of chunks) {
+          logger.info(`Processing chunk ${chunk.id + 1}/${chunks.length}...`);
+
+          try {
+            const extractedData = await this.extractFromChunk(
+              chunk,
+              transformedSchema,
+              instruction || 'Extract data according to schema',
+              apiKey || '',
+              ctx
+            );
+            chunkResults.push(extractedData);
+            logger.info(`Chunk ${chunk.id + 1} extraction complete`);
+          } catch (error) {
+            logger.error(`Error extracting from chunk ${chunk.id}:`, error);
+            // Continue with other chunks even if one fails
+          }
+        }
+
+        // Merge results using LLM
+        logger.info('Merging chunk results with LLM...');
+        const mergedData = await this.callMergeLLM({
+          chunkResults,
+          schema: transformedSchema,
+          instruction: instruction || 'Extract data according to schema',
+          apiKey: apiKey || '',
+          ctx
+        });
+
+        if (!mergedData) {
+          return {
+            success: false,
+            error: 'Failed to merge chunk results',
+            data: null
+          };
+        }
+
+        finalData = mergedData;
+        logger.info('Chunk merging complete');
+
+      } else {
+        // ---- Standard Single-Pass Extraction Flow ----
+        logger.info('Using standard single-pass extraction');
+
+        // 5. Initial Extract Call
+        logger.debug('Starting initial LLM extraction...');
+        const initialExtraction = await this.callExtractionLLM({
+          instruction: instruction || 'Extract data according to schema',
+          domContent: treeText,
+          schema: transformedSchema,
+          apiKey: apiKey || '',  // Use empty string for BrowserOperator
+          ctx,
+        });
+
+        logger.debug('Initial extraction result:', initialExtraction);
+        if (!initialExtraction) { // Check if initial extraction failed
+          return {
+            success: false,
+            error: 'Initial data extraction failed',
+            data: null,
+          };
+        }
+        // Check if extraction returned a parsing error
+        if (initialExtraction.__parsing_failed__) {
+          return {
+            success: false,
+            error: initialExtraction.__error__ || 'JSON parsing failed during extraction',
+            data: null,
+          };
+        }
+
+        // 6. Refine Call
+        const refinedData = await this.callRefinementLLM({
+          instruction: instruction || 'Refine the extracted data based on the original request',
+          schema: transformedSchema, // Use the same transformed schema
+          initialData: initialExtraction,
+          apiKey: apiKey || '',  // Use empty string for BrowserOperator
+          ctx,
+        });
+
+        logger.debug('Refinement result:', refinedData);
+        if (!refinedData) { // Check if refinement failed
+          return {
+            success: false,
+            error: 'Data refinement step failed',
+            data: null,
+          };
+        }
+        // Check if refinement returned a parsing error
+        if (refinedData.__parsing_failed__) {
+          return {
+            success: false,
+            error: refinedData.__error__ || 'JSON parsing failed during refinement',
+            data: null,
+          };
+        }
+
+        finalData = refinedData;
       }
-      // Check if extraction returned a parsing error
-      if (initialExtraction.__parsing_failed__) {
-        return {
-          success: false,
-          error: initialExtraction.__error__ || 'JSON parsing failed during extraction',
-          data: null,
-        };
-      }
 
-      // 6. Refine Call
-      const refinedData = await this.callRefinementLLM({
-        instruction: instruction || 'Refine the extracted data based on the original request',
-        schema: transformedSchema, // Use the same transformed schema
-        initialData: initialExtraction,
-        apiKey: apiKey || '',  // Use empty string for BrowserOperator
-        ctx,
-      });
-
-      logger.debug('Refinement result:', refinedData);
-      if (!refinedData) { // Check if refinement failed
-        return {
-          success: false,
-          error: 'Data refinement step failed',
-          data: null,
-        };
-      }
-      // Check if refinement returned a parsing error
-      if (refinedData.__parsing_failed__) {
-        return {
-          success: false,
-          error: refinedData.__error__ || 'JSON parsing failed during refinement',
-          data: null,
-        };
-      }
-
-      // 7. LLM + Tool Call for URL Resolution - New approach
-      const finalData = await this.resolveUrlsWithLLM({
-        data: refinedData,
+      // ---- URL Resolution (common for both flows) ----
+      logger.debug('Resolving URLs...');
+      const dataWithUrls = await this.resolveUrlsWithLLM({
+        data: finalData,
         apiKey: apiKey || '',  // Use empty string for BrowserOperator
         schema, // Original schema to understand what fields are URLs
       });
 
       logger.debug('Data after URL resolution:',
-        JSON.stringify(Array.isArray(finalData) ? finalData.slice(0, 2) : finalData, null, 2).substring(0, 500));
+        JSON.stringify(Array.isArray(dataWithUrls) ? dataWithUrls.slice(0, 2) : dataWithUrls, null, 2).substring(0, 500));
 
-      // 7a. Check if any URL fields still contain numeric node IDs
+      // Check if any URL fields still contain numeric node IDs
       let urlResolutionWarning: string | undefined;
-      const dataString = JSON.stringify(finalData);
+      const dataString = JSON.stringify(dataWithUrls);
       // Simple heuristic: if we have numbers where URLs are expected in common URL field names
       if (dataString.match(/"(url|link|href|website|webpage)"\s*:\s*\d+/i)) {
         urlResolutionWarning = 'Note: Some URL fields may contain unresolved node IDs instead of actual URLs.';
         logger.warn('Detected potential unresolved node IDs in URL fields');
       }
 
-      // 8. Metadata Call
+      // ---- Metadata Call (common for both flows) ----
       const metadata = await this.callMetadataLLM({
         instruction: instruction || 'Assess extraction completion',
-        extractedData: finalData, // Use the final data with URLs for assessment
-        domContent: treeText, // Pass the DOM content for context
+        extractedData: dataWithUrls, // Use the final data with URLs for assessment
+        domContent: treeText.substring(0, 3000), // Truncate for metadata call
         schema, // Pass the schema to understand what was requested
         apiKey: apiKey || '',  // Use empty string for BrowserOperator
         ctx,
@@ -257,22 +346,13 @@ Schema Examples:
 
       logger.debug('Metadata result:', metadata);
       if (!metadata) { // Check if metadata call failed
-        // Decide if this should be a hard failure or just return without metadata
         logger.warn('Metadata extraction step failed, proceeding without metadata.');
-        // If metadata is critical, return failure:
-        // return {
-        //   success: false,
-        //   error: 'Metadata extraction step failed',
-        //   data: null,
-        // };
       }
-
-      // ---- End Multi-step LLM Process ----
 
       // Prepare the result
       const result: SchemaExtractionResult = {
         success: true,
-        data: finalData,
+        data: dataWithUrls,
         metadata: metadata || undefined, // Include metadata if successful, otherwise undefined
       };
 
@@ -886,6 +966,315 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
     } catch (error) {
       logger.error('[SchemaBasedExtractorTool] Error in programmatic URL resolution:', error);
       return data; // Return original data on error
+    }
+  }
+
+  /**
+   * Estimates token count from text
+   */
+  private estimateTokenCount(text: string): number {
+    return Math.ceil(text.length / this.CHARS_PER_TOKEN);
+  }
+
+  /**
+   * Chunks content by detecting sections (headings in accessibility tree)
+   */
+  private chunkBySections(treeText: string): ContentChunk[] {
+    const chunks: ContentChunk[] = [];
+
+    // Split by heading patterns in accessibility tree
+    // Format: [nodeId] heading: Heading Text
+    const lines = treeText.split('\n');
+    const sectionStarts: Array<{ index: number, heading: string, nodeId: string, level: number }> = [];
+
+    // Find all headings
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Match patterns like: [123] heading: Some Heading Text
+      const headingMatch = line.match(/\[(\d+)\]\s+heading(?:\s+level (\d+))?:\s*(.+)/i);
+      if (headingMatch) {
+        const nodeId = headingMatch[1];
+        const level = headingMatch[2] ? parseInt(headingMatch[2]) : 2; // Default to level 2
+        const heading = headingMatch[3].trim();
+        sectionStarts.push({ index: i, heading, nodeId, level });
+      }
+    }
+
+    logger.debug(`Found ${sectionStarts.length} section headings`);
+
+    // If no headings found, fall back to token-based chunking
+    if (sectionStarts.length === 0) {
+      logger.warn('No section headings found, falling back to token-based chunking');
+      return this.chunkByTokens(treeText);
+    }
+
+    // Create chunks from sections
+    let chunkId = 0;
+    let currentChunkLines: string[] = [];
+    let currentChunkStart = 0;
+
+    for (let i = 0; i < sectionStarts.length; i++) {
+      const section = sectionStarts[i];
+      const nextSection = sectionStarts[i + 1];
+
+      // Extract lines for this section
+      const sectionEnd = nextSection ? nextSection.index : lines.length;
+      const sectionLines = lines.slice(section.index, sectionEnd);
+
+      // Check if adding this section would exceed limit
+      const combinedLines = [...currentChunkLines, ...sectionLines];
+      const combinedText = combinedLines.join('\n');
+      const combinedTokens = this.estimateTokenCount(combinedText);
+
+      if (combinedTokens > this.CHUNK_TOKEN_LIMIT && currentChunkLines.length > 0) {
+        // Create chunk from accumulated content
+        const chunkText = currentChunkLines.join('\n');
+        chunks.push({
+          id: chunkId++,
+          content: chunkText,
+          tokenCount: this.estimateTokenCount(chunkText),
+          sectionInfo: {
+            heading: sectionStarts[currentChunkStart]?.heading,
+            level: sectionStarts[currentChunkStart]?.level,
+            startNodeId: sectionStarts[currentChunkStart]?.nodeId
+          }
+        });
+
+        // Start new chunk with current section
+        currentChunkLines = sectionLines;
+        currentChunkStart = i;
+      } else {
+        // Add section to current chunk
+        currentChunkLines.push(...sectionLines);
+      }
+    }
+
+    // Add final chunk if there's content
+    if (currentChunkLines.length > 0) {
+      const chunkText = currentChunkLines.join('\n');
+      chunks.push({
+        id: chunkId++,
+        content: chunkText,
+        tokenCount: this.estimateTokenCount(chunkText),
+        sectionInfo: {
+          heading: sectionStarts[currentChunkStart]?.heading,
+          level: sectionStarts[currentChunkStart]?.level,
+          startNodeId: sectionStarts[currentChunkStart]?.nodeId
+        }
+      });
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Chunks content by token count (fallback when no sections detected)
+   */
+  private chunkByTokens(treeText: string): ContentChunk[] {
+    const chunks: ContentChunk[] = [];
+    const lines = treeText.split('\n');
+
+    let chunkId = 0;
+    let currentChunkLines: string[] = [];
+    let currentTokens = 0;
+
+    for (const line of lines) {
+      const lineTokens = this.estimateTokenCount(line);
+
+      if (currentTokens + lineTokens > this.CHUNK_TOKEN_LIMIT && currentChunkLines.length > 0) {
+        // Create chunk
+        const chunkText = currentChunkLines.join('\n');
+        chunks.push({
+          id: chunkId++,
+          content: chunkText,
+          tokenCount: currentTokens
+        });
+
+        // Start new chunk
+        currentChunkLines = [line];
+        currentTokens = lineTokens;
+      } else {
+        currentChunkLines.push(line);
+        currentTokens += lineTokens;
+      }
+    }
+
+    // Add final chunk
+    if (currentChunkLines.length > 0) {
+      chunks.push({
+        id: chunkId++,
+        content: currentChunkLines.join('\n'),
+        tokenCount: currentTokens
+      });
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Extract data from a single chunk using LLM
+   */
+  private async extractFromChunk(
+    chunk: ContentChunk,
+    schema: SchemaDefinition,
+    instruction: string,
+    apiKey: string,
+    ctx?: LLMContext
+  ): Promise<any> {
+    const systemPrompt = `You are a structured data extraction agent.
+Your task is to extract data from a CHUNK of a larger document based on a given schema.
+This chunk is part ${chunk.id + 1} of a larger page.
+${chunk.sectionInfo?.heading ? `This chunk covers the section: "${chunk.sectionInfo.heading}"` : ''}
+
+CRITICAL RULES:
+1. ONLY extract data that exists in THIS chunk - do not hallucinate
+2. If no relevant data exists in this chunk, return an empty result
+3. For URL fields, extract the numeric accessibility node ID (not the URL string)
+4. Return ONLY valid JSON matching the schema
+
+Focus on extracting any relevant data from this chunk. The results will be merged with other chunks.`;
+
+    const extractionPrompt = `
+INSTRUCTION: ${instruction}
+
+SCHEMA:
+\`\`\`json
+${JSON.stringify(schema, null, 2)}
+\`\`\`
+
+CHUNK CONTENT (Part ${chunk.id + 1}):
+\`\`\`
+${chunk.content}
+\`\`\`
+
+Extract structured data from this chunk according to the schema.
+Return ONLY the JSON object.`;
+
+    try {
+      if (!ctx?.provider || !ctx.nanoModel) {
+        throw new Error('Missing LLM context for extraction');
+      }
+
+      const llmResponse = await callLLMWithTracing(
+        {
+          provider: ctx.provider,
+          model: ctx.nanoModel || ctx.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: extractionPrompt }
+          ],
+          systemPrompt,
+          temperature: 0.1,
+          options: { retryConfig: { maxRetries: 2, baseDelayMs: 1000 } }
+        },
+        {
+          toolName: this.name,
+          operationName: 'extract_chunk',
+          context: `chunk_${chunk.id}`,
+          additionalMetadata: {
+            chunkId: chunk.id,
+            chunkTokens: chunk.tokenCount,
+            section: chunk.sectionInfo?.heading
+          }
+        }
+      );
+
+      const response = llmResponse.text || '';
+      return LLMResponseParser.parseJSONWithFallbacks(response);
+    } catch (error) {
+      logger.error(`Error extracting from chunk ${chunk.id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * LLM call to merge chunk results into final data
+   */
+  private async callMergeLLM(options: {
+    chunkResults: any[],
+    schema: SchemaDefinition,
+    instruction: string,
+    apiKey: string,
+    ctx?: LLMContext,
+  }): Promise<any> {
+    const { chunkResults, schema, instruction, apiKey } = options;
+    logger.debug('Calling Merge LLM to combine chunk results...');
+
+    const systemPrompt = `You are a data merging agent in a multi-agent system.
+Your task is to intelligently merge multiple JSON extraction results from different chunks of the same page.
+
+CRITICAL RULES:
+1. Merge all data into a single result conforming to the schema
+2. Remove duplicates (same items appearing in multiple chunks)
+3. Maintain numeric node IDs for URL fields - DO NOT convert to URLs
+4. If the schema expects an array, combine all arrays and deduplicate
+5. If the schema expects an object with arrays, merge each array property separately
+6. Return ONLY valid JSON matching the schema
+
+Focus on creating a complete, deduplicated result from all chunks.`;
+
+    const mergePrompt = `
+ORIGINAL INSTRUCTION: ${instruction}
+
+SCHEMA:
+\`\`\`json
+${JSON.stringify(schema, null, 2)}
+\`\`\`
+
+CHUNK RESULTS (${chunkResults.length} chunks):
+\`\`\`json
+${JSON.stringify(chunkResults, null, 2)}
+\`\`\`
+
+TASK: Merge all chunk results into a single result that conforms to the schema.
+- Remove duplicate items (compare by content, not just IDs)
+- Combine all arrays
+- Keep numeric node IDs in URL fields
+Return ONLY the merged JSON object.`;
+
+    try {
+      if (!options.ctx?.provider || !(options.ctx.nanoModel || options.ctx.model)) {
+        throw new Error('Missing LLM context for merging');
+      }
+      const provider = options.ctx.provider;
+      const model = options.ctx.nanoModel || options.ctx.model;
+      const llmResponse = await callLLMWithTracing(
+        {
+          provider,
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: mergePrompt }
+          ],
+          systemPrompt,
+          temperature: 0.1,
+          options: { retryConfig: { maxRetries: 3, baseDelayMs: 1500 } }
+        },
+        {
+          toolName: this.name,
+          operationName: 'merge_chunks',
+          context: 'chunk_merging',
+          additionalMetadata: {
+            chunkCount: chunkResults.length,
+            instructionLength: instruction.length
+          }
+        }
+      );
+      const response = llmResponse.text || '';
+      try {
+        return LLMResponseParser.parseStrictJSON(response);
+      } catch {
+        try {
+          return LLMResponseParser.parseJSONWithFallbacks(response);
+        } catch (e) {
+          logger.error('Failed to parse merge JSON:', e);
+          logger.warn('Raw LLM response:', response.substring(0, 500));
+          return null;
+        }
+      }
+    } catch (error) {
+      logger.error('Error in callMergeLLM:', error);
+      return null;
     }
   }
 }

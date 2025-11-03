@@ -891,15 +891,19 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         }
 
         // Special handling for ConfigurableAgentTool results
-        if (selectedTool instanceof ConfigurableAgentTool && result && typeof result === 'object' && 
+        if (selectedTool instanceof ConfigurableAgentTool && result && typeof result === 'object' &&
             ('output' in result || 'error' in result || 'success' in result)) {
           // For ConfigurableAgentTool, only send the output/error fields to the LLM, never intermediateSteps
           const agentResult = result as any; // Cast to any to access ConfigurableAgentResult properties
-          resultText = agentResult.output || (agentResult.error ? `Error: ${agentResult.error}` : 'No output');
+          // Prioritize summary.content (detailed LLM analysis), fallback to output/error
+          resultText = agentResult.summary?.content
+            || agentResult.output
+            || (agentResult.error ? `Error: ${agentResult.error}` : 'No output');
           logger.debug(`Filtered ConfigurableAgentTool result for LLM:`, {
             toolName,
             originalResult: result,
-            filteredResult: resultText
+            filteredResult: resultText,
+            hasSummary: !!agentResult.summary?.content
           });
         } else if (toolName === 'finalize_with_critique') {
           logger.debug('ToolExecutorNode: finalize_with_critique result:', result);

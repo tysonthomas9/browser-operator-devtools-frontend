@@ -197,6 +197,9 @@ export interface ScrollResult {
     x: number,
     y: number,
   };
+  viewportHeight?: number;  // Height of the viewport in pixels
+  scrollHeight?: number;     // Total scrollable height of the document
+  scrolledPages?: number;    // Number of pages scrolled (if using pages parameter)
 }
 
 /**
@@ -1326,17 +1329,19 @@ export class SearchContentTool implements Tool<{ query: string, limit?: number }
 /**
  * Tool for scrolling the page
  */
-export class ScrollPageTool implements Tool<{ position?: { x: number, y: number }, direction?: string, amount?: number }, ScrollResult | ErrorResult> {
+export class ScrollPageTool implements Tool<{ position?: { x: number, y: number }, direction?: string, amount?: number, pages?: number }, ScrollResult | ErrorResult> {
   name = 'scroll_page';
-  description = 'Scrolls the page to a specific position or in a specific direction';
+  description = 'Scrolls the page to a specific position, in a direction, or by viewport pages. Use pages parameter for predictable scrolling (e.g., pages: 1 scrolls down one full viewport height, pages: -1 scrolls up).';
 
-  async execute(args: { position?: { x: number, y: number }, direction?: string, amount?: number }, _ctx?: LLMContext): Promise<ScrollResult | ErrorResult> {
+  async execute(args: { position?: { x: number, y: number }, direction?: string, amount?: number, pages?: number }, _ctx?: LLMContext): Promise<ScrollResult | ErrorResult> {
     const position = args.position;
+    const pages = args.pages;
     const direction = args.direction;
     const amount = args.amount || 300;  // Default scroll amount
 
-    if (!position && !direction) {
-      return { error: 'Either position or direction must be provided' };
+    // Priority: position > pages > direction
+    if (!position && pages === undefined && !direction) {
+      return { error: 'Either position, pages, or direction must be provided' };
     }
 
     // Get the main target
@@ -1354,6 +1359,14 @@ export class ScrollPageTool implements Tool<{ position?: { x: number, y: number 
             window.scrollTo({
               left: ${position.x || 0},
               top: ${position.y || 0},
+              behavior: 'smooth'
+            });` :
+          pages !== undefined ?
+            `// Scroll by viewport heights
+            const viewportHeight = window.innerHeight;
+            const scrollAmount = viewportHeight * ${pages};
+            window.scrollBy({
+              top: scrollAmount,
               behavior: 'smooth'
             });` :
             `// Scroll in direction
@@ -1375,14 +1388,17 @@ export class ScrollPageTool implements Tool<{ position?: { x: number, y: number 
             }`
           }
 
-          // Return current scroll position
+          // Return current scroll position with viewport info
           return {
             success: true,
             message: "Scroll operation completed",
             position: {
               x: window.pageXOffset,
               y: window.pageYOffset
-            }
+            },
+            viewportHeight: window.innerHeight,
+            scrollHeight: document.documentElement.scrollHeight,
+            scrolledPages: ${pages !== undefined ? pages : 0}
           };
         })()`,
         returnByValue: true,
@@ -1411,14 +1427,18 @@ export class ScrollPageTool implements Tool<{ position?: { x: number, y: number 
           },
         },
       },
+      pages: {
+        type: 'number',
+        description: 'Number of viewport heights to scroll. Positive scrolls down, negative scrolls up. Examples: 1 (one page down), 0.5 (half page down), -1 (one page up), 2 (two pages down). This is the recommended way to scroll for content extraction workflows.',
+      },
       direction: {
         type: 'string',
-        description: 'Direction to scroll (up, down, left, right, top, bottom)',
+        description: 'Direction to scroll (up, down, left, right, top, bottom). Use pages parameter instead for more predictable scrolling.',
         enum: ['up', 'down', 'left', 'right', 'top', 'bottom'],
       },
       amount: {
         type: 'number',
-        description: 'Amount to scroll in pixels (default: 300)',
+        description: 'Amount to scroll in pixels when using direction (default: 300). Use pages parameter instead for viewport-relative scrolling.',
       },
     },
   };
@@ -3514,6 +3534,9 @@ export { GetWebAppDataTool } from './GetWebAppDataTool.js';
 export type { GetWebAppDataArgs, GetWebAppDataResult } from './GetWebAppDataTool.js';
 export { RemoveWebAppTool } from './RemoveWebAppTool.js';
 export type { RemoveWebAppArgs, RemoveWebAppResult } from './RemoveWebAppTool.js';
+
+// Export visual indicator manager
+export { VisualIndicatorManager } from './VisualIndicatorTool.js';
 export { CreateFileTool } from './CreateFileTool.js';
 export type { CreateFileArgs, CreateFileResult } from './CreateFileTool.js';
 export { UpdateFileTool } from './UpdateFileTool.js';
@@ -3524,6 +3547,8 @@ export { ReadFileTool } from './ReadFileTool.js';
 export type { ReadFileArgs, ReadFileResult } from './ReadFileTool.js';
 export { ListFilesTool } from './ListFilesTool.js';
 export type { ListFilesArgs, ListFilesResult } from './ListFilesTool.js';
+export { ExecuteCodeTool } from './ExecuteCodeTool.js';
+export type { ExecuteCodeArgs } from './ExecuteCodeTool.js';
 // Abortable sleep utility for tools that need delays/polling
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {

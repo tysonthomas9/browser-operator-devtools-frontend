@@ -9,6 +9,8 @@ import { StreamlinedSchemaExtractorTool } from '../../tools/StreamlinedSchemaExt
 import { BookmarkStoreTool } from '../../tools/BookmarkStoreTool.js';
 import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
 import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool, RenderWebAppTool, GetWebAppDataTool, RemoveWebAppTool, CreateFileTool, UpdateFileTool, DeleteFileTool, ReadFileTool, ListFilesTool } from '../../tools/Tools.js';
+import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
+import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
@@ -54,6 +56,8 @@ export function initializeConfiguredAgents(): void {
   ToolRegistry.registerToolFactory('delete_file', () => new DeleteFileTool());
   ToolRegistry.registerToolFactory('read_file', () => new ReadFileTool());
   ToolRegistry.registerToolFactory('list_files', () => new ListFilesTool());
+  ToolRegistry.registerToolFactory('update_todo', () => new UpdateTodoTool());
+  ToolRegistry.registerToolFactory('execute_code', () => new ExecuteCodeTool());
 
   // Register webapp rendering tools
   ToolRegistry.registerToolFactory('render_webapp', () => new RenderWebAppTool());
