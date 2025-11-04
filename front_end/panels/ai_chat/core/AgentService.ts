@@ -127,8 +127,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     // Subscribe to AgentRunner events
     AgentRunnerEventBus.getInstance().addEventListener('agent-progress', this.#handleAgentProgress.bind(this));
 
-    // Initialize visual indicator system
-    VisualIndicatorManager.getInstance().initialize();
+    // Initialize visual indicator system with reference to AgentService
+    VisualIndicatorManager.getInstance().initialize(this);
 
     // Subscribe to configuration changes
     this.#configManager.addChangeListener(this.#handleConfigurationChange.bind(this));

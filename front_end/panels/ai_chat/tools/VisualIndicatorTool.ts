@@ -29,6 +29,7 @@ function formatToolName(toolName: string): string {
 export class VisualIndicatorManager {
   private static instance: VisualIndicatorManager | null = null;
   private eventBus: AgentRunnerEventBus;
+  private agentService: any | null = null; // AgentService reference for checking running state
   private isActive = false;
   private currentSessionId: string | null = null;
   private currentAgentName: string | null = null;
@@ -48,10 +49,11 @@ export class VisualIndicatorManager {
   }
 
   /**
-   * Initialize the visual indicator system
+   * Initialize the visual indicator system with AgentService reference
    */
-  initialize(): void {
-    logger.info('Visual indicator system initialized');
+  initialize(agentService: any): void {
+    this.agentService = agentService;
+    logger.info('Visual indicator system initialized with AgentService');
     this.setupEventListeners();
     this.setupNavigationListener();
   }
@@ -180,6 +182,27 @@ export class VisualIndicatorManager {
   }
 
   /**
+   * Check if any agent is currently running (source of truth from AgentService)
+   */
+  private hasAnyRunningAgent(): boolean {
+    if (!this.agentService) {
+      logger.warn('[VisualIndicator] No AgentService - cannot check running state');
+      return false;
+    }
+
+    const activeSessions = this.agentService.getActiveAgentSessions();
+    const hasRunning = activeSessions.some((session: any) => session.status === 'running');
+
+    logger.info('[VisualIndicator] Running agent check:', {
+      totalSessions: activeSessions.length,
+      hasRunning,
+      sessionStates: activeSessions.map((s: any) => ({ id: s.sessionId, status: s.status }))
+    });
+
+    return hasRunning;
+  }
+
+  /**
    * Notify that a session has completed (call from AgentService)
    */
   async onSessionCompleted(sessionId: string): Promise<void> {
@@ -189,9 +212,12 @@ export class VisualIndicatorManager {
     // Clean up stored tool info for this session
     this.currentToolInfo.delete(sessionId);
 
-    // Hide indicators when no more active sessions (regardless of which one completed)
-    if (this.activeSessions.size === 0) {
+    // Check if any agent is still running (source of truth from AgentService)
+    if (!this.hasAnyRunningAgent()) {
+      logger.info('[VisualIndicator] No agents running - hiding indicators');
       await this.hideIndicators();
+    } else {
+      logger.info('[VisualIndicator] Other agents still running - keeping indicators visible');
     }
   }
 
@@ -268,6 +294,7 @@ export class VisualIndicatorManager {
               }
 
               html.devtools-agent-active {
+                min-height: 100vh;
                 animation: devtools-agent-glow 2s ease-in-out infinite;
               }
 
@@ -280,22 +307,23 @@ export class VisualIndicatorManager {
                 backdrop-filter: blur(16px) saturate(180%);
                 -webkit-backdrop-filter: blur(16px) saturate(180%);
                 color: white;
-                padding: 16px 28px 18px 28px;
-                border-radius: 12px;
+                padding: 12px 20px 14px 20px;
+                border-radius: 10px;
                 border: 1px solid rgba(0, 164, 254, 0.25);
                 border-top: 2px solid rgba(0, 164, 254, 0.6);
                 box-shadow:
                   0 8px 32px rgba(0, 0, 0, 0.4),
                   0 2px 8px rgba(0, 0, 0, 0.2),
                   inset 0 1px 0 rgba(255, 255, 255, 0.1);
-                z-index: 999999;
+                z-index: 2147483647;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-                font-size: 14px;
-                max-width: 620px;
-                min-width: 320px;
+                font-size: 12px;
+                max-width: 520px;
+                min-width: 280px;
                 opacity: 0;
                 transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                pointer-events: none;
+                pointer-events: auto;
+                cursor: default;
               }
 
               #devtools-agent-indicator.visible {
@@ -303,14 +331,22 @@ export class VisualIndicatorManager {
                 transform: translateX(-50%) translateY(0);
               }
 
+              #devtools-agent-indicator.visible:hover {
+                opacity: 0.15;
+                background: linear-gradient(135deg, rgba(0, 20, 40, 0.15) 0%, rgba(0, 10, 30, 0.1) 100%);
+                backdrop-filter: blur(4px) saturate(120%);
+                -webkit-backdrop-filter: blur(4px) saturate(120%);
+                transition: all 0.2s ease-out;
+              }
+
               .devtools-agent-name {
                 display: flex;
                 align-items: center;
                 font-weight: 600;
-                font-size: 16px;
+                font-size: 14px;
                 color: #4fc3f7;
-                margin-bottom: 8px;
-                padding-bottom: 8px;
+                margin-bottom: 6px;
+                padding-bottom: 6px;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.08);
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
                 letter-spacing: 0.3px;
@@ -318,18 +354,18 @@ export class VisualIndicatorManager {
 
               .devtools-agent-action {
                 font-weight: 500;
-                font-size: 14px;
-                margin-bottom: 6px;
+                font-size: 12px;
+                margin-bottom: 4px;
                 color: rgba(255, 255, 255, 0.95);
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
                 line-height: 1.5;
               }
 
               .devtools-agent-reasoning {
-                font-size: 12px;
+                font-size: 10px;
                 color: rgba(255, 255, 255, 0.7);
                 font-style: italic;
-                margin-top: 6px;
+                margin-top: 4px;
                 line-height: 1.5;
                 padding-left: 2px;
               }
@@ -340,8 +376,8 @@ export class VisualIndicatorManager {
 
               .devtools-agent-spinner {
                 display: inline-block;
-                width: 15px;
-                height: 15px;
+                width: 13px;
+                height: 13px;
                 border: 2.5px solid rgba(79, 195, 247, 0.25);
                 border-top-color: #4fc3f7;
                 border-radius: 50%;
@@ -439,6 +475,7 @@ export class VisualIndicatorManager {
       // Extract agent name from event and update current state
       const rawAgentName = event.agentName || this.currentAgentName || 'AI Agent';
       const agentName = formatToolName(rawAgentName);
+
       if (event.agentName) {
         this.currentAgentName = event.agentName;
       }
@@ -451,7 +488,14 @@ export class VisualIndicatorManager {
         const toolCall = event.data.toolCall;
         const toolName = toolCall.content?.toolName || 'tool';
         const formattedToolName = formatToolName(toolName);
-        let toolReasoning = toolCall.content?.reasoning || '';
+
+        // Extract reasoning from multiple sources (matching UI pattern)
+        // Priority: 1) LLM reasoning (O-models), 2) toolArgs.reasoning (most common), 3) fallback aliases
+        const toolArgs = toolCall.content?.toolArgs || {};
+        const reasonFromArgs = toolArgs?.reasoning ?? toolArgs?.reason;
+        let toolReasoning = toolCall.content?.reasoning ||
+                           (reasonFromArgs !== undefined ? String(reasonFromArgs) : '') ||
+                           '';
 
         // Fallback: if the provider didn't return reasoning, try the latest session reasoning message
         if (!toolReasoning && event.data?.session?.messages && Array.isArray(event.data.session.messages)) {
