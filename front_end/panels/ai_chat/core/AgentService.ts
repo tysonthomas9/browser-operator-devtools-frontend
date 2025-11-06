@@ -59,6 +59,10 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   #graph?: CompiledGraph;
   #apiKey: string|null = null;
   #isInitialized = false;
+  /**
+   * Active async generator for current execution. Set when execution starts,
+   * cleared only after the final message is dispatched to listeners.
+   */
   #runningGraphStatePromise?: AsyncGenerator<AgentState, AgentState, void>;
   #abortController?: AbortController;
   #executionId?: string;
@@ -100,6 +104,19 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    */
   static getExecutionController(executionId: string): AbortController | undefined {
     return AgentService.activeExecutions.get(executionId);
+  }
+
+  /**
+   * Check if the agent is currently executing.
+   * Returns true from when execution starts until after the final message has been
+   * sent to listeners. This ensures UI can show "running" state while the response
+   * is being streamed to the user, and only transitions to "stopped" after completion.
+   *
+   * @returns true if agent execution is in progress (including final message delivery),
+   *          false if agent is idle and ready for new input
+   */
+  isRunning(): boolean {
+    return this.#runningGraphStatePromise !== undefined;
   }
 
   constructor() {
@@ -396,11 +413,16 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       throw new Error('Empty message. Please enter some text.');
     }
 
-    // In AUTOMATED_MODE, ensure the graph is initialized even without API key
-    if (BUILD_CONFIG.AUTOMATED_MODE && !this.#graph) {
+    // Auto-initialize graph if it's not ready (handles race conditions automatically)
+    if (!this.#graph) {
+      logger.info('Graph not initialized, initializing now...');
       const config = this.#configManager.getConfiguration();
-      // Initialize with empty API key in AUTOMATED_MODE - will be overridden by request
-      await this.initialize('', config.mainModel, config.miniModel || '', config.nanoModel || '');
+      await this.initialize(
+        this.#apiKey,
+        config.mainModel,
+        config.miniModel || '',
+        config.nanoModel || ''
+      );
     }
 
     // Create a user message
@@ -618,6 +640,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         this.#executionId = undefined;
       }
       this.#abortController = undefined;
+      // Clear running state - final message has already been sent to listeners at line 583
       this.#runningGraphStatePromise = undefined;
 
       // Return the most recent message (could be final answer, tool call, or error)

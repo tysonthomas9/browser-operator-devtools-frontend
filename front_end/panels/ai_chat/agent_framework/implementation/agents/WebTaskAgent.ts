@@ -198,7 +198,6 @@ Remember: **Plan adaptively, execute systematically, validate continuously, and 
       'navigate_back',
       'action_agent',
       'extract_data',
-      'execute_code',
       'node_ids_to_urls',
       'direct_url_navigator_agent',
       'scroll_page',
@@ -215,7 +214,7 @@ Remember: **Plan adaptively, execute systematically, validate continuously, and 
       'list_files',
       'update_todo',
     ],
-    maxIterations: 15,
+    maxIterations: 30,
     temperature: 0.3,
     schema: {
       type: 'object',
@@ -247,5 +246,6 @@ Execute this web task autonomously`,
       }];
     },
     handoffs: [],
+    includeSummaryInAnswer: true,  // Enable summary for web automation tasks to provide execution insights
   };
 }

@@ -54,6 +54,8 @@ export interface AgentRunnerHooks {
   createSuccessResult: (output: string, intermediateSteps: ChatMessage[], reason: AgentRunTerminationReason) => ConfigurableAgentResult;
   /** Function to create an error result */
   createErrorResult: (error: string, intermediateSteps: ChatMessage[], reason: AgentRunTerminationReason) => ConfigurableAgentResult;
+  /** Function to run after agent execution completes (optional) */
+  afterExecute?: (result: ConfigurableAgentResult, agentSession: AgentSession) => Promise<void>;
 }
 
 
@@ -71,6 +73,33 @@ export class AgentRunner {
       AgentRunner.eventBus = AgentRunnerEventBus.getInstance();
     }
   }
+
+  /**
+   * Clears the todo list file if it exists and has content
+   * Called when an agent completes or fails to clean up state
+   * Only clears if the agent has access to the update_todo tool
+   */
+  private static async clearTodoList(agentName: string, tools: Array<Tool<any, any>>): Promise<void> {
+    // Only clear todos if the agent has the update_todo tool
+    const hasUpdateTodoTool = tools.some(tool => tool.name === 'update_todo');
+    if (!hasUpdateTodoTool) {
+      logger.debug(`Agent ${agentName} does not have update_todo tool, skipping todo list cleanup`);
+      return;
+    }
+
+    try {
+      const fileManager = FileStorageManager.getInstance();
+      const todosFile = await fileManager.readFile('todos.md');
+
+      if (todosFile?.content && todosFile.content.trim().length > 0) {
+        await fileManager.deleteFile('todos.md');
+        logger.info(`Cleared non-empty todo list for ${agentName}`);
+      }
+    } catch (error) {
+      logger.debug(`Failed to clear todo list for ${agentName}:`, error);
+    }
+  }
+
   /**
    * Helper function to convert ChatMessage[] to LLMMessage[]
    */
@@ -407,7 +436,7 @@ export class AgentRunner {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
     const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
-    const { prepareInitialMessages, createSuccessResult, createErrorResult } = hooks;
+    const { prepareInitialMessages, createSuccessResult, createErrorResult, afterExecute } = hooks;
 
 
     // Create session when agent starts (natural timing)
@@ -574,7 +603,20 @@ export class AgentRunner {
           });
         }
 
+        // Clear todo list on abort
+        await AgentRunner.clearTodoList(agentName, tools);
+
         const abortResult = createErrorResult('Execution was cancelled', messages, 'error');
+
+        // Execute afterExecute hook if defined
+        if (afterExecute) {
+          try {
+            await afterExecute(abortResult, currentSession);
+          } catch (error) {
+            logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+
         return { ...abortResult, agentSession: currentSession };
       }
 
@@ -587,23 +629,29 @@ export class AgentRunner {
       // Prepare prompt and call LLM
       const iterationInfo = `
 ## Current Progress
-- You are currently on step ${iteration + 1} of ${maxIterations} maximum steps.
+- You are currently on step ${iteration + 1} of ${maxIterations - 1} maximum steps.
 - Focus on making meaningful progress with each step.`;
 
-      // Inject todos into system prompt if they exist
+      // Inject todos into system prompt ONLY if agent has update_todo tool
       let todosContext = '';
-      try {
-        const fileManager = FileStorageManager.getInstance();
-        const todosFile = await fileManager.readFile('todos.md');
+      const hasUpdateTodoTool = config.tools.some(tool => tool.name === 'update_todo');
 
-        if (todosFile?.content) {
-          todosContext = `\n\n## CURRENT TODO LIST\n${todosFile.content}\n\nUpdate the todo list using the 'update_todo' tool as you complete tasks. Mark completed items with [x].`;
-        } else {
-          todosContext = `\n\n## TODO LIST\nNo todo list exists yet. If this is a multi-step task, create a todo list using the 'update_todo' tool to track your progress.`;
+      if (hasUpdateTodoTool) {
+        try {
+          const fileManager = FileStorageManager.getInstance();
+          const todosFile = await fileManager.readFile('todos.md');
+
+          if (todosFile?.content) {
+            todosContext = `\n\n## CURRENT TODO LIST\n${todosFile.content}\n\nUpdate the todo list using the 'update_todo' tool as you complete tasks. Mark completed items with [x].`;
+          } else {
+            todosContext = `\n\n## TODO LIST\nNo todo list exists yet. If this is a multi-step task, create a todo list using the 'update_todo' tool to track your progress.`;
+          }
+        } catch (error) {
+          logger.debug('Failed to read todos, skipping injection:', error);
+          // Continue without todos if reading fails
         }
-      } catch (error) {
-        logger.debug('Failed to read todos, skipping injection:', error);
-        // Continue without todos if reading fails
+      } else {
+        logger.debug(`Skipping todo injection for ${agentName} - update_todo tool not available`);
       }
 
       // Enhance system prompt with iteration info, todos, and page context
@@ -800,12 +848,25 @@ export class AgentRunner {
           });
         }
 
+        // Clear todo list on error
+        await AgentRunner.clearTodoList(agentName, tools);
+
         // Use error hook with structured summary
         const result = createErrorResult(errorMsg, messages, 'error');
         result.summary = {
           type: 'error',
           content: errorSummary
         };
+
+        // Execute afterExecute hook if defined
+        if (afterExecute) {
+          try {
+            await afterExecute(result, agentSession);
+          } catch (error) {
+            logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+
         return { ...result, agentSession };
       }
 
@@ -1246,8 +1307,19 @@ export class AgentRunner {
 
           logger.info(`${agentName} LLM provided final answer.`);
 
-          // Generate summary of successful completion
-          const completionSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'final_answer', config.provider, config.getVisionCapability);
+          // Clear non-empty todo list when sending final message
+          await AgentRunner.clearTodoList(agentName, tools);
+
+          // Conditionally generate and append summary based on agent configuration
+          let finalAnswer = answer;
+          if (executingAgent?.config?.includeSummaryInAnswer === true) {
+            logger.info(`Generating summary for ${agentName} (includeSummaryInAnswer=true)`);
+            const completionSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'final_answer', config.provider, config.getVisionCapability);
+            // Append summary to the answer with clear separator
+            finalAnswer = `${answer}\n\n---\n\n### Analysis of Agentic Conversation\n\n${completionSummary}`;
+          } else {
+            logger.info(`Skipping summary for ${agentName} (includeSummaryInAnswer not enabled)`);
+          }
 
           // Complete session naturally
           agentSession.status = 'completed';
@@ -1266,12 +1338,19 @@ export class AgentRunner {
             });
           }
 
-          // Exit loop and return success with structured summary
-          const result = createSuccessResult(answer, messages, 'final_answer');
-          result.summary = {
-            type: 'completion',
-            content: completionSummary
-          };
+          // Exit loop and return success with final answer (summary appended if configured)
+          const result = createSuccessResult(finalAnswer, messages, 'final_answer');
+
+          // Execute afterExecute hook if defined
+          if (afterExecute) {
+            try {
+              await afterExecute(result, agentSession);
+            } catch (error) {
+              logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+              // Continue and return result even if afterExecute fails
+            }
+          }
+
           return { ...result, agentSession };
 
         } else if (parsedAction.type === 'error') {
@@ -1321,12 +1400,25 @@ export class AgentRunner {
           });
         }
 
+        // Clear todo list on error
+        await AgentRunner.clearTodoList(agentName, tools);
+
         // Use error hook with structured summary
         const result = createErrorResult(errorMsg, messages, 'error');
         result.summary = {
           type: 'error',
           content: errorSummary
         };
+
+        // Execute afterExecute hook if defined
+        if (afterExecute) {
+          try {
+            await afterExecute(result, agentSession);
+          } catch (error) {
+            logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+
         return { ...result, agentSession };
       }
     }
@@ -1407,11 +1499,25 @@ export class AgentRunner {
 
     // Generate summary of agent progress instead of generic error message
     const progressSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'max_iterations', config.provider, config.getVisionCapability);
+
+    // Clear todo list on max iterations
+    await AgentRunner.clearTodoList(agentName, tools);
+
     const result = createErrorResult('Agent reached maximum iterations', messages, 'max_iterations');
     result.summary = {
       type: 'timeout',
       content: progressSummary
     };
+
+    // Execute afterExecute hook if defined
+    if (afterExecute) {
+      try {
+        await afterExecute(result, agentSession);
+      } catch (error) {
+        logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+      }
+    }
+
     return { ...result, agentSession };
   }
 

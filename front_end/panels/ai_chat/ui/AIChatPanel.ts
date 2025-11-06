@@ -6,10 +6,7 @@ import type * as Common from '../../../core/common/common.js';
 import * as Host from '../../../core/host/host.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as SDK from '../../../core/sdk/sdk.js';
-import * as Buttons from '../../../ui/components/buttons/buttons.js';
 import * as UI from '../../../ui/legacy/legacy.js';
-import * as Lit from '../../../ui/lit/lit.js';
-import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 import {AgentService, Events as AgentEvents} from '../core/AgentService.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { LLMConfigurationManager } from '../core/LLMConfigurationManager.js';
@@ -84,7 +81,7 @@ import chatViewStyles from './chatView.css.js';
 import { ChatView } from './ChatView.js';
 import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage, State as ChatViewState } from '../models/ChatTypes.js';
 import { HelpDialog } from './HelpDialog.js';
-import { SettingsDialog, isVectorDBEnabled } from './SettingsDialog.js';
+import { SettingsDialog } from './SettingsDialog.js';
 import { EvaluationDialog } from './EvaluationDialog.js';
 import { MODEL_PLACEHOLDERS } from '../core/Constants.js';
 import * as Snackbars from '../../../ui/components/snackbars/snackbars.js';
@@ -94,7 +91,6 @@ import { getMCPConfig } from '../mcp/MCPConfig.js';
 import { onMCPConfigChange } from '../mcp/MCPConfig.js';
 import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js';
 
-const {html} = Lit;
 
 // Model type definition
 export interface ModelOption {
@@ -222,106 +218,6 @@ const UIStrings = {
 
 const str_ = i18n.i18n.registerUIStrings('panels/ai_chat/ui/AIChatPanel.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
-
-interface ToolbarViewInput {
-  onNewChatClick: () => void;
-  onHistoryClick: (event: MouseEvent) => void;
-  onDeleteClick: () => void;
-  onHelpClick: () => void;
-  onMCPConnectorsClick: () => void;
-  onSettingsClick: () => void;
-  onEvaluationTestClick: () => void;
-  onBookmarkClick: () => void;
-  isDeleteHistoryButtonVisible: boolean;
-  isCenteredView: boolean;
-  isVectorDBEnabled: boolean;
-}
-
-function toolbarView(input: ToolbarViewInput): Lit.LitTemplate {
-  // clang-format off
-        // Add history button when history feature is implemented
-        // <devtools-button
-        //   title=${i18nString(UIStrings.history)}
-        //   aria-label=${i18nString(UIStrings.history)}
-        //   .iconName=${'history'}
-        //   .jslogContext=${'ai-chat.history'}
-        //   .variant=${Buttons.Button.Variant.TOOLBAR}
-        //   @click=${input.onHistoryClick}></devtools-button>
-        //   <div class="toolbar-divider"></div>
-  return html`
-    <div class="toolbar-container" role="toolbar" .jslogContext=${VisualLogging.toolbar()} style="display: flex; justify-content: space-between; width: 100%; padding: 0 4px; box-sizing: border-box; margin: 0 0 10px 0;">
-      <devtools-toolbar class="ai-chat-left-toolbar" role="presentation">
-        ${!input.isCenteredView ? html`
-        <devtools-button
-          title=${i18nString(UIStrings.newChat)}
-          aria-label=${i18nString(UIStrings.newChat)}
-          .iconName=${'plus'}
-          .jslogContext=${'ai-chat.new-chat'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onNewChatClick}></devtools-button>
-        ` : Lit.nothing}
-      </devtools-toolbar>
-      
-      <devtools-toolbar class="ai-chat-right-toolbar" role="presentation">
-        <div class="toolbar-divider"></div>
-        ${input.isDeleteHistoryButtonVisible
-          ? html`<devtools-button
-              title=${i18nString(UIStrings.deleteChat)}
-              aria-label=${i18nString(UIStrings.deleteChat)}
-              .iconName=${'bin'}
-              .jslogContext=${'ai-chat.delete'}
-              .variant=${Buttons.Button.Variant.TOOLBAR}
-              @click=${input.onDeleteClick}></devtools-button>`
-          : Lit.nothing}
-        <devtools-button
-          title=${i18nString(UIStrings.runEvaluationTests)}
-          aria-label=${i18nString(UIStrings.runEvaluationTests)}
-          .iconName=${'experiment'}
-          .jslogContext=${'ai-chat.evaluation-tests'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onEvaluationTestClick}></devtools-button>
-        ${input.isVectorDBEnabled
-          ? html`<devtools-button
-              title=${i18nString(UIStrings.bookmarkPage)}
-              aria-label=${i18nString(UIStrings.bookmarkPage)}
-              .iconName=${'download'}
-              .jslogContext=${'ai-chat.bookmark-page'}
-              .variant=${Buttons.Button.Variant.TOOLBAR}
-              @click=${input.onBookmarkClick}></devtools-button>`
-          : Lit.nothing}
-        <devtools-button
-          title=${i18nString(UIStrings.settings)}
-          aria-label=${i18nString(UIStrings.settings)}
-          .iconName=${'gear'}
-          .jslogContext=${'ai-chat.settings'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onSettingsClick}></devtools-button>
-        <devtools-button
-          title=${i18nString(UIStrings.help)}
-          aria-label=${i18nString(UIStrings.help)}
-          .iconName=${'help'}
-          .jslogContext=${'ai-chat.help'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onHelpClick}></devtools-button>
-        <devtools-button
-          title=${i18nString(UIStrings.mcpConnectors)}
-          aria-label=${i18nString(UIStrings.mcpConnectors)}
-          .iconName=${'extension'}
-          .jslogContext=${'ai-chat.mcp-connectors'}
-          .variant=${Buttons.Button.Variant.TOOLBAR}
-          @click=${input.onMCPConnectorsClick}></devtools-button>
-        <devtools-button
-            title="Close Chat Window"
-            aria-label="Close Chat Window"
-            .iconName=${'cross'}
-            .jslogContext=${'ai-chat.close-devtools'}
-            .variant=${Buttons.Button.Variant.TOOLBAR}
-            @click=${() => Host.InspectorFrontendHost.InspectorFrontendHostInstance.closeWindow()}></devtools-button>
-      </devtools-toolbar>
-    </div>
-  `;
-  // clang-format on
-}
 
 let aiChatPanelInstance: AIChatPanel|null = null;
 
@@ -753,7 +649,15 @@ export class AIChatPanel extends UI.Panel.Panel {
   #miniModel = ''; // Mini model selection
   #nanoModel = ''; // Nano model selection
   #canSendMessages = false; // Add flag to track if we can send messages (has required credentials)
-  #settingsButton: HTMLElement | null = null; // Reference to the settings button
+
+  // Native UI.Toolbar instances and buttons
+  #leftToolbar!: UI.Toolbar.Toolbar;
+  #rightToolbar!: UI.Toolbar.Toolbar;
+  #newChatButton!: UI.Toolbar.ToolbarButton;
+  #deleteButton!: UI.Toolbar.ToolbarButton;
+  #bookmarkButton!: UI.Toolbar.ToolbarButton;
+  #settingsMenuButton!: UI.Toolbar.ToolbarMenuButton;
+  #closeButton!: UI.Toolbar.ToolbarButton;
   #liteLLMApiKey: string | null = null; // LiteLLM API key
   #liteLLMEndpoint: string | null = null; // LiteLLM endpoint
   #apiKey: string | null = null; // Regular API key
@@ -811,7 +715,77 @@ export class AIChatPanel extends UI.Panel.Panel {
 
     // Create container for the toolbar
     this.#toolbarContainer = document.createElement('div');
+    this.#toolbarContainer.classList.add('toolbar-container');
+    this.#toolbarContainer.setAttribute('role', 'toolbar');
+    this.#toolbarContainer.style.cssText = 'display: flex; justify-content: space-between; width: 100%; padding: 0 4px; box-sizing: border-box; margin: 0 0 10px 0;';
     this.contentElement.appendChild(this.#toolbarContainer);
+
+    // Create left toolbar using DOM method (not constructor)
+    this.#leftToolbar = this.#toolbarContainer.createChild('devtools-toolbar', 'ai-chat-left-toolbar') as UI.Toolbar.Toolbar;
+
+    // Create right toolbar using DOM method (not constructor)
+    this.#rightToolbar = this.#toolbarContainer.createChild('devtools-toolbar', 'ai-chat-right-toolbar') as UI.Toolbar.Toolbar;
+    this.#rightToolbar.style.cssText = 'overflow: visible;';
+
+    // Create toolbar buttons ONCE
+    this.#newChatButton = new UI.Toolbar.ToolbarButton(
+      i18nString(UIStrings.newChat),
+      'plus',
+      undefined,
+      'ai-chat.new-chat'
+    );
+    this.#newChatButton.addEventListener(
+      UI.Toolbar.ToolbarButton.Events.CLICK,
+      this.#onNewChatClick,
+      this
+    );
+
+    this.#deleteButton = new UI.Toolbar.ToolbarButton(
+      i18nString(UIStrings.deleteChat),
+      'bin',
+      undefined,
+      'ai-chat.delete'
+    );
+    this.#deleteButton.addEventListener(
+      UI.Toolbar.ToolbarButton.Events.CLICK,
+      this.#onDeleteClick,
+      this
+    );
+
+    this.#bookmarkButton = new UI.Toolbar.ToolbarButton(
+      i18nString(UIStrings.bookmarkPage),
+      'download',
+      undefined,
+      'ai-chat.bookmark-page'
+    );
+    this.#bookmarkButton.addEventListener(
+      UI.Toolbar.ToolbarButton.Events.CLICK,
+      this.#onBookmarkClick,
+      this
+    );
+
+    this.#settingsMenuButton = this.#createSettingsMenuButton();
+
+    this.#closeButton = new UI.Toolbar.ToolbarButton(
+      'Close Chat Window',
+      'cross',
+      undefined,
+      'ai-chat.close-devtools'
+    );
+    this.#closeButton.addEventListener(
+      UI.Toolbar.ToolbarButton.Events.CLICK,
+      () => Host.InspectorFrontendHost.InspectorFrontendHostInstance.closeWindow(),
+      this
+    );
+
+    // Add buttons to toolbars ONCE (order matters for right toolbar)
+    this.#leftToolbar.appendToolbarItem(this.#newChatButton);
+
+    this.#rightToolbar.appendSeparator();
+    this.#rightToolbar.appendToolbarItem(this.#deleteButton);
+    this.#rightToolbar.appendToolbarItem(this.#bookmarkButton);
+    this.#rightToolbar.appendToolbarItem(this.#settingsMenuButton);
+    this.#rightToolbar.appendToolbarItem(this.#closeButton);
 
     // Create container for the chat view
     this.#chatViewContainer = document.createElement('div');
@@ -824,7 +798,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#chatView.style.flexGrow = '1';
     this.#chatView.style.overflow = 'auto';
     this.#chatViewContainer.appendChild(this.#chatView);
-    
+
     // Add event listener for manual setup requests from ChatView
     this.#chatView.addEventListener('manual-setup-requested', this.#handleManualSetupRequest.bind(this));
   }
@@ -1680,14 +1654,11 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Update the settings button highlight based on credentials state
    */
   #updateSettingsButtonHighlight(): void {
-    if (!this.#canSendMessages && !this.#settingsButton) {
-      // Try to find the settings button after rendering
-      this.#settingsButton = this.#toolbarContainer.querySelector('.ai-chat-right-toolbar devtools-button[title="Settings"]');
-
+    if (!this.#canSendMessages) {
       // Add pulsating animation to draw attention to settings
-      if (this.#settingsButton) {
+      if (this.#settingsMenuButton && this.#settingsMenuButton.element) {
         // Add CSS animation to make it glow/pulse
-        this.#settingsButton.classList.add('settings-highlight');
+        this.#settingsMenuButton.element.classList.add('settings-highlight');
 
         // Add the style to the document head if it doesn't exist yet
         const styleId = 'settings-highlight-style';
@@ -1699,7 +1670,7 @@ export class AIChatPanel extends UI.Panel.Panel {
               animation: pulse 2s infinite;
               position: relative;
             }
-            
+
             @keyframes pulse {
               0% {
                 box-shadow: 0 0 0 0 rgba(var(--color-primary-rgb), 0.7);
@@ -1715,10 +1686,9 @@ export class AIChatPanel extends UI.Panel.Panel {
           document.head.appendChild(style);
         }
       }
-    } else if (this.#canSendMessages && this.#settingsButton) {
+    } else if (this.#canSendMessages && this.#settingsMenuButton && this.#settingsMenuButton.element) {
       // Remove the highlight if we now have an API key
-      this.#settingsButton.classList.remove('settings-highlight');
-      this.#settingsButton = null;
+      this.#settingsMenuButton.element.classList.remove('settings-highlight');
     }
   }
 
@@ -2041,24 +2011,55 @@ export class AIChatPanel extends UI.Panel.Panel {
   }
   
   /**
+   * Creates the settings menu button with dropdown items
+   */
+  #createSettingsMenuButton(): UI.Toolbar.ToolbarMenuButton {
+    const menuButton = new UI.Toolbar.ToolbarMenuButton(
+      (contextMenu) => {
+        // Add menu items
+        contextMenu.defaultSection().appendItem(
+          'Settings',
+          () => this.#onSettingsClick(),
+          {jslogContext: 'settings'}
+        );
+        contextMenu.defaultSection().appendItem(
+          'Help',
+          () => this.#onHelpClick(),
+          {jslogContext: 'help'}
+        );
+        contextMenu.defaultSection().appendItem(
+          'Evaluations',
+          () => this.#onEvaluationTestClick(),
+          {jslogContext: 'evaluations'}
+        );
+        contextMenu.defaultSection().appendItem(
+          'Connectors',
+          () => this.#onMCPConnectorsClick(),
+          {jslogContext: 'connectors'}
+        );
+      },
+      true,  // isIconDropdown
+      true,  // useSoftMenu
+      'ai-chat.settings-menu',  // jslogContext
+      'dots-vertical'  // iconName
+    );
+
+    menuButton.setTitle('Settings Menu');
+    return menuButton;
+  }
+
+  /**
    * Updates the toolbar UI
    */
   #updateToolbar(): void {
-    const isCenteredView = this.#chatView?.isCenteredView ?? false;
-    
-    Lit.render(toolbarView({
-      onNewChatClick: this.#onNewChatClick.bind(this),
-      onHistoryClick: this.#onHistoryClick.bind(this),
-      onDeleteClick: this.#onDeleteClick.bind(this),
-      onHelpClick: this.#onHelpClick.bind(this),
-      onMCPConnectorsClick: this.#onMCPConnectorsClick.bind(this),
-      onSettingsClick: this.#onSettingsClick.bind(this),
-      onEvaluationTestClick: this.#onEvaluationTestClick.bind(this),
-      onBookmarkClick: this.#onBookmarkClick.bind(this),
-      isDeleteHistoryButtonVisible: this.#messages.length > 1,
-      isCenteredView,
-      isVectorDBEnabled: isVectorDBEnabled(),
-    }), this.#toolbarContainer, { host: this });
+    // Update button visibility based on current state
+    // Delete button is only visible when there are messages to delete
+    this.#deleteButton.setVisible(this.#messages.length > 1);
+
+    // Bookmark button visibility can be controlled here if needed
+    // this.#bookmarkButton.setVisible(someCondition);
+
+    // All other buttons (New Chat, Settings Menu, Close) are always visible
   }
   
   /**
@@ -2094,6 +2095,8 @@ export class AIChatPanel extends UI.Panel.Panel {
           return !hasCredentials;
         })(),
         onOAuthLogin: this.#handleOAuthLogin.bind(this),
+        // Add example prompt model switching
+        onExamplePromptModelSwitch: this.#handleExamplePromptModelSwitch.bind(this),
       };
     } catch (error) {
       logger.error('Error updating ChatView state:', error);
@@ -2115,6 +2118,93 @@ export class AIChatPanel extends UI.Panel.Panel {
     }
   }
 
+  /**
+   * Handles model switching when example prompts with model preferences are selected
+   * Applies the provided model preferences to main, mini, and nano models
+   */
+  #handleExamplePromptModelSwitch(modelPreferences: { main?: string; mini?: string; nano?: string }): void {
+    logger.info('=== HANDLE EXAMPLE PROMPT MODEL SWITCH ===');
+    logger.info('Model preferences received:', modelPreferences);
+    logger.info('Current provider:', localStorage.getItem(PROVIDER_SELECTION_KEY));
+    logger.info('Current MODEL_OPTIONS count:', MODEL_OPTIONS.length);
+    logger.info('Sample available models:', MODEL_OPTIONS.slice(0, 10).map(m => `${m.value} (${m.type})`));
+
+    let modelsApplied = false;
+
+    // Apply main model
+    if (modelPreferences.main) {
+      const exists = MODEL_OPTIONS.some(opt => opt.value === modelPreferences.main);
+      logger.info(`Main model "${modelPreferences.main}" exists in MODEL_OPTIONS:`, exists);
+
+      if (exists) {
+        logger.info(`Previous main model: "${this.#selectedModel}"`);
+        this.#selectedModel = modelPreferences.main;
+        localStorage.setItem(MODEL_SELECTION_KEY, this.#selectedModel);
+        modelsApplied = true;
+        logger.info('✅ Applied main model:', modelPreferences.main);
+      } else {
+        logger.warn('❌ Main model not found in MODEL_OPTIONS:', modelPreferences.main);
+        logger.warn('First 10 available models:', MODEL_OPTIONS.slice(0, 10).map(m => m.value));
+        logger.warn('Hint: Make sure OpenRouter models are fetched before clicking example prompts');
+      }
+    }
+
+    // Apply mini model
+    if (modelPreferences.mini) {
+      const exists = MODEL_OPTIONS.some(opt => opt.value === modelPreferences.mini);
+      logger.info(`Mini model "${modelPreferences.mini}" exists in MODEL_OPTIONS:`, exists);
+
+      if (exists) {
+        logger.info(`Previous mini model: "${this.#miniModel}"`);
+        this.#miniModel = modelPreferences.mini;
+        localStorage.setItem(MINI_MODEL_STORAGE_KEY, this.#miniModel);
+        modelsApplied = true;
+        logger.info('✅ Applied mini model:', modelPreferences.mini);
+      } else {
+        logger.warn('❌ Mini model not found in MODEL_OPTIONS:', modelPreferences.mini);
+      }
+    }
+
+    // Apply nano model
+    if (modelPreferences.nano) {
+      const exists = MODEL_OPTIONS.some(opt => opt.value === modelPreferences.nano);
+      logger.info(`Nano model "${modelPreferences.nano}" exists in MODEL_OPTIONS:`, exists);
+
+      if (exists) {
+        logger.info(`Previous nano model: "${this.#nanoModel}"`);
+        this.#nanoModel = modelPreferences.nano;
+        localStorage.setItem(NANO_MODEL_STORAGE_KEY, this.#nanoModel);
+        modelsApplied = true;
+        logger.info('✅ Applied nano model:', modelPreferences.nano);
+      } else {
+        logger.warn('❌ Nano model not found in MODEL_OPTIONS:', modelPreferences.nano);
+      }
+    }
+
+    // Update UI and reinitialize agent if any models were applied
+    if (modelsApplied) {
+      logger.info('✅ Model switch complete!');
+      logger.info('New model selection:', {
+        main: this.#selectedModel,
+        mini: this.#miniModel,
+        nano: this.#nanoModel
+      });
+      logger.info('Updating UI and reinitializing agent service with new models...');
+
+      this.performUpdate();
+      this.#initializeAgentService(); // ✅ Immediately reinitialize with new models
+
+      logger.info('✅ Agent service reinitialization triggered');
+    } else {
+      logger.error('❌ No models were applied!');
+      logger.error('Possible reasons:');
+      logger.error('1. Models not loaded in MODEL_OPTIONS (try fetching OpenRouter models in Settings)');
+      logger.error('2. Provider not set to openrouter');
+      logger.error('3. Model IDs in example prompt config don\'t match actual OpenRouter model IDs');
+      logger.error('Current MODEL_OPTIONS:', MODEL_OPTIONS.map(m => m.value));
+    }
+  }
+
   #onNewChatClick(): void {
     this.#agentService.clearConversation();
     this.#messages = this.#agentService.getMessages();
@@ -2126,15 +2216,6 @@ export class AIChatPanel extends UI.Panel.Panel {
     
     this.performUpdate();
     UI.ARIAUtils.LiveAnnouncer.alert(i18nString(UIStrings.newChatCreated));
-  }
-
-  /**
-   * Handles history button click
-   * @param event Mouse event
-   */
-  #onHistoryClick(_event: MouseEvent): void {
-    // Not yet implemented
-    logger.info('History feature not yet implemented');
   }
 
   #onDeleteClick(): void {

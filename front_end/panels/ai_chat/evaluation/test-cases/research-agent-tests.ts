@@ -39,7 +39,7 @@ export const basicResearchTest: TestCase<ResearchAgentArgs> = {
         'At least 3-5 different sources were consulted',
         'Information is factually accurate and up-to-date',
         'Research demonstrates understanding of the topic evolution',
-        'Handoff to content_writer_agent occurred with comprehensive data'
+        'Final answer provides comprehensive research summary with proper citations'
       ],
       temperature: 0
     }

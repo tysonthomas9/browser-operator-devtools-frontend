@@ -181,6 +181,36 @@ export interface AgentToolConfig {
    * (both success and error results). Defaults to false (steps are omitted).
    */
   includeIntermediateStepsOnReturn?: boolean;
+
+  /**
+   * If true, generate a summary of the agent's execution and append it to the final answer.
+   * Summary includes: user request, agent decisions, and final outcome.
+   * Defaults to false (no summary generated).
+   * Use this for agents where understanding the execution process is valuable (e.g., web automation agents).
+   */
+  includeSummaryInAnswer?: boolean;
+
+  /**
+   * Optional lifecycle hook that runs before the agent starts executing.
+   * Use this for agent-specific pre-execution logic such as environment setup,
+   * page navigation, or prerequisite checks.
+   *
+   * @param callCtx - The call context containing API keys, models, and other execution context
+   * @returns Promise that resolves when pre-execution is complete
+   */
+  beforeExecute?: (callCtx: CallCtx) => Promise<void>;
+
+  /**
+   * Optional lifecycle hook that runs after the agent completes execution.
+   * Use this for agent-specific post-execution logic such as saving results,
+   * cleanup operations, or data aggregation.
+   *
+   * @param result - The final agent execution result (success or error)
+   * @param agentSession - The complete agent session with all messages and tool calls
+   * @param callCtx - The call context containing API keys, models, and other execution context
+   * @returns Promise that resolves when post-execution is complete
+   */
+  afterExecute?: (result: ConfigurableAgentResult, agentSession: AgentSession, callCtx: CallCtx) => Promise<void>;
 }
 
 /**
@@ -453,6 +483,16 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       return { ...errorResult, agentSession: errorSession };
     }
 
+    // Execute beforeExecute lifecycle hook if defined
+    if (this.config.beforeExecute) {
+      try {
+        await this.config.beforeExecute(callCtx);
+      } catch (error) {
+        logger.warn(`beforeExecute hook failed for ${this.name}:`, error);
+        // Continue with agent execution even if beforeExecute fails
+      }
+    }
+
     // Initialize
     const maxIterations = this.config.maxIterations || 10;
     
@@ -524,6 +564,10 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       createErrorResult: this.config.createErrorResult
         ? (err, steps, reason) => this.config.createErrorResult!(err, steps, reason, this.config)
         : (err, steps, reason) => this.createErrorResult(err, steps, reason),
+      // Wrap afterExecute to pass callCtx (AgentRunner doesn't have access to callCtx)
+      afterExecute: this.config.afterExecute
+        ? async (result, agentSession) => this.config.afterExecute!(result, agentSession, callCtx)
+        : undefined,
     };
 
     // Run the agent
@@ -542,6 +586,9 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       },
       callCtx.abortSignal
     );
+
+    // Note: afterExecute hook is handled by AgentRunner via runnerHooks
+    // No need to call it here as it's already been executed
 
     // Return the direct result from the runner (including agentSession)
     return result;

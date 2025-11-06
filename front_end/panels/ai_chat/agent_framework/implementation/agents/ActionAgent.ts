@@ -1,8 +1,13 @@
-import type { AgentToolConfig, ConfigurableAgentArgs } from "../../ConfigurableAgentTool.js";
+import type { AgentToolConfig, ConfigurableAgentArgs, CallCtx } from "../../ConfigurableAgentTool.js";
+import { ToolRegistry } from "../../ConfigurableAgentTool.js";
 import type { ChatMessage } from "../../../models/ChatTypes.js";
 import { ChatMessageEntity } from "../../../models/ChatTypes.js";
 import { MODEL_SENTINELS } from "../../../core/Constants.js";
 import { AGENT_VERSION } from "./AgentVersion.js";
+import { createLogger } from "../../../core/Logger.js";
+import * as SDK from '../../../../../core/sdk/sdk.js';
+
+const logger = createLogger('ActionAgent');
 
 /**
  * Create the configuration for the Action Agent
@@ -143,5 +148,47 @@ ${args.input_data ? `Input Data: ${args.input_data}` : ''}
         includeToolResults: ['perform_action', 'get_page_content']
       }
     ],
+    beforeExecute: async (callCtx: CallCtx): Promise<void> => {
+      // Auto-navigate away from chrome:// URLs since action agent cannot interact with chrome:// pages
+      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      if (target) {
+        try {
+          const urlResult = await target.runtimeAgent().invoke_evaluate({
+            expression: 'window.location.href',
+            returnByValue: true,
+          });
+
+          const currentUrl = urlResult.result?.value as string;
+          if (currentUrl && currentUrl.startsWith('chrome://')) {
+            logger.info(`Action agent invoked on chrome:// URL (${currentUrl}). Auto-navigating to Google...`);
+
+            // Get navigate_url tool and execute
+            const navigateTool = ToolRegistry.getRegisteredTool('navigate_url');
+            if (navigateTool) {
+              // Create LLMContext from CallCtx for tool execution
+              const llmContext = {
+                apiKey: callCtx.apiKey,
+                provider: callCtx.provider!,
+                model: callCtx.model || callCtx.mainModel || '',
+                getVisionCapability: callCtx.getVisionCapability,
+                miniModel: callCtx.miniModel,
+                nanoModel: callCtx.nanoModel,
+                abortSignal: callCtx.abortSignal
+              };
+              await navigateTool.execute({
+                url: 'https://google.com',
+                reasoning: 'Auto-navigation from chrome:// URL to enable action agent functionality'
+              }, llmContext);
+              logger.info('Auto-navigation to Google completed successfully');
+            } else {
+              logger.warn('navigate_url tool not found, skipping auto-navigation');
+            }
+          }
+        } catch (error) {
+          logger.warn('Failed to check/navigate away from chrome:// URL:', error);
+          // Continue with agent execution even if auto-navigation fails
+        }
+      }
+    },
   };
 }

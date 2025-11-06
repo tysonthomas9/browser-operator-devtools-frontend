@@ -37,19 +37,23 @@
   color-scheme: light dark;
 }
 
-/* Ensure custom input bar expands with container width */
-ai-input-bar {
-  display: block;
+/* Flexbox layout for proper space allocation */
+ai-message-list {
+  flex: 1 1 auto;
+  min-height: 0; /* Important: allows flex child to shrink below content size */
+  overflow: hidden;
+}
+
+ai-todo-list {
+  flex-shrink: 0;
+  flex-grow: 0;
   width: 100%;
 }
 
-/* Float input bar above content; messages scroll behind */
-.chat-view-container > ai-input-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
+ai-input-bar {
+  flex-shrink: 0;
+  flex-grow: 0;
+  width: 100%;
 }
 
 /* Center the input bar in first-message (centered) view */
@@ -103,7 +107,7 @@ ai-input-bar {
 /* In expanded (conversation) view, reserve bottom space so the floating
    input bar does not overlap the last messages. */
 .chat-view-container.expanded-view {
-  padding-bottom: 150px; /* tune if input height changes */
+  padding-bottom: 0; /* tune if input height changes */
 }
 
 @keyframes expandToFull {
