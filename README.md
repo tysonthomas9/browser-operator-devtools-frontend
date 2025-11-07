@@ -1,6 +1,6 @@
 <div align="center">
 
-![Browser Operator Banner](https://raw.githubusercontent.com/BrowserOperator/browser-operator-core/main/assets/Banner.png)
+![Browser Operator Banner](assets/Banner.png)
 
 ![GitHub Release](https://img.shields.io/github/v/release/BrowserOperator/browser-operator-core)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)
