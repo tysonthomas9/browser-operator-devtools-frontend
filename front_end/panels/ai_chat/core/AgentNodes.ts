@@ -1022,8 +1022,7 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         isError,
         toolCallId, // Link back to the tool call for OpenAI format
         ...(isError && { error: resultText }),
-        // On errors, surface the tool result in the main chat lane so users see it
-        uiLane: (isAgentTool && !isError) ? 'agent' as const : 'chat',
+        uiLane: isAgentTool ? 'agent' as const : 'chat',
       };
 
       logger.debug('ToolExecutorNode: Adding tool result message with toolCallId:', { toolCallId, toolResultMessage });

@@ -1575,14 +1575,41 @@ Key guidelines:
         default:
           summaryPrompt = `The agent "${agentName}" has reached its maximum iteration limit of ${maxIterations}.
 
-Please analyze the entire conversation above and provide a concise summary that includes:
+Please analyze the entire conversation above and provide a COMPREHENSIVE and DETAILED summary (minimum 400-600 words) that includes:
 
-1. **User Request**: What the user originally asked for
-2. **Agent Decisions**: Key decisions and actions the agent took
-3. **Final State**: What the agent was doing when it timed out
-4. **Progress Assessment**: Whether the agent was making progress or stuck
+1. **User Request** (1-2 paragraphs)
+   - What the user originally asked for
+   - Key requirements and scope mentioned
+   - Expected deliverables or outcomes
 
-Format your response as a clear, informative summary that would help a calling agent understand what happened and decide next steps.`;
+2. **Agent Decisions** (2-3 paragraphs)
+   - List each tool call made with specific details (tool name, key arguments, purpose)
+   - Explain the reasoning behind each decision
+   - Describe the strategy or approach the agent took
+   - What data or information was extracted at each step
+   - Any patterns in the agent's behavior (e.g., broad searches, specific targeting)
+
+3. **Final State** (1-2 paragraphs)
+   - Exactly what the agent was doing when it timed out
+   - What task was in progress
+   - What data had been gathered so far (URLs, content, structured data)
+   - State of any ongoing operations
+
+4. **Progress Assessment** (2-3 paragraphs)
+   - Whether the agent was making meaningful progress toward the goal
+   - If stuck, identify loops, errors, or blocking issues
+   - Assess if the iteration limit (${maxIterations}) was appropriate for this task
+   - What percentage of the goal was accomplished
+   - Quality of work completed so far
+
+5. **Recommendations for Next Steps** (2-3 paragraphs with bullet points)
+   - Specific, actionable steps a calling agent should take to continue this work
+   - Which tools to use next and with what arguments
+   - What data to prioritize or process
+   - Suggested iteration limit if re-running
+   - Alternative approaches if current path seems blocked
+
+IMPORTANT: Even if the agent only completed a few iterations, provide DETAILED analysis of what it did accomplish. Describe each action comprehensively, analyze the decision-making, and provide concrete recommendations. Do not give brief answers - expand each section thoroughly with specific examples and data from the conversation.`;
           break;
       }
 

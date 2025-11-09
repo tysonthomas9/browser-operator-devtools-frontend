@@ -190,5 +190,6 @@ ${args.input_data ? `Input Data: ${args.input_data}` : ''}
         }
       }
     },
+    includeSummaryInAnswer: true,  // Enable summary for action execution to provide insights
   };
 }
