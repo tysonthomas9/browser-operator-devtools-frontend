@@ -1,9 +1,8 @@
 /**
- * Main Agent class
+ * Main Agent class - Browser-compatible
  * Extracted and adapted from front_end/panels/ai_chat/agent_framework/AgentRunner.ts
  */
 
-import { generateText, streamText, type CoreMessage } from 'ai';
 import type {
   AgentConfig,
   AgentContext,
@@ -31,17 +30,21 @@ import {
   executeOnFinish,
   executeOnError,
 } from '../hooks/index.js';
+import type { ILLMProvider, LLMMessage, LLMCallOptions } from '../llm/index.js';
 
 /**
  * Agent class for executing LLM-based agents with tools
+ * Browser-compatible - uses fetch() API
  */
 export class Agent<TTools extends ToolSet = ToolSet> {
   private config: AgentConfig<TTools>;
   private eventEmitter: AgentEventEmitter;
   private sessionId: string;
+  private provider: ILLMProvider;
 
-  constructor(config: AgentConfig<TTools>) {
+  constructor(config: AgentConfig<TTools>, provider: ILLMProvider) {
     this.config = config;
+    this.provider = provider;
     this.eventEmitter = new AgentEventEmitter();
     this.sessionId = this.generateSessionId();
   }
@@ -65,36 +68,76 @@ export class Agent<TTools extends ToolSet = ToolSet> {
       const userMessage = createUserMessage(input, ChatMessageEntity.USER);
       context.state = addMessage(context.state, userMessage);
 
-      // Convert messages to AI SDK format
-      const messages = this.convertToAIMessages(context.state.messages);
+      // Convert messages to LLM format
+      const messages = this.convertToLLMMessages(context.state.messages);
+
+      // Build tools
+      const tools = this.config.tools ? this.convertToolsToLLMFormat(this.config.tools) : undefined;
 
       // Call LLM
-      const result = await generateText({
-        model: this.config.model,
-        messages,
-        tools: this.config.tools,
+      const llmOptions: LLMCallOptions = {
         temperature: options?.temperature ?? this.config.temperature ?? 0.7,
-        maxSteps: options?.maxIterations ?? this.config.maxIterations ?? 10,
+        tools,
         abortSignal: options?.abortSignal,
-        system: this.config.instructions,
-      });
+      };
 
-      // Process result
+      const response = await this.provider.call(
+        this.config.model,
+        messages,
+        llmOptions
+      );
+
+      // Process tool calls if present
+      let finalResponse = response;
+      let iteration = 0;
+      const maxIterations = options?.maxIterations ?? this.config.maxIterations ?? 10;
+
+      while (finalResponse.toolCalls && finalResponse.toolCalls.length > 0 && iteration < maxIterations) {
+        iteration++;
+        this.eventEmitter.emitIteration(context, iteration);
+
+        // Execute tools
+        for (const toolCall of finalResponse.toolCalls) {
+          await executeOnToolCall(this.config.hooks, context, {
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: JSON.parse(toolCall.function.arguments),
+          });
+
+          this.eventEmitter.emitToolCall(context, {
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: JSON.parse(toolCall.function.arguments),
+          });
+
+          // Execute tool (stub for now - will be implemented with tool system)
+          const result = await this.executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
+
+          await executeOnToolResult(this.config.hooks, context, result);
+          this.eventEmitter.emitToolResult(context, result, toolCall.id);
+
+          // Add tool result to messages
+          messages.push({
+            role: 'tool',
+            content: JSON.stringify(result),
+            tool_call_id: toolCall.id,
+          });
+        }
+
+        // Call LLM again with tool results
+        finalResponse = await this.provider.call(this.config.model, messages, llmOptions);
+      }
+
+      // Build agent result
       const agentResult: AgentResult = {
-        text: result.text,
-        toolCalls: result.toolCalls?.map((tc) => ({
-          id: tc.toolCallId,
-          name: tc.toolName,
-          arguments: tc.args as Record<string, unknown>,
+        text: finalResponse.text,
+        toolCalls: finalResponse.toolCalls?.map((tc) => ({
+          id: tc.id,
+          name: tc.function.name,
+          arguments: JSON.parse(tc.function.arguments),
         })),
-        finishReason: this.mapFinishReason(result.finishReason),
-        usage: result.usage
-          ? {
-              promptTokens: result.usage.promptTokens,
-              completionTokens: result.usage.completionTokens,
-              totalTokens: result.usage.totalTokens,
-            }
-          : undefined,
+        finishReason: this.mapFinishReason(finalResponse.finishReason, iteration >= maxIterations),
+        usage: finalResponse.usage,
         state: context.state,
       };
 
@@ -117,10 +160,10 @@ export class Agent<TTools extends ToolSet = ToolSet> {
   /**
    * Stream text response
    */
-  async streamText(
+  async *streamText(
     input: string,
     options?: ExecutionOptions
-  ): Promise<AsyncIterable<string>> {
+  ): AsyncIterable<string> {
     const state = createInitialState();
     const context = this.createContext(state);
 
@@ -131,19 +174,19 @@ export class Agent<TTools extends ToolSet = ToolSet> {
       const userMessage = createUserMessage(input, ChatMessageEntity.USER);
       context.state = addMessage(context.state, userMessage);
 
-      const messages = this.convertToAIMessages(context.state.messages);
+      const messages = this.convertToLLMMessages(context.state.messages);
 
-      const result = await streamText({
-        model: this.config.model,
-        messages,
-        tools: this.config.tools,
+      const llmOptions: LLMCallOptions = {
         temperature: options?.temperature ?? this.config.temperature ?? 0.7,
-        maxSteps: options?.maxIterations ?? this.config.maxIterations ?? 10,
+        stream: true,
         abortSignal: options?.abortSignal,
-        system: this.config.instructions,
-      });
+      };
 
-      return result.textStream;
+      if (!this.provider.stream) {
+        throw new Error('Streaming not supported by this provider');
+      }
+
+      yield* this.provider.stream(this.config.model, messages, llmOptions);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       context.state = setError(context.state, err);
@@ -190,6 +233,23 @@ export class Agent<TTools extends ToolSet = ToolSet> {
   }
 
   /**
+   * Execute a tool (stub - will be implemented with tool system)
+   */
+  private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+    // TODO: Implement tool execution with tool registry
+    console.warn(`Tool execution not yet implemented: ${name}`);
+    return { error: 'Tool execution not implemented' };
+  }
+
+  /**
+   * Convert tools to LLM format
+   */
+  private convertToolsToLLMFormat(tools: TTools): any[] {
+    // TODO: Implement proper tool conversion
+    return [];
+  }
+
+  /**
    * Create agent context
    */
   private createContext(state: AgentState): AgentContext {
@@ -202,43 +262,63 @@ export class Agent<TTools extends ToolSet = ToolSet> {
   }
 
   /**
-   * Convert chat messages to AI SDK format
+   * Convert chat messages to LLM format
    */
-  private convertToAIMessages(messages: ChatMessage[]): CoreMessage[] {
-    return messages
-      .filter((msg) => msg.entity === ChatMessageEntity.USER || msg.entity === ChatMessageEntity.MODEL)
-      .map((msg) => {
-        if (msg.entity === ChatMessageEntity.USER) {
-          return {
-            role: 'user' as const,
-            content: msg.text,
-          };
-        } else {
-          return {
-            role: 'assistant' as const,
-            content: msg.text,
-          };
-        }
+  private convertToLLMMessages(messages: ChatMessage[]): LLMMessage[] {
+    const llmMessages: LLMMessage[] = [];
+
+    // Add system message if instructions provided
+    if (this.config.instructions) {
+      llmMessages.push({
+        role: 'system',
+        content: this.config.instructions,
       });
+    }
+
+    // Convert chat messages
+    for (const msg of messages) {
+      if (msg.entity === ChatMessageEntity.USER) {
+        llmMessages.push({
+          role: 'user',
+          content: msg.text,
+        });
+      } else if (msg.entity === ChatMessageEntity.MODEL) {
+        llmMessages.push({
+          role: 'assistant',
+          content: msg.text,
+          tool_calls: msg.toolCalls?.map((tc) => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.arguments),
+            },
+          })),
+        });
+      }
+    }
+
+    return llmMessages;
   }
 
   /**
-   * Map AI SDK finish reason to agent finish reason
+   * Map LLM finish reason to agent finish reason
    */
   private mapFinishReason(
-    reason: string
+    reason: string,
+    reachedMaxIterations: boolean
   ): 'stop' | 'length' | 'tool-calls' | 'error' | 'max-iterations' {
+    if (reachedMaxIterations) {
+      return 'max-iterations';
+    }
+
     switch (reason) {
       case 'stop':
         return 'stop';
       case 'length':
         return 'length';
-      case 'tool-calls':
+      case 'tool_calls':
         return 'tool-calls';
-      case 'error':
-        return 'error';
-      case 'max-steps':
-        return 'max-iterations';
       default:
         return 'stop';
     }

@@ -1,9 +1,9 @@
 /**
  * Event system for agent execution
- * Extracted and adapted from front_end/panels/ai_chat/core/AgentService.ts
+ * Browser-compatible implementation
  */
 
-import EventEmitter from 'eventemitter3';
+import { EventEmitter } from './EventEmitter.js';
 import type { AgentContext, AgentResult, ToolCall } from '../types/index.js';
 
 /**
@@ -107,3 +107,6 @@ export function getGlobalEventBus(): AgentEventEmitter {
 export function resetGlobalEventBus(): void {
   globalEventBus = null;
 }
+
+// Re-export EventEmitter for advanced use cases
+export { EventEmitter };

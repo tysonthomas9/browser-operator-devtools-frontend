@@ -2,6 +2,7 @@
  * @browser-operator/core
  *
  * Core agent framework for Browser Operator SDK
+ * Browser-compatible - runs in vanilla JavaScript
  */
 
 // Agent
@@ -50,6 +51,7 @@ export {
 export {
   AgentEvent,
   AgentEventEmitter,
+  EventEmitter,
   getGlobalEventBus,
   resetGlobalEventBus,
   type AgentEventMap,
@@ -66,3 +68,18 @@ export {
   createDefaultHooks,
   mergeHooks,
 } from './hooks/index.js';
+
+// LLM Providers
+export {
+  BaseLLMProvider,
+  OpenAIProvider,
+  type LLMProvider,
+  type LLMMessage,
+  type LLMCallOptions,
+  type LLMResponse,
+  type LLMProviderConfig,
+  type ILLMProvider,
+  type Tool,
+  type MessageContent,
+  type ModelInfo,
+} from './llm/index.js';
