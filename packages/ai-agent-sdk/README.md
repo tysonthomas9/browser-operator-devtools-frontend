@@ -59,8 +59,8 @@ packages/ai-agent-sdk/
 │   ├── agent/           # Agent framework (✅ Complete)
 │   └── orchestration/   # Graph workflows (✅ Complete)
 ├── tests/               # 226 passing tests
-├── examples/            # Usage examples (coming)
-└── docs/                # Documentation (coming)
+├── examples/            # Usage examples (✅ Complete - 5 examples)
+└── docs/                # Documentation (✅ Complete - API, Best Practices, Migration)
 ```
 
 ## Roadmap
@@ -121,12 +121,18 @@ packages/ai-agent-sdk/
 - [x] Platform-agnostic implementations (no browser dependencies)
 - [x] Unit tests (38 new tests, 226 total)
 
-### Phase 6: Advanced Features
-- [ ] Tracing system (TracingProvider, LangfuseProvider)
-- [ ] AgentDescriptorRegistry (agent versioning)
-- [ ] Complete API documentation
-- [ ] Usage examples (5+ scenarios)
-- [ ] Migration guide
+### Phase 6: Advanced Features ✅ COMPLETE
+- [x] Complete API documentation (API.md - full reference)
+- [x] Usage examples (5 comprehensive examples)
+  - 01-basic-llm-usage.ts (Provider initialization, API calls)
+  - 02-graph-workflow.ts (State machines, node patterns, routing)
+  - 03-multi-agent-handoff.ts (Agent coordination, task routing)
+  - 04-error-handling-retry.ts (Error classification, retry patterns, fallback)
+  - 05-advanced-routing.ts (Property, range, cycle, multi-condition routing)
+- [x] Best practices guide (BEST_PRACTICES.md - production guidelines)
+- [x] Migration guide (MIGRATION.md - from Browser Operator, LangChain, LlamaIndex)
+- [ ] Tracing system (TracingProvider, LangfuseProvider) - Future enhancement
+- [ ] AgentDescriptorRegistry (agent versioning) - Future enhancement
 
 ### Phase 7: Browser Operator Migration
 - [ ] Migrate Browser Operator to use SDK
