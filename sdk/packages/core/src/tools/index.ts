@@ -53,3 +53,6 @@ export * from './createFile.js';
 export * from './updateFile.js';
 export * from './deleteFile.js';
 export * from './listFiles.js';
+
+// Execution
+export * from './executeCode.js';
