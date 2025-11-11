@@ -7,7 +7,7 @@ import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 
 // Import settings utilities
-import { i18nString } from './settings/i18n-strings.js';
+import { i18nString, UIStrings } from './settings/i18n-strings.js';
 import { PROVIDER_SELECTION_KEY, MINI_MODEL_STORAGE_KEY, NANO_MODEL_STORAGE_KEY, ADVANCED_SETTINGS_ENABLED_KEY } from './settings/constants.js';
 import { applySettingsStyles } from './settings/utils/styles.js';
 import { isVectorDBEnabled } from './settings/utils/storage.js';
@@ -65,7 +65,7 @@ export class SettingsDialog {
 
     const title = document.createElement('h2');
     title.className = 'settings-title';
-    title.textContent = i18nString('settings');
+    title.textContent = i18nString(UIStrings.settings);
     headerDiv.appendChild(title);
 
     const closeButton = document.createElement('button');
@@ -82,12 +82,12 @@ export class SettingsDialog {
 
     const providerLabel = document.createElement('div');
     providerLabel.className = 'settings-label';
-    providerLabel.textContent = i18nString('providerLabel');
+    providerLabel.textContent = i18nString(UIStrings.providerLabel);
     providerSection.appendChild(providerLabel);
 
     const providerHint = document.createElement('div');
     providerHint.className = 'settings-hint';
-    providerHint.textContent = i18nString('providerHint');
+    providerHint.textContent = i18nString(UIStrings.providerHint);
     providerSection.appendChild(providerHint);
 
     // Use the stored provider from localStorage
@@ -101,25 +101,25 @@ export class SettingsDialog {
     // Add options to the dropdown
     const openaiOption = document.createElement('option');
     openaiOption.value = 'openai';
-    openaiOption.textContent = i18nString('openaiProvider');
+    openaiOption.textContent = i18nString(UIStrings.openaiProvider);
     openaiOption.selected = currentProvider === 'openai';
     providerSelect.appendChild(openaiOption);
 
     const litellmOption = document.createElement('option');
     litellmOption.value = 'litellm';
-    litellmOption.textContent = i18nString('litellmProvider');
+    litellmOption.textContent = i18nString(UIStrings.litellmProvider);
     litellmOption.selected = currentProvider === 'litellm';
     providerSelect.appendChild(litellmOption);
 
     const groqOption = document.createElement('option');
     groqOption.value = 'groq';
-    groqOption.textContent = i18nString('groqProvider');
+    groqOption.textContent = i18nString(UIStrings.groqProvider);
     groqOption.selected = currentProvider === 'groq';
     providerSelect.appendChild(groqOption);
 
     const openrouterOption = document.createElement('option');
     openrouterOption.value = 'openrouter';
-    openrouterOption.textContent = i18nString('openrouterProvider');
+    openrouterOption.textContent = i18nString(UIStrings.openrouterProvider);
     openrouterOption.selected = currentProvider === 'openrouter';
     providerSelect.appendChild(openrouterOption);
 
@@ -361,7 +361,7 @@ export class SettingsDialog {
     // Create disclaimer
     const disclaimer = document.createElement('div');
     disclaimer.className = 'settings-disclaimer';
-    disclaimer.textContent = i18nString('disclaimer');
+    disclaimer.textContent = i18nString(UIStrings.disclaimer);
     contentDiv.appendChild(disclaimer);
 
     // Create footer with buttons
@@ -379,14 +379,14 @@ export class SettingsDialog {
     buttonContainer.appendChild(saveStatusMessage);
 
     const cancelButton = document.createElement('button');
-    cancelButton.textContent = i18nString('cancelButton');
+    cancelButton.textContent = i18nString(UIStrings.cancelButton);
     cancelButton.className = 'settings-button cancel-button';
     cancelButton.setAttribute('type', 'button');
     cancelButton.addEventListener('click', () => dialog.hide());
     buttonContainer.appendChild(cancelButton);
 
     const saveButton = document.createElement('button');
-    saveButton.textContent = i18nString('saveButton');
+    saveButton.textContent = i18nString(UIStrings.saveButton);
     saveButton.className = 'settings-button save-button';
     saveButton.setAttribute('type', 'button');
     buttonContainer.appendChild(saveButton);

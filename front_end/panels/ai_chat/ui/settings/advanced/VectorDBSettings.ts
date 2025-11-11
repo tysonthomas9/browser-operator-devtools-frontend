@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import {
   VECTOR_DB_ENABLED_KEY,
   MILVUS_ENDPOINT_KEY,
@@ -37,7 +37,7 @@ export class VectorDBSettings {
 
     // Title
     const vectorDBTitle = document.createElement('h3');
-    vectorDBTitle.textContent = i18nString('vectorDBLabel');
+    vectorDBTitle.textContent = i18nString(UIStrings.vectorDBLabel);
     vectorDBTitle.classList.add('settings-subtitle');
     this.container.appendChild(vectorDBTitle);
 
@@ -56,12 +56,12 @@ export class VectorDBSettings {
     const vectorDBEnabledLabel = document.createElement('label');
     vectorDBEnabledLabel.htmlFor = 'vector-db-enabled';
     vectorDBEnabledLabel.className = 'tracing-label';
-    vectorDBEnabledLabel.textContent = i18nString('vectorDBEnabled');
+    vectorDBEnabledLabel.textContent = i18nString(UIStrings.vectorDBEnabled);
     vectorDBEnabledContainer.appendChild(vectorDBEnabledLabel);
 
     const vectorDBEnabledHint = document.createElement('div');
     vectorDBEnabledHint.className = 'settings-hint';
-    vectorDBEnabledHint.textContent = i18nString('vectorDBEnabledHint');
+    vectorDBEnabledHint.textContent = i18nString(UIStrings.vectorDBEnabledHint);
     this.container.appendChild(vectorDBEnabledHint);
 
     // Vector DB configuration container (shown when enabled)
@@ -76,12 +76,12 @@ export class VectorDBSettings {
     vectorDBConfigContainer.appendChild(vectorDBEndpointDiv);
 
     const vectorDBEndpointLabel = document.createElement('label');
-    vectorDBEndpointLabel.textContent = i18nString('vectorDBEndpoint');
+    vectorDBEndpointLabel.textContent = i18nString(UIStrings.vectorDBEndpoint);
     vectorDBEndpointLabel.classList.add('settings-label');
     vectorDBEndpointDiv.appendChild(vectorDBEndpointLabel);
 
     const vectorDBEndpointHint = document.createElement('div');
-    vectorDBEndpointHint.textContent = i18nString('vectorDBEndpointHint');
+    vectorDBEndpointHint.textContent = i18nString(UIStrings.vectorDBEndpointHint);
     vectorDBEndpointHint.classList.add('settings-hint');
     vectorDBEndpointDiv.appendChild(vectorDBEndpointHint);
 
@@ -98,12 +98,12 @@ export class VectorDBSettings {
     vectorDBConfigContainer.appendChild(vectorDBApiKeyDiv);
 
     const vectorDBApiKeyLabel = document.createElement('label');
-    vectorDBApiKeyLabel.textContent = i18nString('vectorDBApiKey');
+    vectorDBApiKeyLabel.textContent = i18nString(UIStrings.vectorDBApiKey);
     vectorDBApiKeyLabel.classList.add('settings-label');
     vectorDBApiKeyDiv.appendChild(vectorDBApiKeyLabel);
 
     const vectorDBApiKeyHint = document.createElement('div');
-    vectorDBApiKeyHint.textContent = i18nString('vectorDBApiKeyHint');
+    vectorDBApiKeyHint.textContent = i18nString(UIStrings.vectorDBApiKeyHint);
     vectorDBApiKeyHint.classList.add('settings-hint');
     vectorDBApiKeyDiv.appendChild(vectorDBApiKeyHint);
 
@@ -120,12 +120,12 @@ export class VectorDBSettings {
     vectorDBConfigContainer.appendChild(milvusPasswordDiv);
 
     const milvusPasswordLabel = document.createElement('label');
-    milvusPasswordLabel.textContent = i18nString('milvusPassword');
+    milvusPasswordLabel.textContent = i18nString(UIStrings.milvusPassword);
     milvusPasswordLabel.classList.add('settings-label');
     milvusPasswordDiv.appendChild(milvusPasswordLabel);
 
     const milvusPasswordHint = document.createElement('div');
-    milvusPasswordHint.textContent = i18nString('milvusPasswordHint');
+    milvusPasswordHint.textContent = i18nString(UIStrings.milvusPasswordHint);
     milvusPasswordHint.classList.add('settings-hint');
     milvusPasswordDiv.appendChild(milvusPasswordHint);
 
@@ -142,12 +142,12 @@ export class VectorDBSettings {
     vectorDBConfigContainer.appendChild(milvusOpenAIDiv);
 
     const milvusOpenAILabel = document.createElement('label');
-    milvusOpenAILabel.textContent = i18nString('milvusOpenAIKey');
+    milvusOpenAILabel.textContent = i18nString(UIStrings.milvusOpenAIKey);
     milvusOpenAILabel.classList.add('settings-label');
     milvusOpenAIDiv.appendChild(milvusOpenAILabel);
 
     const milvusOpenAIHint = document.createElement('div');
-    milvusOpenAIHint.textContent = i18nString('milvusOpenAIKeyHint');
+    milvusOpenAIHint.textContent = i18nString(UIStrings.milvusOpenAIKeyHint);
     milvusOpenAIHint.classList.add('settings-hint');
     milvusOpenAIDiv.appendChild(milvusOpenAIHint);
 
@@ -164,12 +164,12 @@ export class VectorDBSettings {
     vectorDBConfigContainer.appendChild(vectorDBCollectionDiv);
 
     const vectorDBCollectionLabel = document.createElement('label');
-    vectorDBCollectionLabel.textContent = i18nString('vectorDBCollection');
+    vectorDBCollectionLabel.textContent = i18nString(UIStrings.vectorDBCollection);
     vectorDBCollectionLabel.classList.add('settings-label');
     vectorDBCollectionDiv.appendChild(vectorDBCollectionLabel);
 
     const vectorDBCollectionHint = document.createElement('div');
-    vectorDBCollectionHint.textContent = i18nString('vectorDBCollectionHint');
+    vectorDBCollectionHint.textContent = i18nString(UIStrings.vectorDBCollectionHint);
     vectorDBCollectionHint.classList.add('settings-hint');
     vectorDBCollectionDiv.appendChild(vectorDBCollectionHint);
 
@@ -188,7 +188,7 @@ export class VectorDBSettings {
     const vectorDBTestButton = document.createElement('button');
     vectorDBTestButton.classList.add('settings-button', 'test-button');
     vectorDBTestButton.setAttribute('type', 'button');
-    vectorDBTestButton.textContent = i18nString('testVectorDBConnection');
+    vectorDBTestButton.textContent = i18nString(UIStrings.testVectorDBConnection);
     vectorDBTestDiv.appendChild(vectorDBTestButton);
 
     const vectorDBTestStatus = document.createElement('div');
@@ -243,7 +243,7 @@ export class VectorDBSettings {
       }
 
       vectorDBTestButton.disabled = true;
-      vectorDBTestStatus.textContent = i18nString('testingVectorDBConnection');
+      vectorDBTestStatus.textContent = i18nString(UIStrings.testingVectorDBConnection);
       vectorDBTestStatus.style.color = 'var(--color-text-secondary)';
       vectorDBTestStatus.style.display = 'block';
 
@@ -261,14 +261,14 @@ export class VectorDBSettings {
         const testResult = await vectorClient.testConnection();
 
         if (testResult.success) {
-          vectorDBTestStatus.textContent = i18nString('vectorDBConnectionSuccess');
+          vectorDBTestStatus.textContent = i18nString(UIStrings.vectorDBConnectionSuccess);
           vectorDBTestStatus.style.color = 'var(--color-accent-green)';
         } else {
-          vectorDBTestStatus.textContent = `${i18nString('vectorDBConnectionFailed')}: ${testResult.error}`;
+          vectorDBTestStatus.textContent = `${i18nString(UIStrings.vectorDBConnectionFailed)}: ${testResult.error}`;
           vectorDBTestStatus.style.color = 'var(--color-accent-red)';
         }
       } catch (error: any) {
-        vectorDBTestStatus.textContent = `${i18nString('vectorDBConnectionFailed')}: ${error.message}`;
+        vectorDBTestStatus.textContent = `${i18nString(UIStrings.vectorDBConnectionFailed)}: ${error.message}`;
         vectorDBTestStatus.style.color = 'var(--color-accent-red)';
       } finally {
         vectorDBTestButton.disabled = false;

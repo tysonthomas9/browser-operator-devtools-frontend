@@ -4,7 +4,7 @@
 
 import { BaseProviderSettings } from './BaseProviderSettings.js';
 import { createModelSelector, refreshModelSelectOptions } from '../components/ModelSelectorFactory.js';
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import { getValidModelForProvider } from '../utils/validation.js';
 import { getStorageItem, setStorageItem } from '../utils/storage.js';
 import { LITELLM_ENDPOINT_KEY, LITELLM_API_KEY_STORAGE_KEY, MINI_MODEL_STORAGE_KEY, NANO_MODEL_STORAGE_KEY } from '../constants.js';
@@ -56,12 +56,12 @@ export class LiteLLMSettings extends BaseProviderSettings {
     // LiteLLM endpoint
     const litellmEndpointLabel = document.createElement('div');
     litellmEndpointLabel.className = 'settings-label';
-    litellmEndpointLabel.textContent = i18nString('litellmEndpointLabel');
+    litellmEndpointLabel.textContent = i18nString(UIStrings.litellmEndpointLabel);
     litellmSettingsSection.appendChild(litellmEndpointLabel);
 
     const litellmEndpointHint = document.createElement('div');
     litellmEndpointHint.className = 'settings-hint';
-    litellmEndpointHint.textContent = i18nString('litellmEndpointHint');
+    litellmEndpointHint.textContent = i18nString(UIStrings.litellmEndpointHint);
     litellmSettingsSection.appendChild(litellmEndpointHint);
 
     const settingsSavedLiteLLMEndpoint = getStorageItem(LITELLM_ENDPOINT_KEY, '');
@@ -75,12 +75,12 @@ export class LiteLLMSettings extends BaseProviderSettings {
     // LiteLLM API Key
     const litellmAPIKeyLabel = document.createElement('div');
     litellmAPIKeyLabel.className = 'settings-label';
-    litellmAPIKeyLabel.textContent = i18nString('liteLLMApiKey');
+    litellmAPIKeyLabel.textContent = i18nString(UIStrings.liteLLMApiKey);
     litellmSettingsSection.appendChild(litellmAPIKeyLabel);
 
     const litellmAPIKeyHint = document.createElement('div');
     litellmAPIKeyHint.className = 'settings-hint';
-    litellmAPIKeyHint.textContent = i18nString('liteLLMApiKeyHint');
+    litellmAPIKeyHint.textContent = i18nString(UIStrings.liteLLMApiKeyHint);
     litellmSettingsSection.appendChild(litellmAPIKeyHint);
 
     const settingsSavedLiteLLMApiKey = getStorageItem(LITELLM_API_KEY_STORAGE_KEY, '');
@@ -107,7 +107,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
     this.fetchModelsButton = document.createElement('button');
     this.fetchModelsButton.className = 'settings-button';
     this.fetchModelsButton.setAttribute('type', 'button');
-    this.fetchModelsButton.textContent = i18nString('fetchModelsButton');
+    this.fetchModelsButton.textContent = i18nString(UIStrings.fetchModelsButton);
     this.fetchModelsButton.disabled = !this.endpointInput.value.trim();
     fetchButtonContainer.appendChild(this.fetchModelsButton);
 
@@ -121,7 +121,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
       if (!this.fetchModelsButton || !this.fetchModelsStatus || !this.endpointInput || !this.apiKeyInput) return;
 
       this.fetchModelsButton.disabled = true;
-      this.fetchModelsStatus.textContent = i18nString('fetchingModels');
+      this.fetchModelsStatus.textContent = i18nString(UIStrings.fetchingModels);
       this.fetchModelsStatus.style.display = 'block';
       this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-blue-background)';
       this.fetchModelsStatus.style.color = 'var(--color-accent-blue)';
@@ -144,29 +144,29 @@ export class LiteLLMSettings extends BaseProviderSettings {
 
         // Refresh existing model selectors with new options if they exist
         if (this.miniModelSelector) {
-          refreshModelSelectOptions(this.miniModelSelector as any, allLiteLLMModels, miniModel, i18nString('defaultMiniOption'));
+          refreshModelSelectOptions(this.miniModelSelector as any, allLiteLLMModels, miniModel, i18nString(UIStrings.defaultMiniOption));
         }
         if (this.nanoModelSelector) {
-          refreshModelSelectOptions(this.nanoModelSelector as any, allLiteLLMModels, nanoModel, i18nString('defaultNanoOption'));
+          refreshModelSelectOptions(this.nanoModelSelector as any, allLiteLLMModels, nanoModel, i18nString(UIStrings.defaultNanoOption));
         }
 
         if (hadWildcard && actualModelCount === 0 && !hasCustomModels) {
-          this.fetchModelsStatus.textContent = i18nString('wildcardModelsOnly');
+          this.fetchModelsStatus.textContent = i18nString(UIStrings.wildcardModelsOnly);
           this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-orange-background)';
           this.fetchModelsStatus.style.color = 'var(--color-accent-orange)';
         } else if (hadWildcard && actualModelCount === 0) {
           // Only wildcard was returned but we have custom models
-          this.fetchModelsStatus.textContent = i18nString('wildcardAndCustomModels');
+          this.fetchModelsStatus.textContent = i18nString(UIStrings.wildcardAndCustomModels);
           this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
           this.fetchModelsStatus.style.color = 'var(--color-accent-green)';
         } else if (hadWildcard) {
           // Wildcard plus other models
-          this.fetchModelsStatus.textContent = i18nString('wildcardAndOtherModels', {PH1: actualModelCount});
+          this.fetchModelsStatus.textContent = i18nString(UIStrings.wildcardAndOtherModels, {PH1: actualModelCount});
           this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
           this.fetchModelsStatus.style.color = 'var(--color-accent-green)';
         } else {
           // No wildcard, just regular models
-          this.fetchModelsStatus.textContent = i18nString('fetchedModels', {PH1: actualModelCount});
+          this.fetchModelsStatus.textContent = i18nString(UIStrings.fetchedModels, {PH1: actualModelCount});
           this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
           this.fetchModelsStatus.style.color = 'var(--color-accent-green)';
         }
@@ -196,12 +196,12 @@ export class LiteLLMSettings extends BaseProviderSettings {
 
     const customModelsLabel = document.createElement('div');
     customModelsLabel.className = 'settings-label';
-    customModelsLabel.textContent = i18nString('customModelsLabel');
+    customModelsLabel.textContent = i18nString(UIStrings.customModelsLabel);
     customModelsSection.appendChild(customModelsLabel);
 
     const customModelsHint = document.createElement('div');
     customModelsHint.className = 'settings-hint';
-    customModelsHint.textContent = i18nString('customModelsHint');
+    customModelsHint.textContent = i18nString(UIStrings.customModelsHint);
     customModelsSection.appendChild(customModelsHint);
 
     // Current custom models list
@@ -225,7 +225,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
     const addModelButton = document.createElement('button');
     addModelButton.className = 'settings-button add-button';
     addModelButton.setAttribute('type', 'button');
-    addModelButton.textContent = i18nString('addButton');
+    addModelButton.textContent = i18nString(UIStrings.addButton);
     newModelRow.appendChild(addModelButton);
 
     this.modelTestStatus = document.createElement('div');
@@ -331,7 +331,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
       const testButton = document.createElement('button');
       testButton.className = 'icon-button test-button';
       testButton.setAttribute('type', 'button');
-      testButton.setAttribute('aria-label', i18nString('testButton'));
+      testButton.setAttribute('aria-label', i18nString(UIStrings.testButton));
       testButton.setAttribute('title', 'Test connection to this model');
 
       // Create SVG check icon
@@ -350,7 +350,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
       const removeButton = document.createElement('button');
       removeButton.className = 'icon-button remove-button';
       removeButton.setAttribute('type', 'button');
-      removeButton.setAttribute('aria-label', i18nString('removeButton'));
+      removeButton.setAttribute('aria-label', i18nString(UIStrings.removeButton));
       removeButton.setAttribute('title', 'Remove this model');
 
       // Create SVG trash icon
@@ -377,7 +377,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
           const liteLLMApiKey = this.apiKeyInput?.value || getStorageItem(LITELLM_API_KEY_STORAGE_KEY, '');
 
           if (!endpoint) {
-            throw new Error(i18nString('endpointRequired'));
+            throw new Error(i18nString(UIStrings.endpointRequired));
           }
 
           const result = await LLMClient.testLiteLLMConnection(liteLLMApiKey, model, endpoint);
@@ -436,7 +436,7 @@ export class LiteLLMSettings extends BaseProviderSettings {
       const liteLLMApiKey = this.apiKeyInput?.value || getStorageItem(LITELLM_API_KEY_STORAGE_KEY, '');
 
       if (!endpoint) {
-        throw new Error(i18nString('endpointRequired'));
+        throw new Error(i18nString(UIStrings.endpointRequired));
       }
 
       const result = await LLMClient.testLiteLLMConnection(liteLLMApiKey, modelName, endpoint);
@@ -516,12 +516,12 @@ export class LiteLLMSettings extends BaseProviderSettings {
     // Create LiteLLM Mini Model selection and store reference
     this.miniModelSelector = createModelSelector(
       litellmModelSection,
-      i18nString('miniModelLabel'),
-      i18nString('miniModelDescription'),
+      i18nString(UIStrings.miniModelLabel),
+      i18nString(UIStrings.miniModelDescription),
       'litellm-mini-model-select',
       litellmModels,
       validMiniModel,
-      i18nString('defaultMiniOption'),
+      i18nString(UIStrings.defaultMiniOption),
       onLiteLLMSelectorFocus
     );
 
@@ -530,12 +530,12 @@ export class LiteLLMSettings extends BaseProviderSettings {
     // Create LiteLLM Nano Model selection and store reference
     this.nanoModelSelector = createModelSelector(
       litellmModelSection,
-      i18nString('nanoModelLabel'),
-      i18nString('nanoModelDescription'),
+      i18nString(UIStrings.nanoModelLabel),
+      i18nString(UIStrings.nanoModelDescription),
       'litellm-nano-model-select',
       litellmModels,
       validNanoModel,
-      i18nString('defaultNanoOption'),
+      i18nString(UIStrings.defaultNanoOption),
       onLiteLLMSelectorFocus
     );
 

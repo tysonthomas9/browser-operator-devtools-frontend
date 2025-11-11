@@ -4,7 +4,7 @@
 
 import { BaseProviderSettings } from './BaseProviderSettings.js';
 import { createModelSelector } from '../components/ModelSelectorFactory.js';
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import { getValidModelForProvider } from '../utils/validation.js';
 import { getStorageItem, setStorageItem } from '../utils/storage.js';
 import { OPENAI_API_KEY_STORAGE_KEY, MINI_MODEL_STORAGE_KEY, NANO_MODEL_STORAGE_KEY } from '../constants.js';
@@ -40,12 +40,12 @@ export class OpenAISettings extends BaseProviderSettings {
 
     const apiKeyLabel = document.createElement('div');
     apiKeyLabel.className = 'settings-label';
-    apiKeyLabel.textContent = i18nString('apiKeyLabel');
+    apiKeyLabel.textContent = i18nString(UIStrings.apiKeyLabel);
     this.settingsSection.appendChild(apiKeyLabel);
 
     const apiKeyHint = document.createElement('div');
     apiKeyHint.className = 'settings-hint';
-    apiKeyHint.textContent = i18nString('apiKeyHint');
+    apiKeyHint.textContent = i18nString(UIStrings.apiKeyHint);
     this.settingsSection.appendChild(apiKeyHint);
 
     const settingsSavedApiKey = getStorageItem(OPENAI_API_KEY_STORAGE_KEY, '');
@@ -98,24 +98,24 @@ export class OpenAISettings extends BaseProviderSettings {
     // Create OpenAI Mini Model selection and store reference
     this.miniModelSelector = createModelSelector(
       openaiModelSection,
-      i18nString('miniModelLabel'),
-      i18nString('miniModelDescription'),
+      i18nString(UIStrings.miniModelLabel),
+      i18nString(UIStrings.miniModelDescription),
       'mini-model-select',
       openaiModels,
       validMiniModel,
-      i18nString('defaultMiniOption'),
+      i18nString(UIStrings.defaultMiniOption),
       undefined // No focus handler for OpenAI
     );
 
     // Create OpenAI Nano Model selection and store reference
     this.nanoModelSelector = createModelSelector(
       openaiModelSection,
-      i18nString('nanoModelLabel'),
-      i18nString('nanoModelDescription'),
+      i18nString(UIStrings.nanoModelLabel),
+      i18nString(UIStrings.nanoModelDescription),
       'nano-model-select',
       openaiModels,
       validNanoModel,
-      i18nString('defaultNanoOption'),
+      i18nString(UIStrings.defaultNanoOption),
       undefined // No focus handler for OpenAI
     );
   }

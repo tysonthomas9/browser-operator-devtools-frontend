@@ -4,7 +4,7 @@
 
 import { BaseProviderSettings } from './BaseProviderSettings.js';
 import { createModelSelector } from '../components/ModelSelectorFactory.js';
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import { getValidModelForProvider } from '../utils/validation.js';
 import { getStorageItem, setStorageItem } from '../utils/storage.js';
 import { OPENROUTER_API_KEY_STORAGE_KEY, MINI_MODEL_STORAGE_KEY, NANO_MODEL_STORAGE_KEY, OPENROUTER_MODELS_CACHE_DURATION_MS } from '../constants.js';
@@ -77,12 +77,12 @@ export class OpenRouterSettings extends BaseProviderSettings {
     // OpenRouter API Key
     const openrouterApiKeyLabel = document.createElement('div');
     openrouterApiKeyLabel.className = 'settings-label';
-    openrouterApiKeyLabel.textContent = i18nString('openrouterApiKeyLabel');
+    openrouterApiKeyLabel.textContent = i18nString(UIStrings.openrouterApiKeyLabel);
     openrouterSettingsSection.appendChild(openrouterApiKeyLabel);
 
     const openrouterApiKeyHint = document.createElement('div');
     openrouterApiKeyHint.className = 'settings-hint';
-    openrouterApiKeyHint.textContent = i18nString('openrouterApiKeyHint');
+    openrouterApiKeyHint.textContent = i18nString(UIStrings.openrouterApiKeyHint);
     openrouterSettingsSection.appendChild(openrouterApiKeyHint);
 
     const settingsSavedOpenRouterApiKey = getStorageItem(OPENROUTER_API_KEY_STORAGE_KEY, '');
@@ -322,7 +322,7 @@ export class OpenRouterSettings extends BaseProviderSettings {
     this.fetchModelsButton = document.createElement('button');
     this.fetchModelsButton.className = 'settings-button';
     this.fetchModelsButton.setAttribute('type', 'button');
-    this.fetchModelsButton.textContent = i18nString('fetchOpenRouterModelsButton');
+    this.fetchModelsButton.textContent = i18nString(UIStrings.fetchOpenRouterModelsButton);
     this.fetchModelsButton.disabled = !this.apiKeyInput.value.trim();
     openrouterFetchButtonContainer.appendChild(this.fetchModelsButton);
 
@@ -336,7 +336,7 @@ export class OpenRouterSettings extends BaseProviderSettings {
       if (!this.fetchModelsButton || !this.fetchModelsStatus || !this.apiKeyInput) return;
 
       this.fetchModelsButton.disabled = true;
-      this.fetchModelsStatus.textContent = i18nString('fetchingModels');
+      this.fetchModelsStatus.textContent = i18nString(UIStrings.fetchingModels);
       this.fetchModelsStatus.style.display = 'block';
       this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-blue-background)';
       this.fetchModelsStatus.style.color = 'var(--color-accent-blue)';
@@ -366,7 +366,7 @@ export class OpenRouterSettings extends BaseProviderSettings {
         await this.updateModelSelectors();
 
         // Update status to show success
-        this.fetchModelsStatus.textContent = i18nString('fetchedModels', {PH1: actualModelCount});
+        this.fetchModelsStatus.textContent = i18nString(UIStrings.fetchedModels, {PH1: actualModelCount});
         this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
         this.fetchModelsStatus.style.color = 'var(--color-accent-green)';
 
@@ -486,24 +486,24 @@ export class OpenRouterSettings extends BaseProviderSettings {
     // Create Mini Model selection for OpenRouter and store reference
     this.miniModelSelector = createModelSelector(
       openrouterModelSection,
-      i18nString('miniModelLabel'),
-      i18nString('miniModelDescription'),
+      i18nString(UIStrings.miniModelLabel),
+      i18nString(UIStrings.miniModelDescription),
       'openrouter-mini-model-select',
       openrouterModels,
       validMiniModel,
-      i18nString('defaultMiniOption'),
+      i18nString(UIStrings.defaultMiniOption),
       undefined // No focus handler needed for OpenRouter
     );
 
     // Create Nano Model selection for OpenRouter and store reference
     this.nanoModelSelector = createModelSelector(
       openrouterModelSection,
-      i18nString('nanoModelLabel'),
-      i18nString('nanoModelDescription'),
+      i18nString(UIStrings.nanoModelLabel),
+      i18nString(UIStrings.nanoModelDescription),
       'openrouter-nano-model-select',
       openrouterModels,
       validNanoModel,
-      i18nString('defaultNanoOption'),
+      i18nString(UIStrings.defaultNanoOption),
       undefined // No focus handler needed for OpenRouter
     );
   }

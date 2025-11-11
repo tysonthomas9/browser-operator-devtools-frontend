@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import * as Common from '../../../../../core/common/common.js';
 
 const logger = Common.Console.Console.instance();
@@ -28,25 +28,25 @@ export class BrowsingHistorySettings {
     // Title
     const historyTitle = document.createElement('h3');
     historyTitle.className = 'settings-subtitle';
-    historyTitle.textContent = i18nString('browsingHistoryTitle');
+    historyTitle.textContent = i18nString(UIStrings.browsingHistoryTitle);
     this.container.appendChild(historyTitle);
 
     // Description
     const historyDescription = document.createElement('p');
     historyDescription.className = 'settings-description';
-    historyDescription.textContent = i18nString('browsingHistoryDescription');
+    historyDescription.textContent = i18nString(UIStrings.browsingHistoryDescription);
     this.container.appendChild(historyDescription);
 
     // Status message element (initially hidden)
     this.statusMessage = document.createElement('div');
     this.statusMessage.className = 'settings-status history-status';
     this.statusMessage.style.display = 'none';
-    this.statusMessage.textContent = i18nString('historyCleared');
+    this.statusMessage.textContent = i18nString(UIStrings.historyCleared);
     this.container.appendChild(this.statusMessage);
 
     // Clear history button
     const clearHistoryButton = document.createElement('button');
-    clearHistoryButton.textContent = i18nString('clearHistoryButton');
+    clearHistoryButton.textContent = i18nString(UIStrings.clearHistoryButton);
     clearHistoryButton.className = 'settings-button clear-button';
     clearHistoryButton.setAttribute('type', 'button');
     this.container.appendChild(clearHistoryButton);

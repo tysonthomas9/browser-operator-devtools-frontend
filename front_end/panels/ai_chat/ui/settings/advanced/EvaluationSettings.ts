@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import {
   getEvaluationConfig,
   setEvaluationConfig,
@@ -40,7 +40,7 @@ export class EvaluationSettings {
     // Title
     const evaluationSectionTitle = document.createElement('h3');
     evaluationSectionTitle.className = 'settings-subtitle';
-    evaluationSectionTitle.textContent = i18nString('evaluationSection');
+    evaluationSectionTitle.textContent = i18nString(UIStrings.evaluationSection);
     this.container.appendChild(evaluationSectionTitle);
 
     // Get current evaluation configuration
@@ -61,12 +61,12 @@ export class EvaluationSettings {
     const evaluationEnabledLabel = document.createElement('label');
     evaluationEnabledLabel.htmlFor = 'evaluation-enabled';
     evaluationEnabledLabel.className = 'evaluation-label';
-    evaluationEnabledLabel.textContent = i18nString('evaluationEnabled');
+    evaluationEnabledLabel.textContent = i18nString(UIStrings.evaluationEnabled);
     evaluationEnabledContainer.appendChild(evaluationEnabledLabel);
 
     const evaluationEnabledHint = document.createElement('div');
     evaluationEnabledHint.className = 'settings-hint';
-    evaluationEnabledHint.textContent = i18nString('evaluationEnabledHint');
+    evaluationEnabledHint.textContent = i18nString(UIStrings.evaluationEnabledHint);
     this.container.appendChild(evaluationEnabledHint);
 
     // Connection status indicator
@@ -143,12 +143,12 @@ export class EvaluationSettings {
     // Evaluation endpoint
     const evaluationEndpointLabel = document.createElement('div');
     evaluationEndpointLabel.className = 'settings-label';
-    evaluationEndpointLabel.textContent = i18nString('evaluationEndpoint');
+    evaluationEndpointLabel.textContent = i18nString(UIStrings.evaluationEndpoint);
     evaluationConfigContainer.appendChild(evaluationEndpointLabel);
 
     const evaluationEndpointHint = document.createElement('div');
     evaluationEndpointHint.className = 'settings-hint';
-    evaluationEndpointHint.textContent = i18nString('evaluationEndpointHint');
+    evaluationEndpointHint.textContent = i18nString(UIStrings.evaluationEndpointHint);
     evaluationConfigContainer.appendChild(evaluationEndpointHint);
 
     this.evaluationEndpointInput = document.createElement('input');
@@ -161,12 +161,12 @@ export class EvaluationSettings {
     // Evaluation secret key
     const evaluationSecretKeyLabel = document.createElement('div');
     evaluationSecretKeyLabel.className = 'settings-label';
-    evaluationSecretKeyLabel.textContent = i18nString('evaluationSecretKey');
+    evaluationSecretKeyLabel.textContent = i18nString(UIStrings.evaluationSecretKey);
     evaluationConfigContainer.appendChild(evaluationSecretKeyLabel);
 
     const evaluationSecretKeyHint = document.createElement('div');
     evaluationSecretKeyHint.className = 'settings-hint';
-    evaluationSecretKeyHint.textContent = i18nString('evaluationSecretKeyHint');
+    evaluationSecretKeyHint.textContent = i18nString(UIStrings.evaluationSecretKeyHint);
     evaluationConfigContainer.appendChild(evaluationSecretKeyHint);
 
     this.evaluationSecretKeyInput = document.createElement('input');

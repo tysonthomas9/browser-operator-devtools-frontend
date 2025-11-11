@@ -445,6 +445,18 @@ export const UIStrings = {
    *@description MCP OAuth scope hint
    */
   mcpOAuthScopeHint: 'Provider-specific scopes, space-separated. Leave empty if unsure.',
+  /**
+   *@description Settings disclaimer text
+   */
+  disclaimer: 'Settings are stored in your browser\'s local storage. Your API keys are never sent to any third party except the AI provider you configure.',
+  /**
+   *@description Cancel button text
+   */
+  cancelButton: 'Cancel',
+  /**
+   *@description Save button text
+   */
+  saveButton: 'Save',
 };
 
 /**

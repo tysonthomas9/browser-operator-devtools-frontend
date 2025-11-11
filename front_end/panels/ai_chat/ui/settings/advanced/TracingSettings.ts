@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../../../tracing/TracingConfig.js';
 
 /**
@@ -29,7 +29,7 @@ export class TracingSettings {
     // Title
     const tracingSectionTitle = document.createElement('h3');
     tracingSectionTitle.className = 'settings-subtitle';
-    tracingSectionTitle.textContent = i18nString('tracingSection');
+    tracingSectionTitle.textContent = i18nString(UIStrings.tracingSection);
     this.container.appendChild(tracingSectionTitle);
 
     // Get current tracing configuration
@@ -50,12 +50,12 @@ export class TracingSettings {
     const tracingEnabledLabel = document.createElement('label');
     tracingEnabledLabel.htmlFor = 'tracing-enabled';
     tracingEnabledLabel.className = 'tracing-label';
-    tracingEnabledLabel.textContent = i18nString('tracingEnabled');
+    tracingEnabledLabel.textContent = i18nString(UIStrings.tracingEnabled);
     tracingEnabledContainer.appendChild(tracingEnabledLabel);
 
     const tracingEnabledHint = document.createElement('div');
     tracingEnabledHint.className = 'settings-hint';
-    tracingEnabledHint.textContent = i18nString('tracingEnabledHint');
+    tracingEnabledHint.textContent = i18nString(UIStrings.tracingEnabledHint);
     this.container.appendChild(tracingEnabledHint);
 
     // Tracing configuration container (shown when enabled)
@@ -67,12 +67,12 @@ export class TracingSettings {
     // Langfuse endpoint
     const endpointLabel = document.createElement('div');
     endpointLabel.className = 'settings-label';
-    endpointLabel.textContent = i18nString('langfuseEndpoint');
+    endpointLabel.textContent = i18nString(UIStrings.langfuseEndpoint);
     tracingConfigContainer.appendChild(endpointLabel);
 
     const endpointHint = document.createElement('div');
     endpointHint.className = 'settings-hint';
-    endpointHint.textContent = i18nString('langfuseEndpointHint');
+    endpointHint.textContent = i18nString(UIStrings.langfuseEndpointHint);
     tracingConfigContainer.appendChild(endpointHint);
 
     this.endpointInput = document.createElement('input');
@@ -85,12 +85,12 @@ export class TracingSettings {
     // Langfuse public key
     const publicKeyLabel = document.createElement('div');
     publicKeyLabel.className = 'settings-label';
-    publicKeyLabel.textContent = i18nString('langfusePublicKey');
+    publicKeyLabel.textContent = i18nString(UIStrings.langfusePublicKey);
     tracingConfigContainer.appendChild(publicKeyLabel);
 
     const publicKeyHint = document.createElement('div');
     publicKeyHint.className = 'settings-hint';
-    publicKeyHint.textContent = i18nString('langfusePublicKeyHint');
+    publicKeyHint.textContent = i18nString(UIStrings.langfusePublicKeyHint);
     tracingConfigContainer.appendChild(publicKeyHint);
 
     this.publicKeyInput = document.createElement('input');
@@ -103,12 +103,12 @@ export class TracingSettings {
     // Langfuse secret key
     const secretKeyLabel = document.createElement('div');
     secretKeyLabel.className = 'settings-label';
-    secretKeyLabel.textContent = i18nString('langfuseSecretKey');
+    secretKeyLabel.textContent = i18nString(UIStrings.langfuseSecretKey);
     tracingConfigContainer.appendChild(secretKeyLabel);
 
     const secretKeyHint = document.createElement('div');
     secretKeyHint.className = 'settings-hint';
-    secretKeyHint.textContent = i18nString('langfuseSecretKeyHint');
+    secretKeyHint.textContent = i18nString(UIStrings.langfuseSecretKeyHint);
     tracingConfigContainer.appendChild(secretKeyHint);
 
     this.secretKeyInput = document.createElement('input');
@@ -121,7 +121,7 @@ export class TracingSettings {
     // Test connection button
     const testTracingButton = document.createElement('button');
     testTracingButton.className = 'settings-button test-button';
-    testTracingButton.textContent = i18nString('testTracing');
+    testTracingButton.textContent = i18nString(UIStrings.testTracing);
     tracingConfigContainer.appendChild(testTracingButton);
 
     // Test status message

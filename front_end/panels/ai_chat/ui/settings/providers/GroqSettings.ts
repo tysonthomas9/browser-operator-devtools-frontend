@@ -4,7 +4,7 @@
 
 import { BaseProviderSettings } from './BaseProviderSettings.js';
 import { createModelSelector, refreshModelSelectOptions } from '../components/ModelSelectorFactory.js';
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import { getValidModelForProvider } from '../utils/validation.js';
 import { getStorageItem, setStorageItem } from '../utils/storage.js';
 import { GROQ_API_KEY_STORAGE_KEY, MINI_MODEL_STORAGE_KEY, NANO_MODEL_STORAGE_KEY } from '../constants.js';
@@ -48,12 +48,12 @@ export class GroqSettings extends BaseProviderSettings {
     // Groq API Key
     const groqApiKeyLabel = document.createElement('div');
     groqApiKeyLabel.className = 'settings-label';
-    groqApiKeyLabel.textContent = i18nString('groqApiKeyLabel');
+    groqApiKeyLabel.textContent = i18nString(UIStrings.groqApiKeyLabel);
     groqSettingsSection.appendChild(groqApiKeyLabel);
 
     const groqApiKeyHint = document.createElement('div');
     groqApiKeyHint.className = 'settings-hint';
-    groqApiKeyHint.textContent = i18nString('groqApiKeyHint');
+    groqApiKeyHint.textContent = i18nString(UIStrings.groqApiKeyHint);
     groqSettingsSection.appendChild(groqApiKeyHint);
 
     const settingsSavedGroqApiKey = getStorageItem(GROQ_API_KEY_STORAGE_KEY, '');
@@ -72,7 +72,7 @@ export class GroqSettings extends BaseProviderSettings {
     this.fetchModelsButton = document.createElement('button');
     this.fetchModelsButton.className = 'settings-button';
     this.fetchModelsButton.setAttribute('type', 'button');
-    this.fetchModelsButton.textContent = i18nString('fetchGroqModelsButton');
+    this.fetchModelsButton.textContent = i18nString(UIStrings.fetchGroqModelsButton);
     this.fetchModelsButton.disabled = !this.apiKeyInput.value.trim();
     groqFetchButtonContainer.appendChild(this.fetchModelsButton);
 
@@ -93,7 +93,7 @@ export class GroqSettings extends BaseProviderSettings {
       if (!this.fetchModelsButton || !this.fetchModelsStatus || !this.apiKeyInput) return;
 
       this.fetchModelsButton.disabled = true;
-      this.fetchModelsStatus.textContent = i18nString('fetchingModels');
+      this.fetchModelsStatus.textContent = i18nString(UIStrings.fetchingModels);
       this.fetchModelsStatus.style.display = 'block';
       this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-blue-background)';
       this.fetchModelsStatus.style.color = 'var(--color-accent-blue)';
@@ -124,13 +124,13 @@ export class GroqSettings extends BaseProviderSettings {
 
         // Refresh existing model selectors with new options if they exist
         if (this.miniModelSelector) {
-          refreshModelSelectOptions(this.miniModelSelector as any, allGroqModels, miniModel, i18nString('defaultMiniOption'));
+          refreshModelSelectOptions(this.miniModelSelector as any, allGroqModels, miniModel, i18nString(UIStrings.defaultMiniOption));
         }
         if (this.nanoModelSelector) {
-          refreshModelSelectOptions(this.nanoModelSelector as any, allGroqModels, nanoModel, i18nString('defaultNanoOption'));
+          refreshModelSelectOptions(this.nanoModelSelector as any, allGroqModels, nanoModel, i18nString(UIStrings.defaultNanoOption));
         }
 
-        this.fetchModelsStatus.textContent = i18nString('fetchedModels', {PH1: actualModelCount});
+        this.fetchModelsStatus.textContent = i18nString(UIStrings.fetchedModels, {PH1: actualModelCount});
         this.fetchModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
         this.fetchModelsStatus.style.color = 'var(--color-accent-green)';
 
@@ -194,12 +194,12 @@ export class GroqSettings extends BaseProviderSettings {
     // Create Groq Mini Model selection and store reference
     this.miniModelSelector = createModelSelector(
       groqModelSection,
-      i18nString('miniModelLabel'),
-      i18nString('miniModelDescription'),
+      i18nString(UIStrings.miniModelLabel),
+      i18nString(UIStrings.miniModelDescription),
       'groq-mini-model-select',
       groqModels,
       validMiniModel,
-      i18nString('defaultMiniOption'),
+      i18nString(UIStrings.defaultMiniOption),
       undefined // No focus handler needed for Groq
     );
 
@@ -208,12 +208,12 @@ export class GroqSettings extends BaseProviderSettings {
     // Create Groq Nano Model selection and store reference
     this.nanoModelSelector = createModelSelector(
       groqModelSection,
-      i18nString('nanoModelLabel'),
-      i18nString('nanoModelDescription'),
+      i18nString(UIStrings.nanoModelLabel),
+      i18nString(UIStrings.nanoModelDescription),
       'groq-nano-model-select',
       groqModels,
       validNanoModel,
-      i18nString('defaultNanoOption'),
+      i18nString(UIStrings.defaultNanoOption),
       undefined // No focus handler needed for Groq
     );
 

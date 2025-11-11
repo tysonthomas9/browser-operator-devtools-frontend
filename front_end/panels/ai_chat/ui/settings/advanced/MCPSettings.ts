@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { i18nString } from '../i18n-strings.js';
+import { i18nString, UIStrings } from '../i18n-strings.js';
 import {
   getMCPConfig,
   setMCPConfig,
@@ -61,7 +61,7 @@ export class MCPSettings {
     // Title
     const mcpSectionTitle = document.createElement('h3');
     mcpSectionTitle.className = 'settings-subtitle';
-    mcpSectionTitle.textContent = i18nString('mcpSection');
+    mcpSectionTitle.textContent = i18nString(UIStrings.mcpSection);
     this.container.appendChild(mcpSectionTitle);
   }
 
@@ -189,12 +189,12 @@ export class MCPSettings {
     // Connections management
     const mcpConnectionsLabel = document.createElement('div');
     mcpConnectionsLabel.className = 'settings-label';
-    mcpConnectionsLabel.textContent = i18nString('mcpConnectionsHeader');
+    mcpConnectionsLabel.textContent = i18nString(UIStrings.mcpConnectionsHeader);
     this.container.appendChild(mcpConnectionsLabel);
 
     const mcpConnectionsHint = document.createElement('div');
     mcpConnectionsHint.className = 'settings-hint';
-    mcpConnectionsHint.textContent = i18nString('mcpConnectionsHint');
+    mcpConnectionsHint.textContent = i18nString(UIStrings.mcpConnectionsHint);
     this.container.appendChild(mcpConnectionsHint);
 
     const mcpConnectionsActions = document.createElement('div');
@@ -206,7 +206,7 @@ export class MCPSettings {
 
     const manageConnectionsButton = document.createElement('button');
     manageConnectionsButton.className = 'settings-button';
-    manageConnectionsButton.textContent = i18nString('mcpManageConnections');
+    manageConnectionsButton.textContent = i18nString(UIStrings.mcpManageConnections);
     manageConnectionsButton.addEventListener('click', () => {
       MCPConnectionsDialog.show({
         onSave: async () => {
@@ -227,7 +227,7 @@ export class MCPSettings {
 
     const refreshConnectionsButton = document.createElement('button');
     refreshConnectionsButton.className = 'settings-button';
-    refreshConnectionsButton.textContent = i18nString('mcpRefreshConnections');
+    refreshConnectionsButton.textContent = i18nString(UIStrings.mcpRefreshConnections);
     refreshConnectionsButton.addEventListener('click', async () => {
       try {
         await MCPRegistry.init(true);
@@ -254,12 +254,12 @@ export class MCPSettings {
     // Tool mode selection
     const mcpToolModeLabel = document.createElement('div');
     mcpToolModeLabel.className = 'settings-label';
-    mcpToolModeLabel.textContent = i18nString('mcpToolMode');
+    mcpToolModeLabel.textContent = i18nString(UIStrings.mcpToolMode);
     mcpConfigContainer.appendChild(mcpToolModeLabel);
 
     const mcpToolModeHint = document.createElement('div');
     mcpToolModeHint.className = 'settings-hint';
-    mcpToolModeHint.textContent = i18nString('mcpToolModeHint');
+    mcpToolModeHint.textContent = i18nString(UIStrings.mcpToolModeHint);
     mcpConfigContainer.appendChild(mcpToolModeHint);
 
     const mcpToolModeSelect = document.createElement('select');
@@ -268,9 +268,9 @@ export class MCPSettings {
 
     // Tool mode options
     const toolModeOptions = [
-      { value: 'all', text: i18nString('mcpToolModeAll') },
-      { value: 'router', text: i18nString('mcpToolModeRouter') },
-      { value: 'meta', text: i18nString('mcpToolModeMeta') },
+      { value: 'all', text: i18nString(UIStrings.mcpToolModeAll) },
+      { value: 'router', text: i18nString(UIStrings.mcpToolModeRouter) },
+      { value: 'meta', text: i18nString(UIStrings.mcpToolModeMeta) },
     ];
 
     toolModeOptions.forEach(option => {
@@ -295,12 +295,12 @@ export class MCPSettings {
     // Advanced budget controls
     const mcpMaxToolsLabel = document.createElement('div');
     mcpMaxToolsLabel.className = 'settings-label';
-    mcpMaxToolsLabel.textContent = i18nString('mcpMaxToolsPerTurn');
+    mcpMaxToolsLabel.textContent = i18nString(UIStrings.mcpMaxToolsPerTurn);
     mcpConfigContainer.appendChild(mcpMaxToolsLabel);
 
     const mcpMaxToolsHint = document.createElement('div');
     mcpMaxToolsHint.className = 'settings-hint';
-    mcpMaxToolsHint.textContent = i18nString('mcpMaxToolsPerTurnHint');
+    mcpMaxToolsHint.textContent = i18nString(UIStrings.mcpMaxToolsPerTurnHint);
     mcpConfigContainer.appendChild(mcpMaxToolsHint);
 
     const mcpMaxToolsInput = document.createElement('input');
@@ -313,12 +313,12 @@ export class MCPSettings {
 
     const mcpMaxMcpLabel = document.createElement('div');
     mcpMaxMcpLabel.className = 'settings-label';
-    mcpMaxMcpLabel.textContent = i18nString('mcpMaxMcpPerTurn');
+    mcpMaxMcpLabel.textContent = i18nString(UIStrings.mcpMaxMcpPerTurn);
     mcpConfigContainer.appendChild(mcpMaxMcpLabel);
 
     const mcpMaxMcpHint = document.createElement('div');
     mcpMaxMcpHint.className = 'settings-hint';
-    mcpMaxMcpHint.textContent = i18nString('mcpMaxMcpPerTurnHint');
+    mcpMaxMcpHint.textContent = i18nString(UIStrings.mcpMaxMcpPerTurnHint);
     mcpConfigContainer.appendChild(mcpMaxMcpHint);
 
     const mcpMaxMcpInput = document.createElement('input');
@@ -468,17 +468,17 @@ export class MCPSettings {
         reconnectButton.className = 'settings-button';
         reconnectButton.style.padding = '2px 8px';
         reconnectButton.style.fontSize = '12px';
-        reconnectButton.textContent = i18nString('mcpReconnectButton');
+        reconnectButton.textContent = i18nString(UIStrings.mcpReconnectButton);
         reconnectButton.addEventListener('click', async () => {
           reconnectButton.disabled = true;
-          reconnectButton.textContent = i18nString('mcpReconnectInProgress');
+          reconnectButton.textContent = i18nString(UIStrings.mcpReconnectInProgress);
           try {
             await MCPRegistry.reconnect(server.id);
             clearStoredAuthError(server.id);
           } catch (err) {
             logger.error('Failed to reconnect MCP server', { serverId: server.id, error: err });
             reconnectButton.disabled = false;
-            reconnectButton.textContent = i18nString('mcpReconnectRetry');
+            reconnectButton.textContent = i18nString(UIStrings.mcpReconnectRetry);
             return;
           } finally {
             this.updateMCPStatus();
