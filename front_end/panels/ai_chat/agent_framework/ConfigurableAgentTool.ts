@@ -460,9 +460,10 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     const apiKey = callCtx.apiKey;
     const provider = callCtx.provider;
 
-    // Check if this provider requires an API key
-    // BrowserOperator doesn't require an API key (endpoint is hardcoded)
-    const requiresApiKey = provider !== 'browseroperator';
+    // Check if API key is required based on provider
+    // LiteLLM and BrowserOperator has optional API keys
+    // Other providers (OpenAI, Groq, OpenRouter) require API keys
+    const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
 
     if (requiresApiKey && !apiKey) {
       const errorResult = this.createErrorResult(`API key not configured for ${this.name}`, [], 'error');
@@ -499,15 +500,17 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     // Resolve model name from context or configuration
     let modelName: string;
     if (this.config.modelName === MODEL_SENTINELS.USE_MINI) {
-      if (!callCtx.miniModel) {
-        throw new Error(`Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel.`);
+      // Fall back to main model if mini model is not configured
+      modelName = callCtx.miniModel || callCtx.mainModel || callCtx.model || '';
+      if (!modelName) {
+        throw new Error(`Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel or mainModel.`);
       }
-      modelName = callCtx.miniModel;
     } else if (this.config.modelName === MODEL_SENTINELS.USE_NANO) {
-      if (!callCtx.nanoModel) {
-        throw new Error(`Nano model not provided in context for agent '${this.name}'. Ensure context includes nanoModel.`);
+      // Fall back through nano -> mini -> main model chain
+      modelName = callCtx.nanoModel || callCtx.miniModel || callCtx.mainModel || callCtx.model || '';
+      if (!modelName) {
+        throw new Error(`Nano model not provided in context for agent '${this.name}'. Ensure context includes nanoModel, miniModel, or mainModel.`);
       }
-      modelName = callCtx.nanoModel;
     } else if (typeof this.config.modelName === 'function') {
       modelName = this.config.modelName();
     } else if (this.config.modelName) {
