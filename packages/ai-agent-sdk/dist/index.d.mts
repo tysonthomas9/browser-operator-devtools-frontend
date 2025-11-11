@@ -805,6 +805,306 @@ declare class AgentErrorHandler {
 }
 
 /**
+ * Core types for graph orchestration
+ */
+/**
+ * Interface for a runnable unit of work (node in the graph)
+ */
+interface Runnable<TInput, TOutput> {
+    /**
+     * Execute the runnable with the given input
+     * @param input - The input state
+     * @param signal - Optional abort signal for cancellation
+     * @returns Promise resolving to the output state
+     */
+    invoke(input: TInput, signal?: AbortSignal): Promise<TOutput>;
+}
+/**
+ * Condition function that determines the next node to execute
+ */
+type ConditionFunction<TState> = (state: TState) => string;
+/**
+ * Map of condition outcomes to target node names
+ */
+type TargetMap = Record<string, string>;
+/**
+ * Configuration for a conditional edge
+ */
+interface ConditionalEdge<TState> {
+    /**
+     * Function that evaluates the current state and returns a routing key
+     */
+    condition: ConditionFunction<TState>;
+    /**
+     * Map of routing keys to target node names
+     */
+    targetMap: Map<string, string>;
+}
+/**
+ * Progress event emitted during graph execution
+ */
+interface GraphProgressEvent<TState> {
+    /**
+     * Type of progress event
+     */
+    type: 'node_start' | 'node_complete' | 'node_error' | 'routing';
+    /**
+     * Name of the current node
+     */
+    nodeName: string;
+    /**
+     * Current step number
+     */
+    step: number;
+    /**
+     * Current state (optional, for security/privacy)
+     */
+    state?: TState;
+    /**
+     * Additional event data
+     */
+    data?: any;
+}
+/**
+ * Callback for graph progress events
+ */
+type GraphProgressCallback<TState> = (event: GraphProgressEvent<TState>) => void;
+/**
+ * Options for graph execution
+ */
+interface GraphExecutionOptions {
+    /**
+     * Maximum number of steps before auto-termination
+     * @default 50
+     */
+    maxSteps?: number;
+    /**
+     * Abort signal for cancellation
+     */
+    signal?: AbortSignal;
+    /**
+     * Progress callback for monitoring execution
+     */
+    onProgress?: GraphProgressCallback<any>;
+}
+/**
+ * Marker for graph termination
+ */
+declare const END_NODE = "__end__";
+/**
+ * Error thrown when graph execution is aborted
+ */
+declare class GraphAbortedError extends Error {
+    constructor(message?: string);
+}
+/**
+ * Error thrown when graph execution exceeds maximum steps
+ */
+declare class GraphMaxStepsError extends Error {
+    constructor(maxSteps: number);
+}
+/**
+ * Error thrown when a node is not found
+ */
+declare class NodeNotFoundError extends Error {
+    constructor(nodeName: string);
+}
+/**
+ * Error thrown when routing fails
+ */
+declare class RoutingError extends Error {
+    constructor(message: string);
+}
+
+/**
+ * Configuration for StateGraph
+ */
+interface StateGraphConfig {
+    /**
+     * Name of the graph (for logging and debugging)
+     */
+    name: string;
+    /**
+     * Entry point node name
+     * @default 'start'
+     */
+    entryPoint?: string;
+}
+/**
+ * StateGraph implements a state machine-based workflow orchestration system.
+ *
+ * The graph consists of nodes (units of work) and conditional edges (routing logic).
+ * Execution flows through nodes based on conditional evaluation of the state.
+ *
+ * @template TState - The type of state passed between nodes
+ *
+ * @example
+ * ```typescript
+ * const graph = new StateGraph<MyState>({ name: 'my-workflow' });
+ *
+ * // Add nodes
+ * graph.addNode('process', processNode);
+ * graph.addNode('validate', validateNode);
+ * graph.addNode('complete', completeNode);
+ *
+ * // Add conditional routing
+ * graph.addConditionalEdges('process', (state) => {
+ *   return state.isValid ? 'validate' : 'complete';
+ * }, {
+ *   validate: 'validate',
+ *   complete: 'complete'
+ * });
+ *
+ * // Set entry point
+ * graph.setEntryPoint('process');
+ *
+ * // Execute
+ * const finalState = await graph.invoke(initialState);
+ * ```
+ */
+declare class StateGraph<TState> {
+    private nodes;
+    private conditionalEdges;
+    private entryPoint;
+    private name;
+    constructor(config: StateGraphConfig);
+    /**
+     * Add a node to the graph
+     * @param name - Unique name for the node
+     * @param node - Runnable that implements the node logic
+     */
+    addNode(name: string, node: Runnable<TState, TState>): void;
+    /**
+     * Add conditional edges from a source node
+     * @param sourceName - Name of the source node
+     * @param condition - Function that evaluates state and returns a routing key
+     * @param targetMap - Map of routing keys to target node names
+     */
+    addConditionalEdges(sourceName: string, condition: (state: TState) => string, targetMap: Record<string, string>): void;
+    /**
+     * Set the entry point for graph execution
+     * @param name - Name of the entry point node
+     */
+    setEntryPoint(name: string): void;
+    /**
+     * Get the current entry point
+     */
+    getEntryPoint(): string;
+    /**
+     * Get all node names
+     */
+    getNodeNames(): string[];
+    /**
+     * Check if a node exists
+     */
+    hasNode(name: string): boolean;
+    /**
+     * Execute the graph with the given initial state
+     *
+     * This is a generator function that yields the state after each node execution,
+     * allowing for real-time monitoring of graph progress.
+     *
+     * @param state - Initial state
+     * @param options - Execution options
+     * @returns AsyncGenerator that yields intermediate states and returns final state
+     */
+    invoke(state: TState, options?: GraphExecutionOptions): AsyncGenerator<TState, TState, void>;
+    /**
+     * Execute the graph and return only the final state (convenience method)
+     * @param state - Initial state
+     * @param options - Execution options
+     * @returns Promise resolving to final state
+     */
+    run(state: TState, options?: GraphExecutionOptions): Promise<TState>;
+    /**
+     * Get a summary of the graph structure (for debugging)
+     */
+    getSummary(): {
+        name: string;
+        entryPoint: string;
+        nodeCount: number;
+        nodes: string[];
+        edges: Array<{
+            from: string;
+            to: string[];
+        }>;
+    };
+}
+
+/**
+ * Fluent builder for constructing StateGraphs
+ *
+ * @example
+ * ```typescript
+ * const graph = new GraphBuilder<MyState>('my-workflow')
+ *   .addNode('start', startNode)
+ *   .addNode('process', processNode)
+ *   .addNode('end', endNode)
+ *   .addEdge('start', (state) => state.shouldProcess ? 'process' : 'end', {
+ *     process: 'process',
+ *     end: '__end__'
+ *   })
+ *   .addEdge('process', () => 'end', { end: '__end__' })
+ *   .setEntryPoint('start')
+ *   .build();
+ * ```
+ */
+declare class GraphBuilder<TState> {
+    private graph;
+    constructor(name: string, config?: Omit<StateGraphConfig, 'name'>);
+    /**
+     * Add a node to the graph
+     * @param name - Node name
+     * @param node - Node implementation
+     * @returns This builder for chaining
+     */
+    addNode(name: string, node: Runnable<TState, TState>): this;
+    /**
+     * Add conditional edges from a node
+     * @param sourceName - Source node name
+     * @param condition - Condition function
+     * @param targetMap - Target map
+     * @returns This builder for chaining
+     */
+    addEdge(sourceName: string, condition: (state: TState) => string, targetMap: Record<string, string>): this;
+    /**
+     * Add a simple edge that always goes to the same target
+     * @param sourceName - Source node name
+     * @param targetName - Target node name
+     * @returns This builder for chaining
+     */
+    addSimpleEdge(sourceName: string, targetName: string): this;
+    /**
+     * Set the entry point
+     * @param name - Entry point node name
+     * @returns This builder for chaining
+     */
+    setEntryPoint(name: string): this;
+    /**
+     * Build the final graph
+     * @returns The constructed StateGraph
+     */
+    build(): StateGraph<TState>;
+}
+/**
+ * Create a simple node from an async function
+ * @param fn - Async function that transforms state
+ * @returns Runnable node
+ */
+declare function createNode<TState>(fn: (state: TState, signal?: AbortSignal) => Promise<TState>): Runnable<TState, TState>;
+/**
+ * Create a node that applies a synchronous transformation
+ * @param fn - Synchronous function that transforms state
+ * @returns Runnable node
+ */
+declare function createSyncNode<TState>(fn: (state: TState) => TState): Runnable<TState, TState>;
+/**
+ * Create a passthrough node (useful for debugging)
+ * @returns Runnable node that returns state unchanged
+ */
+declare function createPassthroughNode<TState>(): Runnable<TState, TState>;
+
+/**
  * Browser Operator AI Agent SDK
  *
  * Production-ready SDK for building multi-agent AI systems with LLM support.
@@ -814,4 +1114,4 @@ declare class AgentErrorHandler {
 
 declare const VERSION = "0.1.0";
 
-export { AgentErrorHandler, type AgentMessage, type AgentRunTerminationReason, AgentRunner, type AgentRunnerConfig, AgentRunnerEventBus, type AgentRunnerHooks, type AgentRunnerProgressEvent, type AgentSession, type AgentSessionMessage, type AgentToolCallMessage, type AgentToolConfig, type AgentToolResultMessage, type AgentUIConfig, type BaseChatMessage, type CallContext, type ChatMessage, ChatMessageEntity, type ConfigurableAgentArgs, type ConfigurableAgentResult, ConfigurableAgentTool, DEFAULT_AGENT_UI, type ErrorHandlingConfig, type ErrorHandlingResult, type FinalAnswerMessage, type HandoffConfig, type HandoffMessage, type HandoffTrigger, type ImageInputData, LLMMessage, LLMProvider, LogLevel, Logger, type LoggerConfig, MODEL_SENTINELS, type ModelChatMessage, type ProgressCallback, type ReasoningMessage, type Tool, type ToolContext, type ToolExecutionResult, type ToolFactory, ToolRegistry, type ToolResultMessage, type UserChatMessage, VERSION, createLogger, createModelMessage, createToolResult, createToolResultMessage, createUserMessage, errorResult, formatAgentName, getAgentDescription, getAgentDisplayName, getAgentUIConfig, getGlobalLogLevel, setGlobalLogLevel, successResult };
+export { AgentErrorHandler, type AgentMessage, type AgentRunTerminationReason, AgentRunner, type AgentRunnerConfig, AgentRunnerEventBus, type AgentRunnerHooks, type AgentRunnerProgressEvent, type AgentSession, type AgentSessionMessage, type AgentToolCallMessage, type AgentToolConfig, type AgentToolResultMessage, type AgentUIConfig, type BaseChatMessage, type CallContext, type ChatMessage, ChatMessageEntity, type ConditionFunction, type ConditionalEdge, type ConfigurableAgentArgs, type ConfigurableAgentResult, ConfigurableAgentTool, DEFAULT_AGENT_UI, END_NODE, type ErrorHandlingConfig, type ErrorHandlingResult, type FinalAnswerMessage, GraphAbortedError, GraphBuilder, type GraphExecutionOptions, GraphMaxStepsError, type GraphProgressCallback, type GraphProgressEvent, type HandoffConfig, type HandoffMessage, type HandoffTrigger, type ImageInputData, LLMMessage, LLMProvider, LogLevel, Logger, type LoggerConfig, MODEL_SENTINELS, type ModelChatMessage, NodeNotFoundError, type ProgressCallback, type ReasoningMessage, RoutingError, type Runnable, StateGraph, type StateGraphConfig, type TargetMap, type Tool, type ToolContext, type ToolExecutionResult, type ToolFactory, ToolRegistry, type ToolResultMessage, type UserChatMessage, VERSION, createLogger, createModelMessage, createNode, createPassthroughNode, createSyncNode, createToolResult, createToolResultMessage, createUserMessage, errorResult, formatAgentName, getAgentDescription, getAgentDisplayName, getAgentUIConfig, getGlobalLogLevel, setGlobalLogLevel, successResult };

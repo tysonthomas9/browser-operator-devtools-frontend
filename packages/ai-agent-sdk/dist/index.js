@@ -1941,6 +1941,315 @@ var ConfigurableAgentTool = class {
   }
 };
 
+// src/orchestration/OrchestrationTypes.ts
+var END_NODE = "__end__";
+var GraphAbortedError = class extends Error {
+  constructor(message = "Graph execution was aborted") {
+    super(message);
+    this.name = "GraphAbortedError";
+  }
+};
+var GraphMaxStepsError = class extends Error {
+  constructor(maxSteps) {
+    super(`Graph execution exceeded maximum steps: ${maxSteps}`);
+    this.name = "GraphMaxStepsError";
+  }
+};
+var NodeNotFoundError = class extends Error {
+  constructor(nodeName) {
+    super(`Node not found: ${nodeName}`);
+    this.name = "NodeNotFoundError";
+  }
+};
+var RoutingError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RoutingError";
+  }
+};
+
+// src/orchestration/StateGraph.ts
+var logger7 = createLogger("StateGraph");
+var StateGraph = class {
+  constructor(config) {
+    this.nodes = /* @__PURE__ */ new Map();
+    this.conditionalEdges = /* @__PURE__ */ new Map();
+    this.entryPoint = config.entryPoint || "start";
+    this.name = config.name;
+  }
+  /**
+   * Add a node to the graph
+   * @param name - Unique name for the node
+   * @param node - Runnable that implements the node logic
+   */
+  addNode(name, node) {
+    if (this.nodes.has(name)) {
+      logger7.warn(`Overwriting existing node: ${name}`);
+    }
+    this.nodes.set(name, node);
+    logger7.debug(`Added node: ${name}`);
+  }
+  /**
+   * Add conditional edges from a source node
+   * @param sourceName - Name of the source node
+   * @param condition - Function that evaluates state and returns a routing key
+   * @param targetMap - Map of routing keys to target node names
+   */
+  addConditionalEdges(sourceName, condition, targetMap) {
+    if (!this.nodes.has(sourceName)) {
+      logger7.warn(`Adding conditional edge from unknown node: ${sourceName}`);
+    }
+    const targetMapInternal = /* @__PURE__ */ new Map();
+    for (const key in targetMap) {
+      targetMapInternal.set(key, targetMap[key]);
+    }
+    this.conditionalEdges.set(sourceName, {
+      condition,
+      targetMap: targetMapInternal
+    });
+    logger7.debug(`Added conditional edges from: ${sourceName}`);
+  }
+  /**
+   * Set the entry point for graph execution
+   * @param name - Name of the entry point node
+   */
+  setEntryPoint(name) {
+    if (!this.nodes.has(name)) {
+      throw new NodeNotFoundError(name);
+    }
+    this.entryPoint = name;
+    logger7.debug(`Set entry point: ${name}`);
+  }
+  /**
+   * Get the current entry point
+   */
+  getEntryPoint() {
+    return this.entryPoint;
+  }
+  /**
+   * Get all node names
+   */
+  getNodeNames() {
+    return Array.from(this.nodes.keys());
+  }
+  /**
+   * Check if a node exists
+   */
+  hasNode(name) {
+    return this.nodes.has(name);
+  }
+  /**
+   * Execute the graph with the given initial state
+   *
+   * This is a generator function that yields the state after each node execution,
+   * allowing for real-time monitoring of graph progress.
+   *
+   * @param state - Initial state
+   * @param options - Execution options
+   * @returns AsyncGenerator that yields intermediate states and returns final state
+   */
+  async *invoke(state, options = {}) {
+    const { maxSteps = 50, signal, onProgress } = options;
+    logger7.info(`Starting graph execution: ${this.name} from entry point: ${this.entryPoint}`);
+    let currentState = state;
+    let currentNodeName = this.entryPoint;
+    let step = 0;
+    if (onProgress) {
+      onProgress({
+        type: "node_start",
+        nodeName: this.entryPoint,
+        step: 0,
+        state: currentState
+      });
+    }
+    while (currentNodeName !== END_NODE) {
+      if (signal?.aborted) {
+        logger7.info(`Graph execution aborted at step ${step}, node: ${currentNodeName}`);
+        throw new GraphAbortedError();
+      }
+      if (step >= maxSteps) {
+        logger7.error(`Graph execution exceeded max steps: ${maxSteps}`);
+        throw new GraphMaxStepsError(maxSteps);
+      }
+      logger7.debug(`Step ${step}: Executing node: ${currentNodeName}`);
+      const node = this.nodes.get(currentNodeName);
+      if (!node) {
+        logger7.error(`Node not found: ${currentNodeName}`);
+        throw new NodeNotFoundError(currentNodeName);
+      }
+      if (onProgress) {
+        onProgress({
+          type: "node_start",
+          nodeName: currentNodeName,
+          step,
+          state: currentState
+        });
+      }
+      try {
+        const startTime = Date.now();
+        currentState = await node.invoke(currentState, signal);
+        const duration = Date.now() - startTime;
+        logger7.debug(`Step ${step}: Node ${currentNodeName} completed in ${duration}ms`);
+        if (onProgress) {
+          onProgress({
+            type: "node_complete",
+            nodeName: currentNodeName,
+            step,
+            state: currentState,
+            data: { duration }
+          });
+        }
+        yield currentState;
+      } catch (error) {
+        logger7.error(`Error executing node ${currentNodeName}:`, error);
+        if (onProgress) {
+          onProgress({
+            type: "node_error",
+            nodeName: currentNodeName,
+            step,
+            state: currentState,
+            data: { error }
+          });
+        }
+        throw error;
+      }
+      const edgeConfig = this.conditionalEdges.get(currentNodeName);
+      if (!edgeConfig) {
+        logger7.debug(`No conditional edge from node: ${currentNodeName}. Ending graph.`);
+        currentNodeName = END_NODE;
+      } else {
+        try {
+          const routingKey = edgeConfig.condition(currentState);
+          logger7.debug(`Routing key from condition: ${routingKey}`);
+          if (onProgress) {
+            onProgress({
+              type: "routing",
+              nodeName: currentNodeName,
+              step,
+              data: { routingKey }
+            });
+          }
+          const nextNodeName = edgeConfig.targetMap.get(routingKey);
+          if (!nextNodeName) {
+            throw new RoutingError(
+              `No target node found for routing key "${routingKey}" from node "${currentNodeName}"`
+            );
+          }
+          if (nextNodeName !== END_NODE && !this.nodes.has(nextNodeName)) {
+            throw new NodeNotFoundError(nextNodeName);
+          }
+          currentNodeName = nextNodeName;
+          logger7.debug(`Next node: ${currentNodeName}`);
+        } catch (error) {
+          logger7.error(`Routing error from node ${currentNodeName}:`, error);
+          throw error;
+        }
+      }
+      step++;
+    }
+    logger7.info(`Graph execution completed after ${step} steps`);
+    return currentState;
+  }
+  /**
+   * Execute the graph and return only the final state (convenience method)
+   * @param state - Initial state
+   * @param options - Execution options
+   * @returns Promise resolving to final state
+   */
+  async run(state, options = {}) {
+    let finalState = state;
+    for await (const intermediateState of this.invoke(state, options)) {
+      finalState = intermediateState;
+    }
+    return finalState;
+  }
+  /**
+   * Get a summary of the graph structure (for debugging)
+   */
+  getSummary() {
+    const edges = Array.from(this.conditionalEdges.entries()).map(([from, edge]) => ({
+      from,
+      to: Array.from(edge.targetMap.values())
+    }));
+    return {
+      name: this.name,
+      entryPoint: this.entryPoint,
+      nodeCount: this.nodes.size,
+      nodes: Array.from(this.nodes.keys()),
+      edges
+    };
+  }
+};
+
+// src/orchestration/GraphBuilder.ts
+var GraphBuilder = class {
+  constructor(name, config) {
+    this.graph = new StateGraph({ name, ...config });
+  }
+  /**
+   * Add a node to the graph
+   * @param name - Node name
+   * @param node - Node implementation
+   * @returns This builder for chaining
+   */
+  addNode(name, node) {
+    this.graph.addNode(name, node);
+    return this;
+  }
+  /**
+   * Add conditional edges from a node
+   * @param sourceName - Source node name
+   * @param condition - Condition function
+   * @param targetMap - Target map
+   * @returns This builder for chaining
+   */
+  addEdge(sourceName, condition, targetMap) {
+    this.graph.addConditionalEdges(sourceName, condition, targetMap);
+    return this;
+  }
+  /**
+   * Add a simple edge that always goes to the same target
+   * @param sourceName - Source node name
+   * @param targetName - Target node name
+   * @returns This builder for chaining
+   */
+  addSimpleEdge(sourceName, targetName) {
+    this.graph.addConditionalEdges(sourceName, () => "next", { next: targetName });
+    return this;
+  }
+  /**
+   * Set the entry point
+   * @param name - Entry point node name
+   * @returns This builder for chaining
+   */
+  setEntryPoint(name) {
+    this.graph.setEntryPoint(name);
+    return this;
+  }
+  /**
+   * Build the final graph
+   * @returns The constructed StateGraph
+   */
+  build() {
+    return this.graph;
+  }
+};
+function createNode(fn) {
+  return {
+    invoke: fn
+  };
+}
+function createSyncNode(fn) {
+  return {
+    invoke: async (state) => fn(state)
+  };
+}
+function createPassthroughNode() {
+  return {
+    invoke: async (state) => state
+  };
+}
+
 // src/index.ts
 var VERSION = "0.1.0";
 
@@ -1950,6 +2259,10 @@ exports.AgentRunnerEventBus = AgentRunnerEventBus;
 exports.ChatMessageEntity = ChatMessageEntity;
 exports.ConfigurableAgentTool = ConfigurableAgentTool;
 exports.DEFAULT_AGENT_UI = DEFAULT_AGENT_UI;
+exports.END_NODE = END_NODE;
+exports.GraphAbortedError = GraphAbortedError;
+exports.GraphBuilder = GraphBuilder;
+exports.GraphMaxStepsError = GraphMaxStepsError;
 exports.LLMBaseProvider = LLMBaseProvider;
 exports.LLMErrorType = LLMErrorType;
 exports.LLMProviderRegistry = LLMProviderRegistry;
@@ -1957,10 +2270,16 @@ exports.LLMResponseParser = LLMResponseParser;
 exports.LogLevel = LogLevel;
 exports.Logger = Logger;
 exports.MODEL_SENTINELS = MODEL_SENTINELS;
+exports.NodeNotFoundError = NodeNotFoundError;
+exports.RoutingError = RoutingError;
+exports.StateGraph = StateGraph;
 exports.ToolRegistry = ToolRegistry;
 exports.VERSION = VERSION;
 exports.createLogger = createLogger;
 exports.createModelMessage = createModelMessage;
+exports.createNode = createNode;
+exports.createPassthroughNode = createPassthroughNode;
+exports.createSyncNode = createSyncNode;
 exports.createToolResult = createToolResult;
 exports.createToolResultMessage = createToolResultMessage;
 exports.createUserMessage = createUserMessage;

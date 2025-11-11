@@ -15,7 +15,7 @@ This SDK is currently being extracted from the Browser Operator project. It aims
 - ✅ **Tool System**: Extensible tool interface with registry
 - ✅ **Observability**: Built-in logging system
 - ✅ **Agent Framework**: Configurable agents with tool execution and handoffs
-- 🚧 **Graph Orchestration**: State machine-based workflows (coming soon)
+- ✅ **Graph Orchestration**: State machine-based workflow orchestration
 
 ## Installation
 
@@ -57,8 +57,8 @@ packages/ai-agent-sdk/
 │   ├── messaging/        # Message types (✅ Complete)
 │   ├── tools/            # Tool system (✅ Complete)
 │   ├── agent/           # Agent framework (✅ Complete)
-│   └── orchestration/   # Graph workflows (🚧 Coming)
-├── tests/               # 115 passing tests
+│   └── orchestration/   # Graph workflows (✅ Complete)
+├── tests/               # 144 passing tests
 ├── examples/            # Usage examples (coming)
 └── docs/                # Documentation (coming)
 ```
@@ -88,11 +88,13 @@ packages/ai-agent-sdk/
 - [x] Event bus for agent communication
 - [x] Unit tests (115 tests passing)
 
-### Phase 3: Graph Orchestration
-- [ ] StateGraph (state machine executor)
-- [ ] Graph configuration system
-- [ ] Conditional routing
-- [ ] Node implementations
+### Phase 3: Graph Orchestration ✅ COMPLETE
+- [x] StateGraph (state machine executor)
+- [x] Conditional routing with targetMaps
+- [x] Graph builder utilities
+- [x] Error handling (abort, max steps, routing errors)
+- [x] Progress monitoring callbacks
+- [x] Unit tests (29 new tests, 144 total)
 
 ### Phase 4: Documentation & Examples
 - [ ] Complete API documentation
