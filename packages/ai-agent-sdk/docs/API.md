@@ -9,6 +9,14 @@ Complete API documentation for the AI Agent SDK.
   - [LLM Providers](#llm-providers)
   - [Error Handling](#error-handling)
   - [Message Types](#message-types)
+- [Tracing & Observability](#tracing--observability)
+  - [TracingProvider](#tracingprovider)
+  - [LangfuseProvider](#langfuseprovider)
+  - [TracingConfig](#tracingconfig)
+- [MCP Integration](#mcp-integration)
+  - [MCPToolAdapter](#mcptooladapter)
+  - [MCPRegistry](#mcpregistry)
+  - [MCPConfig](#mcpconfig)
 - [Graph Orchestration](#graph-orchestration)
   - [GraphBuilder](#graphbuilder)
   - [StateGraph](#stategraph)
@@ -417,6 +425,353 @@ interface ToolDefinition {
       required?: string[];
     };
   };
+}
+```
+
+---
+
+## Tracing & Observability
+
+The SDK provides a flexible tracing system with Langfuse integration for distributed tracing and observability.
+
+### TracingProvider
+
+Abstract base class for tracing implementations.
+
+```typescript
+import { TracingProvider, TracingContext, ObservationData } from '@browser-operator/ai-agent-sdk';
+
+// Custom provider implementation
+class MyTracingProvider extends TracingProvider {
+  async initialize(): Promise<void> { /* ... */ }
+  async createSession(sessionId: string, metadata?: TraceMetadata): Promise<void> { /* ... */ }
+  async createTrace(traceId: string, sessionId: string, name: string, input?: any, metadata?: TraceMetadata, userId?: string, tags?: string[]): Promise<void> { /* ... */ }
+  async createObservation(observation: ObservationData, traceId: string): Promise<void> { /* ... */ }
+  async updateObservation(observationId: string, updates: Partial<ObservationData>): Promise<void> { /* ... */ }
+  async finalizeTrace(traceId: string, output?: any, metadata?: TraceMetadata): Promise<void> { /* ... */ }
+  async flush(): Promise<void> { /* ... */ }
+}
+```
+
+**Key Interfaces:**
+
+```typescript
+interface TracingContext {
+  sessionId: string;
+  traceId: string;
+  parentObservationId?: string;
+  currentGenerationId?: string;
+  currentToolCallId?: string;
+  currentAgentSpanId?: string;
+  executionLevel?: 'stategraph' | 'agentrunner' | 'tool';
+  agentContext?: {
+    agentName: string;
+    agentType: string;
+    iterationCount?: number;
+  };
+}
+
+interface ObservationData {
+  id: string;
+  name?: string;
+  type: 'span' | 'event' | 'generation';
+  startTime?: Date;
+  endTime?: Date;
+  input?: any;
+  output?: any;
+  metadata?: TraceMetadata;
+  error?: string;
+  parentObservationId?: string;
+  model?: string;
+  modelParameters?: Record<string, any>;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+}
+```
+
+### LangfuseProvider
+
+Production-ready Langfuse integration with batch ingestion and auto-flush.
+
+```typescript
+import { LangfuseProvider } from '@browser-operator/ai-agent-sdk';
+
+// Initialize Langfuse provider
+const provider = new LangfuseProvider(
+  'https://cloud.langfuse.com', // endpoint
+  'pk_...', // public key
+  'sk_...', // secret key
+  true // enable batching
+);
+
+await provider.initialize();
+
+// Create session and trace
+await provider.createSession('session-123', { environment: 'production' });
+await provider.createTrace('trace-456', 'session-123', 'User Query', { query: 'Hello' });
+
+// Create observations
+await provider.createObservation({
+  id: 'obs-1',
+  type: 'generation',
+  name: 'LLM Call',
+  model: 'gpt-4.1',
+  input: { messages: [...] },
+  usage: { promptTokens: 50, completionTokens: 100 }
+}, 'trace-456');
+
+// Flush pending events
+await provider.flush();
+```
+
+**Features:**
+- Batch ingestion (configurable batch size)
+- Auto-flush with configurable interval
+- Observation store for updates
+- Circular reference handling
+- Token usage tracking
+- Exponential backoff on errors
+
+### TracingConfig
+
+Configure and manage tracing providers.
+
+```typescript
+import { configureTracing, createTracingProvider, getCurrentTracingContext, setCurrentTracingContext } from '@browser-operator/ai-agent-sdk';
+
+// Configure Langfuse tracing
+await configureTracing({
+  provider: 'langfuse',
+  endpoint: 'https://cloud.langfuse.com',
+  publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+  secretKey: process.env.LANGFUSE_SECRET_KEY
+});
+
+// Or disable tracing
+await configureTracing({ provider: 'disabled' });
+
+// Or use custom provider
+await configureTracing({
+  provider: 'custom',
+  customProvider: new MyTracingProvider()
+});
+
+// Get current provider
+const provider = createTracingProvider();
+
+// Manage tracing context
+const context: TracingContext = {
+  sessionId: 'session-123',
+  traceId: 'trace-456',
+  agentContext: {
+    agentName: 'my-agent',
+    agentType: 'assistant'
+  }
+};
+
+setCurrentTracingContext(context);
+const current = getCurrentTracingContext();
+
+// Execute with context
+await withTracingContext(context, async () => {
+  // Your code here has access to the tracing context
+});
+```
+
+---
+
+## MCP Integration
+
+Model Context Protocol (MCP) integration for third-party tool providers.
+
+### MCPToolAdapter
+
+Adapts MCP tools to SDK's Tool interface.
+
+```typescript
+import { MCPToolAdapter, MCPClient } from '@browser-operator/ai-agent-sdk';
+
+// Create MCP client
+const client = new MCPClient();
+
+// Connect to MCP server
+await client.connect({
+  id: 'my-server',
+  endpoint: 'https://api.example.com/mcp',
+  authType: 'bearer',
+  token: 'your-token'
+});
+
+// List available tools
+const tools = await client.listTools('my-server');
+
+// Create tool adapter
+const tool = new MCPToolAdapter(
+  'my-server',
+  client,
+  tools[0], // tool definition
+  'custom_display_name' // optional display name
+);
+
+// Execute tool
+const result = await tool.execute({ arg1: 'value1', arg2: 'value2' });
+
+// Get metadata
+const serverId = tool.getServerId();
+const originalName = tool.getOriginalToolName();
+```
+
+**Key Features:**
+- Automatic argument sanitization (redacts sensitive fields)
+- Timeout configuration (default 30s)
+- Error handling with detailed logging
+- Tool name conflict resolution
+
+### MCPRegistry
+
+Singleton registry for managing MCP server connections and tools.
+
+```typescript
+import { MCPRegistry } from '@browser-operator/ai-agent-sdk';
+
+// Initialize MCP connections (non-interactive mode)
+const results = await MCPRegistry.init(false);
+
+results.forEach(result => {
+  if (result.connected) {
+    console.log(`Connected to ${result.serverId}`);
+  } else {
+    console.error(`Failed to connect to ${result.serverId}: ${result.error}`);
+  }
+});
+
+// Reconnect to specific server
+await MCPRegistry.reconnect('server-id');
+
+// Refresh all connections
+await MCPRegistry.refresh();
+
+// Get connection status
+const status = MCPRegistry.getStatus();
+console.log(`Connected servers: ${status.connectedServers}`);
+console.log(`Available tools: ${status.availableTools}`);
+
+// Dispose registry
+MCPRegistry.dispose();
+```
+
+**Connection Result Interface:**
+
+```typescript
+interface ConnectionResult {
+  serverId: string;
+  name?: string;
+  endpoint: string;
+  connected: boolean;
+  error?: Error;
+  errorType?: 'connection' | 'authentication' | 'configuration' | 'network' | 'server_error' | 'unknown';
+  retryAttempts?: number;
+}
+```
+
+**Features:**
+- Connection retry with exponential backoff
+- Automatic tool registration with ToolRegistry
+- Tool name conflict resolution
+- Connection event tracking
+- Error categorization
+- Interactive and non-interactive modes
+
+### MCPConfig
+
+Manage MCP provider configurations with persistence.
+
+```typescript
+import {
+  getMCPProviders,
+  saveMCPProviders,
+  getMCPConfig,
+  setMCPConfig,
+  isMCPEnabled,
+  onMCPConfigChange,
+  generateMCPProviderId
+} from '@browser-operator/ai-agent-sdk';
+
+// Get all providers
+const providers = getMCPProviders();
+
+// Add new provider
+const newProvider = {
+  id: generateMCPProviderId({ name: 'My Provider', endpoint: 'https://api.example.com' }),
+  name: 'My Provider',
+  endpoint: 'https://api.example.com/mcp',
+  authType: 'oauth' as const,
+  enabled: true,
+  oauthClientId: 'client-id',
+  oauthRedirectUrl: 'https://myapp.com/oauth/callback',
+  oauthScope: 'read write'
+};
+
+saveMCPProviders([...providers, newProvider]);
+
+// Update MCP configuration
+setMCPConfig({
+  enabled: true,
+  autostart: true,
+  toolMode: 'router',
+  maxToolsPerTurn: 5,
+  maxMcpPerTurn: 3,
+  autoRefreshTokens: true,
+  maxConnectionRetries: 3,
+  retryDelayMs: 1000,
+  proactiveRefreshThresholdMs: 300000, // 5 minutes
+  toolAllowlist: ['tool1', 'tool2']
+});
+
+// Get current configuration
+const config = getMCPConfig();
+const enabled = isMCPEnabled();
+
+// Listen for configuration changes
+const unsubscribe = onMCPConfigChange(() => {
+  console.log('MCP configuration changed');
+  const newConfig = getMCPConfig();
+});
+
+// Stop listening
+unsubscribe();
+```
+
+**Provider Configuration Interface:**
+
+```typescript
+interface MCPProviderConfig {
+  id: string;
+  name?: string;
+  endpoint: string;
+  authType: 'bearer' | 'oauth';
+  enabled: boolean;
+  token?: string;
+  oauthClientId?: string;
+  oauthRedirectUrl?: string;
+  oauthScope?: string;
+}
+
+interface MCPConfigData {
+  enabled: boolean;
+  providers: MCPProviderConfig[];
+  toolAllowlist?: string[];
+  autostart?: boolean;
+  toolMode?: 'all' | 'router' | 'meta';
+  maxToolsPerTurn?: number;
+  maxMcpPerTurn?: number;
+  autoRefreshTokens?: boolean;
+  maxConnectionRetries?: number;
+  retryDelayMs?: number;
+  proactiveRefreshThresholdMs?: number;
 }
 ```
 

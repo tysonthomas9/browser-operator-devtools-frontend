@@ -13,9 +13,11 @@ This SDK is currently being extracted from the Browser Operator project. It aims
 - ✅ **Minimal Dependencies**: Zero runtime dependencies
 - ✅ **Message Types**: Complete chat and agent session types
 - ✅ **Tool System**: Extensible tool interface with registry
-- ✅ **Observability**: Built-in logging system
+- ✅ **Observability**: Built-in logging and tracing system
 - ✅ **Agent Framework**: Configurable agents with tool execution and handoffs
 - ✅ **Graph Orchestration**: State machine-based workflow orchestration
+- ✅ **Tracing**: Langfuse integration for distributed tracing
+- ✅ **MCP Integration**: Model Context Protocol for third-party tools
 
 ## Installation
 
@@ -57,8 +59,10 @@ packages/ai-agent-sdk/
 │   ├── messaging/        # Message types (✅ Complete)
 │   ├── tools/            # Tool system (✅ Complete)
 │   ├── agent/           # Agent framework (✅ Complete)
-│   └── orchestration/   # Graph workflows (✅ Complete)
-├── tests/               # 226 passing tests
+│   ├── orchestration/   # Graph workflows (✅ Complete)
+│   ├── tracing/         # Tracing system (✅ Complete)
+│   └── mcp/             # MCP integration (✅ Complete)
+├── tests/               # 140 passing tests
 ├── examples/            # Usage examples (✅ Complete - 5 examples)
 └── docs/                # Documentation (✅ Complete - API, Best Practices, Migration)
 ```
@@ -121,7 +125,7 @@ packages/ai-agent-sdk/
 - [x] Platform-agnostic implementations (no browser dependencies)
 - [x] Unit tests (38 new tests, 226 total)
 
-### Phase 6: Advanced Features ✅ COMPLETE
+### Phase 6: Documentation & Examples ✅ COMPLETE
 - [x] Complete API documentation (API.md - full reference)
 - [x] Usage examples (5 comprehensive examples)
   - 01-basic-llm-usage.ts (Provider initialization, API calls)
@@ -131,8 +135,15 @@ packages/ai-agent-sdk/
   - 05-advanced-routing.ts (Property, range, cycle, multi-condition routing)
 - [x] Best practices guide (BEST_PRACTICES.md - production guidelines)
 - [x] Migration guide (MIGRATION.md - from Browser Operator, LangChain, LlamaIndex)
-- [ ] Tracing system (TracingProvider, LangfuseProvider) - Future enhancement
-- [ ] AgentDescriptorRegistry (agent versioning) - Future enhancement
+
+### Phase 6.5: Tracing & MCP Integration ✅ COMPLETE
+- [x] Tracing system base (TracingProvider abstract class)
+- [x] LangfuseProvider implementation (batch ingestion, auto-flush, observation store)
+- [x] TracingConfig (platform-agnostic configuration)
+- [x] MCP integration (MCPToolAdapter for third-party tools)
+- [x] MCPRegistry (connection management with retry logic)
+- [x] MCPConfig (provider configuration and OAuth support)
+- [x] ToolNameMap (conflict resolution utilities)
 
 ### Phase 7: Browser Operator Migration
 - [ ] Migrate Browser Operator to use SDK
