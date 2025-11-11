@@ -10,20 +10,61 @@ import type {
   WorkflowConfig,
   WorkflowNode,
   WorkflowStep,
+  WorkflowResult,
+  WorkflowExecutionOptions,
+  WorkflowEvent,
   Condition,
   MapFunction,
   ForeachOptions,
 } from './types.js';
+import { WorkflowExecutor } from './WorkflowExecutor.js';
 
 /**
  * Compiled workflow ready for execution
- * (Placeholder - will be implemented in Phase 3)
  */
 export class CompiledWorkflow<TInput, TOutput, TState> {
   constructor(
     public readonly config: WorkflowConfig<TInput, TOutput, TState>,
     public readonly nodes: WorkflowNode[]
   ) {}
+
+  /**
+   * Execute workflow and wait for completion
+   *
+   * @example
+   * ```typescript
+   * const result = await workflow.start({ message: 'hello' });
+   * console.log(result.output); // Final workflow output
+   * console.log(result.steps);  // All step results
+   * ```
+   */
+  async start(
+    input: TInput,
+    options?: WorkflowExecutionOptions
+  ): Promise<WorkflowResult<TOutput>> {
+    const executor = new WorkflowExecutor(this.config, this.nodes);
+    return executor.execute(input, options);
+  }
+
+  /**
+   * Execute workflow with streaming updates
+   *
+   * @example
+   * ```typescript
+   * for await (const event of workflow.stream({ message: 'hello' })) {
+   *   if (event.type === 'step:complete') {
+   *     console.log('Step completed:', event.stepId, event.output);
+   *   }
+   * }
+   * ```
+   */
+  async *stream(
+    input: TInput,
+    options?: WorkflowExecutionOptions
+  ): AsyncIterable<WorkflowEvent> {
+    const executor = new WorkflowExecutor(this.config, this.nodes);
+    yield* executor.stream(input, options);
+  }
 
   /**
    * Get workflow configuration
