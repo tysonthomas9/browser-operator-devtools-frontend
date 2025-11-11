@@ -1,5 +1,5 @@
 import { LLMProvider, LLMMessage } from './llm/index.js';
-export { ErrorRetryConfig, ExtendedRetryConfig, FileContent, ImageContent, LLMBaseProvider, LLMCallOptions, LLMErrorType, LLMProviderInterface, LLMProviderRegistry, LLMResponse, LLMResponseParser, MessageContent, ModelCapabilities, ModelInfo, ModelOption, ParsedLLMAction, RetryCallback, RetryConfig, SanitizationOptions, TextContent, UnifiedLLMOptions, UnifiedLLMResponse, sanitizeMessagesForModel } from './llm/index.js';
+export { BrowserOperatorProvider, ErrorRetryConfig, ExtendedRetryConfig, FileContent, GroqModel, GroqModelsResponse, GroqProvider, ImageContent, LLMBaseProvider, LLMCallOptions, LLMCallRequest, LLMClient, LLMClientConfig, LLMErrorClassifier, LLMErrorType, LLMErrorUtils, LLMProviderConfig, LLMProviderInterface, LLMProviderRegistry, LLMResponse, LLMResponseParser, LLMRetryManager, LiteLLMModel, LiteLLMModelsResponse, LiteLLMProvider, MessageContent, ModelCapabilities, ModelInfo, ModelOption, OpenAIProvider, OpenRouterModel, OpenRouterModelsResponse, OpenRouterProvider, ParsedLLMAction, RetryCallback, RetryConfig, SanitizationOptions, TextContent, UnifiedLLMOptions, UnifiedLLMResponse, sanitizeMessagesForModel } from './llm/index.js';
 
 /**
  * Log levels for the logger

@@ -22,5 +22,14 @@ export * from './LLMProviderRegistry.js';
 // Utilities
 export * from './LLMResponseParser.js';
 export * from './MessageSanitizer.js';
+export * from './LLMErrorHandler.js';
 
-// Note: Actual provider implementations (OpenAI, LiteLLM, etc.) will be added next
+// Client coordinator
+export * from './LLMClient.js';
+
+// Provider implementations
+export * from './OpenAIProvider.js';
+export * from './LiteLLMProvider.js';
+export * from './GroqProvider.js';
+export * from './OpenRouterProvider.js';
+export * from './BrowserOperatorProvider.js';
