@@ -9,7 +9,7 @@ import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import type { LLMContext } from './Tools.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
-import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
+import { LLMResponseParser } from '@browser-operator/ai-agent-sdk';
 
 import { NodeIDsToURLsTool, type Tool } from './Tools.js';
 

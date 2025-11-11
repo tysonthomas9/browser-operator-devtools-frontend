@@ -4,8 +4,7 @@
 
 import { enhancePromptWithPageContext } from '../core/PageInfoManager.js';
 import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
-import { LLMClient } from '../LLM/LLMClient.js';
-import type { LLMResponse, LLMMessage, LLMProvider } from '../LLM/LLMTypes.js';
+import { LLMClient, type LLMResponse, type LLMMessage, type LLMProvider, sanitizeMessagesForModel } from '@browser-operator/ai-agent-sdk';
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage, type ModelChatMessage, type ToolResultMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
@@ -14,7 +13,6 @@ import type { AgentSession, AgentMessage } from './AgentSessionTypes.js';
 import { AgentErrorHandler } from '../core/AgentErrorHandler.js';
 import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';
 import { callLLMWithTracing } from '../tools/LLMTracingWrapper.js';
-import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
 import { FileStorageManager } from '../tools/FileStorageManager.js';
 
 const logger = createLogger('AgentRunner');

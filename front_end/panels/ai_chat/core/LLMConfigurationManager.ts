@@ -4,7 +4,7 @@
 // Cache break: 2025-09-18T19:00:00Z - Add skipCredentialChecks + preserve credentials + secure logging
 
 import { createLogger } from './Logger.js';
-import type { LLMProvider } from '../LLM/LLMTypes.js';
+import type { LLMProvider } from '@browser-operator/ai-agent-sdk';
 
 const logger = createLogger('LLMConfigurationManager');
 

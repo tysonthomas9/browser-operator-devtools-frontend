@@ -6,7 +6,7 @@ import * as i18n from '../../../core/i18n/i18n.js';
 import * as UI from '../../../ui/legacy/legacy.js';
 import { getEvaluationConfig, setEvaluationConfig, isEvaluationEnabled, connectToEvaluationService, disconnectFromEvaluationService, getEvaluationClientId, isEvaluationConnected } from '../common/EvaluationConfig.js';
 import { createLogger } from '../core/Logger.js';
-import { LLMClient } from '../LLM/LLMClient.js';
+import { LLMClient } from '@browser-operator/ai-agent-sdk';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
 import { getMCPConfig, setMCPConfig, isMCPEnabled, hasStoredAuthErrors, getStoredAuthErrors, clearStoredAuthError } from '../mcp/MCPConfig.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';

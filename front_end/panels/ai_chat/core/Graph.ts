@@ -16,7 +16,7 @@ import {
   routeNextNode,
 } from './GraphHelpers.js';
 import { type CompiledGraph, NodeType } from './Types.js';
-import type { LLMProvider } from '../LLM/LLMTypes.js';
+import type { LLMProvider } from '@browser-operator/ai-agent-sdk';
 
 const logger = createLogger('Graph');
 

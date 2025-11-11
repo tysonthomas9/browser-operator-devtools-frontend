@@ -6,9 +6,7 @@ import type { getTools } from '../tools/Tools.js';
 import { ChatMessageEntity, type ModelChatMessage, type ToolResultMessage, type ChatMessage, type AgentSessionMessage } from '../models/ChatTypes.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 
-import { LLMClient } from '../LLM/LLMClient.js';
-import type { LLMMessage } from '../LLM/LLMTypes.js';
-import type { LLMProvider } from '../LLM/LLMTypes.js';
+import { LLMClient, type LLMMessage, type LLMProvider } from '@browser-operator/ai-agent-sdk';
 import { createSystemPromptAsync } from './GraphHelpers.js';
 import * as BaseOrchestratorAgent from './BaseOrchestratorAgent.js';
 import { ToolSurfaceProvider } from './ToolSurfaceProvider.js';

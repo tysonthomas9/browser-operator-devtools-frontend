@@ -14,14 +14,13 @@ import { createLogger } from './Logger.js';
 import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 import {type AgentState, createInitialState, createUserMessage} from './State.js';
 import type {CompiledGraph} from './Types.js';
-import { LLMClient } from '../LLM/LLMClient.js';
+import { LLMClient, type LLMProvider } from '@browser-operator/ai-agent-sdk';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';
 import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../tracing/TracingProvider.js';
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
 import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
-import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { BUILD_CONFIG } from './BuildConfig.js';
 import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
 

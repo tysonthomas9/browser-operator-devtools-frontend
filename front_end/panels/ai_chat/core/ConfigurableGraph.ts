@@ -7,7 +7,7 @@ import { createLogger } from './Logger.js';
 import type { AgentState } from './State.js';
 import { StateGraph } from './StateGraph.js';
 import { NodeType, type CompiledGraph, type Runnable } from './Types.js';
-import type { LLMProvider } from '../LLM/LLMTypes.js';
+import type { LLMProvider } from '@browser-operator/ai-agent-sdk';
 
 const logger = createLogger('ConfigurableGraph');
 
