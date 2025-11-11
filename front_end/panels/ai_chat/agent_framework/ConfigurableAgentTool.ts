@@ -461,7 +461,7 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     const provider = callCtx.provider;
 
     // Check if API key is required based on provider
-    // LiteLLM and BrowserOperator has optional API keys
+    // LiteLLM and BrowserOperator have optional API keys
     // Other providers (OpenAI, Groq, OpenRouter) require API keys
     const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
 
@@ -528,16 +528,25 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     if (callCtx.model && !this.config.modelName) {
       modelName = callCtx.model;
     }
-    
+
+    // Update context with resolved fallback models for tools to use
+    // This ensures tools that check ctx.miniModel or ctx.nanoModel get the fallback
+    if (this.config.modelName === MODEL_SENTINELS.USE_MINI && !callCtx.miniModel) {
+      callCtx.miniModel = modelName;  // Use the resolved fallback
+    }
+    if (this.config.modelName === MODEL_SENTINELS.USE_NANO && !callCtx.nanoModel) {
+      callCtx.nanoModel = modelName;  // Use the resolved fallback
+    }
+
     // Validate required context
     if (!callCtx.provider) {
       throw new Error(`Provider not provided in context for agent '${this.name}'. Ensure context includes provider.`);
     }
-    
+
     const temperature = this.config.temperature ?? 0;
     const systemPrompt = this.config.systemPrompt;
     const tools = this.getToolInstances();
-    
+
     // Prepare initial messages
     const internalMessages = this.prepareInitialMessages(args);
     const runnerConfig: AgentRunnerConfig = {

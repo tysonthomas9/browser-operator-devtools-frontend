@@ -55,8 +55,8 @@ export class FullPageAccessibilityTreeToMarkdownTool implements Tool<Record<stri
     const provider = ctx.provider;
     const model = ctx.nanoModel;
 
-    // BrowserOperator doesn't require API key
-    const requiresApiKey = provider !== 'browseroperator';
+    // LiteLLM and BrowserOperator have optional API keys
+    const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
 
     if (requiresApiKey && !apiKey) {
       return { error: 'API key not configured.' };

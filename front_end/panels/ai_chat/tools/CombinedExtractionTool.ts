@@ -87,8 +87,8 @@ export class CombinedExtractionTool implements Tool<CombinedExtractionArgs, Comb
     // Get provider from context
     const provider = ctx?.provider;
 
-    // BrowserOperator doesn't require API key
-    const requiresApiKey = provider !== 'browseroperator';
+    // LiteLLM and BrowserOperator have optional API keys
+    const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
 
     if (requiresApiKey && !apiKey) {
       return {

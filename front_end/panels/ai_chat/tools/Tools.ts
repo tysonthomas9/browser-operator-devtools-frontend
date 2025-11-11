@@ -2967,8 +2967,8 @@ Important guidelines:
       return { error: 'Missing LLM context (provider/model) for ObjectiveDrivenActionTool' };
     }
 
-    // BrowserOperator doesn't require API key
-    const requiresApiKey = providerForAction !== 'browseroperator';
+    // LiteLLM and BrowserOperator have optional API keys
+    const requiresApiKey = providerForAction !== 'litellm' && providerForAction !== 'browseroperator';
 
     if (requiresApiKey && !apiKey) {return { error: 'API key not configured.' };}
     if (typeof objective !== 'string' || objective.trim() === '') {
