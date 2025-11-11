@@ -38,17 +38,21 @@
 
    **Why Critical:** This is the core orchestration system that makes ai_chat powerful!
 
-### 2. **Tool System** 🔴 CRITICAL
-   - [ ] Tool interface with Zod schemas
-   - [ ] Tool registry
-   - [ ] Tool execution in Agent
+### 2. **Tool System** ✅ COMPLETE (Core Done!)
+   - [x] Tool interface with Zod schemas (following Mastra pattern)
+   - [x] createTool() factory function
+   - [x] Tool execution in Agent with runtime context
+   - [x] OpenAI function calling format conversion
+   - [x] Example tools (weather, calculator, time)
+   - [x] Browser example with tools
    - [ ] Extract existing tools from ai_chat:
      - [ ] ThinkingTool
      - [ ] SchemaBasedExtractorTool
      - [ ] File management tools
      - [ ] Web navigation tools
 
-   **Why Critical:** Agents need tools to be useful!
+   **Status:** Core tool system complete! Can now use tools with agents.
+   **Next:** Extract specialized tools from ai_chat.
 
 ### 3. **More LLM Providers** 🟡 HIGH
    - [ ] Extract and adapt from ai_chat:
@@ -174,18 +178,18 @@
 ```
 Foundation:     ████████████████████ 100% (Complete!)
 Core Features:  ████░░░░░░░░░░░░░░░░  20% (Agent + Events done)
-Tools System:   ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
+Tools System:   ███████████████░░░░░  75% (Core done, need ai_chat tools)
 StateGraph:     ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Providers:      ███░░░░░░░░░░░░░░░░░  15% (OpenAI done, 4 more needed)
 Workflows:      ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Memory:         ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Observability:  ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Guardrails:     ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
-Examples:       ██░░░░░░░░░░░░░░░░░░  10% (1 of 10+ examples)
+Examples:       ████░░░░░░░░░░░░░░░░  20% (2 of 10+ examples)
 Tests:          ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
-Documentation:  ████░░░░░░░░░░░░░░░░  20% (Core docs done)
+Documentation:  █████░░░░░░░░░░░░░░░  25% (Core + Tools docs done)
 
-Overall:        ███░░░░░░░░░░░░░░░░░  15%
+Overall:        █████░░░░░░░░░░░░░░░  25%
 ```
 
 ---
@@ -282,14 +286,14 @@ To have a **usable SDK** for Browser Operator, we need:
 
 1. ✅ Core Agent (Done!)
 2. ✅ OpenAI Provider (Done!)
-3. 🔴 StateGraph (Most important!)
-4. 🔴 Tool System (Critical!)
-5. 🟡 3-4 Basic Tools
+3. 🔴 StateGraph (Most important - Next priority!)
+4. ✅ Tool System (Done!)
+5. ✅ 3-4 Basic Tools (Done - weather, calculator, time)
 6. 🟡 2-3 More Providers
 
-**Current MVP Status: 40%**
+**Current MVP Status: 67%** (4/6 complete!)
 
-Once we have these 6 items, the SDK will be usable for real agent workflows!
+Once we have StateGraph + 2 more providers, the SDK will be fully usable for agent workflows!
 
 ---
 
