@@ -8,7 +8,7 @@ The AI Chat Panel is a sophisticated multi-agent browser automation framework in
 
 - **Multi-Provider LLM Support**: OpenAI, LiteLLM (Claude, Gemini, Mistral, etc.), Groq, OpenRouter, and BrowserOperator
 - **Multi-Agent Orchestration**: Primary orchestrator delegates to specialized agents with handoff capabilities
-- **Rich Tool Ecosystem**: 42+ tools for browser automation, data extraction, and file management
+- **Rich Tool Ecosystem**: 48 tools for browser automation, data extraction, file management, and external integrations
 - **Real-Time Updates**: Event-driven architecture with streaming updates to UI
 - **Comprehensive Tracing**: Distributed tracing and observability via Langfuse integration
 - **Evaluation Framework**: Testing and validation system for agents and tools
@@ -615,7 +615,7 @@ interface CallCtx {
 
 #### Tools by Category
 
-**Browser/Page Tools** (10 tools)
+**Browser/Page Tools** (17 tools)
 
 1. **NavigateURLTool**: Navigate to specific URLs
 2. **NavigateBackTool**: Browser back navigation
@@ -628,6 +628,12 @@ interface CallCtx {
 9. **GetWebAppDataTool**: Retrieve web app data
 10. **RemoveWebAppTool**: Clean up web app instances
 11. **VisualIndicatorTool**: Highlight elements on page
+12. **ScrollPageTool**: Scroll page by position, direction, or viewport pages
+13. **SearchContentTool**: Search for text content on page
+14. **TakeScreenshotTool**: Capture screenshots for visual analysis
+15. **GetAccessibilityTreeTool**: Get full accessibility tree with node IDs
+16. **PerformActionTool**: Perform actions on elements by NodeID
+17. **NodeIDsToURLsTool**: Extract URLs from accessibility tree nodes
 
 **Data Collection Tools** (6 tools)
 
@@ -656,6 +662,16 @@ Uses **FileStorageManager** (in-memory file system):
 **Development Tools** (1 tool)
 
 1. **ExecuteCodeTool**: Execute JavaScript code in sandboxed environment
+
+**Utility Tools** (2 tools)
+
+1. **WaitTool**: Wait for page loads and dynamic content with viewport analysis
+2. **ThinkingTool**: High-level planning and analysis (adapts to vision/text models)
+
+**MCP Tools** (2 tools)
+
+1. **MCPMetaSearchTool**: Search and discover external MCP tools
+2. **MCPMetaInvokeTool**: Invoke external MCP tools dynamically
 
 **Agent Tools** (Dynamic)
 
@@ -1562,7 +1578,7 @@ The AI Chat Panel is a production-ready, enterprise-grade multi-agent browser au
 - **Modular 7-layer architecture** with clear separation of concerns
 - **Multi-provider LLM support** with unified interface (5 providers)
 - **Sophisticated multi-agent system** with 13+ specialized agents and handoff capabilities
-- **Comprehensive tool ecosystem** with 42+ tools across multiple categories
+- **Comprehensive tool ecosystem** with 48 tools across 8 categories
 - **Event-driven architecture** enabling real-time UI updates and loose coupling
 - **Full observability** via Langfuse integration and distributed tracing
 - **Robust evaluation framework** for testing and validation
