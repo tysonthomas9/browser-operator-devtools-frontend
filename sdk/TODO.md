@@ -29,14 +29,18 @@
 
 ## 🚧 In Progress / High Priority
 
-### 1. **StateGraph Implementation** 🔴 CRITICAL
-   - [ ] Extract StateGraph from `front_end/panels/ai_chat/core/StateGraph.ts`
-   - [ ] Extract Graph execution engine
-   - [ ] AgentNode, ToolNode, FinalNode implementations
-   - [ ] Conditional edges
-   - [ ] Graph builder API
+### 1. **Mastra-Style Workflows** 🟢 IN PROGRESS (50% Complete!)
+   - [x] Phase 1: Core types & step creation (Complete!)
+   - [x] Phase 2: Workflow execution engine (Complete!)
+   - [ ] Phase 3: Advanced features (streaming refinement, state persistence)
+   - [ ] Phase 4: Examples & documentation
+   - [ ] Phase 5: Browser testing
+   - [ ] Phase 6: Polish & optimization
 
-   **Why Critical:** This is the core orchestration system that makes ai_chat powerful!
+   **Decision:** Using Mastra-style chainable workflows instead of StateGraph
+   **Why:** More intuitive API, industry standard, better DX, simpler browser implementation
+   **Status:** Core execution working! Can now build and execute multi-step workflows.
+   **See:** WORKFLOW_IMPLEMENTATION_PLAN.md for complete implementation details
 
 ### 2. **Tool System** ✅ COMPLETE (Core Done!)
    - [x] Tool interface with Zod schemas (following Mastra pattern)
@@ -74,12 +78,21 @@
 
 ## 📋 Planned (Phase 2-3)
 
-### @browser-operator/workflows
-- [ ] Workflow builder API
-- [ ] Chainable steps (andThen, andAll, andRace)
+### @browser-operator/workflows (MOVED TO IN PROGRESS - 50% Complete!)
+- [x] Workflow builder API with chainable methods
+- [x] Step creation with Zod schemas
+- [x] Sequential execution (.then)
+- [x] Parallel execution (.parallel)
+- [x] Conditional branching (.branch)
+- [x] Data transformation (.map)
+- [x] Array iteration (.foreach)
+- [x] Loop support (.dowhile, .dountil)
+- [x] Streaming execution with events
+- [x] State management and step result tracking
 - [ ] Suspend/resume mechanism
 - [ ] Workflow state persistence
 - [ ] Human-in-the-loop support
+- [ ] Examples and comprehensive docs
 
 ### @browser-operator/memory
 - [ ] Memory interface
@@ -179,9 +192,8 @@
 Foundation:     ████████████████████ 100% (Complete!)
 Core Features:  ████░░░░░░░░░░░░░░░░  20% (Agent + Events done)
 Tools System:   ███████████████░░░░░  75% (Core done, need ai_chat tools)
-StateGraph:     ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
+Workflows:      ██████████░░░░░░░░░░  50% (Phase 1-2 done, Mastra pattern!)
 Providers:      ███░░░░░░░░░░░░░░░░░  15% (OpenAI done, 4 more needed)
-Workflows:      ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Memory:         ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Observability:  ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Guardrails:     ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
@@ -189,7 +201,7 @@ Examples:       ████░░░░░░░░░░░░░░░░  20
 Tests:          ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Documentation:  █████░░░░░░░░░░░░░░░  25% (Core + Tools docs done)
 
-Overall:        █████░░░░░░░░░░░░░░░  25%
+Overall:        ██████░░░░░░░░░░░░░░  35%
 ```
 
 ---
@@ -198,27 +210,28 @@ Overall:        █████░░░░░░░░░░░░░░░  25
 
 ### Immediate (This Week):
 
-1. **Implement StateGraph** 🔴
+1. **Complete Workflows Phase 3-4** 🟡 (Continue current work)
+   - [ ] Phase 3: Advanced features (streaming refinement, state persistence)
+   - [ ] Phase 4: Create workflow examples and documentation
+   - [ ] Write comprehensive workflow guide showing all patterns
+
    ```typescript
-   // Extract from front_end/panels/ai_chat/core/StateGraph.ts
-   const graph = new StateGraph()
-     .addNode('agent', new AgentNode({ model, tools }))
-     .addNode('tools', new ToolNode())
-     .addEdge('agent', 'tools')
-     .addConditionalEdge('tools', shouldContinue);
+   // Example workflow with all features
+   const myWorkflow = createWorkflow({ ... })
+     .then(step1)
+     .parallel([step2, step3])
+     .branch([[condition, step4], [elseCondition, step5]])
+     .foreach(processItem, { concurrency: 3 })
+     .commit();
+
+   const result = await myWorkflow.start(input);
    ```
 
-2. **Implement Tool System** 🔴
-   ```typescript
-   const weatherTool = createTool({
-     name: 'get_weather',
-     description: 'Get weather for a location',
-     parameters: z.object({ location: z.string() }),
-     execute: async ({ location }) => {
-       // Tool logic
-     }
-   });
-   ```
+2. **Extract Specialized Tools from ai_chat** 🟡
+   - [ ] ThinkingTool
+   - [ ] SchemaBasedExtractorTool
+   - [ ] File management tools
+   - [ ] Web navigation tools
 
 3. **Add More Providers** 🟡
    - Groq (fast inference)
@@ -286,14 +299,15 @@ To have a **usable SDK** for Browser Operator, we need:
 
 1. ✅ Core Agent (Done!)
 2. ✅ OpenAI Provider (Done!)
-3. 🔴 StateGraph (Most important - Next priority!)
+3. 🟢 Workflows System (50% done - core execution working!)
 4. ✅ Tool System (Done!)
 5. ✅ 3-4 Basic Tools (Done - weather, calculator, time)
 6. 🟡 2-3 More Providers
+7. 🟡 Workflow Examples & Docs
 
-**Current MVP Status: 67%** (4/6 complete!)
+**Current MVP Status: 65%** (4.5/7 complete!)
 
-Once we have StateGraph + 2 more providers, the SDK will be fully usable for agent workflows!
+Once we have complete workflows + examples + 2 more providers, the SDK will be fully usable for multi-step agent workflows!
 
 ---
 
@@ -311,14 +325,24 @@ Once we have StateGraph + 2 more providers, the SDK will be fully usable for age
 ```bash
 # To continue, pick one of these:
 
-# Option 1: Implement StateGraph (most impactful)
-# See: front_end/panels/ai_chat/core/StateGraph.ts
+# Option 1: Complete Workflows Phase 3-4 (continue current work)
+# - Add state persistence
+# - Create comprehensive examples
+# - Write workflow guide documentation
+# See: sdk/WORKFLOW_IMPLEMENTATION_PLAN.md
 
-# Option 2: Implement Tool System
-# See: front_end/panels/ai_chat/tools/Tools.ts
+# Option 2: Extract specialized tools from ai_chat
+# See: front_end/panels/ai_chat/tools/
+# - ThinkingTool.ts
+# - SchemaBasedExtractorTool.ts
+# - FileTools/
+# - WebNavigationTools/
 
-# Option 3: Add more providers
-# See: front_end/panels/ai_chat/LLM/GroqProvider.ts
+# Option 3: Add more LLM providers
+# See: front_end/panels/ai_chat/LLM/
+# - GroqProvider.ts (fast inference)
+# - AnthropicProvider.ts (Claude)
+# - LiteLLMProvider.ts (local models)
 ```
 
 Let me know which direction you'd like to go! 🚀
