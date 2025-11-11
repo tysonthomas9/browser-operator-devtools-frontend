@@ -47,5 +47,9 @@ export * from './createTool.js';
 export * from './utils.js';
 
 // Migrated tools from ai_chat
+// File Operations
 export * from './readFile.js';
 export * from './createFile.js';
+export * from './updateFile.js';
+export * from './deleteFile.js';
+export * from './listFiles.js';

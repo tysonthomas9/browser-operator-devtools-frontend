@@ -60,7 +60,7 @@ export interface FileStorageManager {
     updatedAt: number;
   } | null>;
 
-  updateFile(fileName: string, content: string): Promise<{
+  updateFile(fileName: string, content: string, append?: boolean): Promise<{
     id: string;
     fileName: string;
     content: string;
