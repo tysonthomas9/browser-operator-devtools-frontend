@@ -45,17 +45,39 @@
 export * from './types.js';
 export * from './createTool.js';
 export * from './utils.js';
+export * from './interfaces.js';
 
-// Migrated tools from ai_chat
-// File Operations
+// Migrated tools from ai_chat (24 tools)
+// File Operations (5 tools)
 export * from './readFile.js';
 export * from './createFile.js';
 export * from './updateFile.js';
 export * from './deleteFile.js';
 export * from './listFiles.js';
 
-// Execution
+// Execution (1 tool)
 export * from './executeCode.js';
 
-// Utilities
+// Web Tools (5 tools)
+export * from './htmlToMarkdown.js';
+export * from './accessibilityTreeToMarkdown.js';
+export * from './fetcher.js';
+export * from './webAppData.js';
+export * from './renderWebApp.js';
+export * from './removeWebApp.js';
+
+// Thinking & Planning Tools (3 tools)
+export * from './thinking.js';
+export * from './critique.js';
+export * from './sequentialThinking.js';
+
+// Data Extraction Tools (3 tools)
+export * from './schemaExtractor.js';
+export * from './streamlinedExtractor.js';
+export * from './combinedExtraction.js';
+
+// Utilities (4 tools)
 export * from './updateTodo.js';
+export * from './documentSearch.js';
+export * from './bookmarkStore.js';
+export * from './finalizeWithCritique.js';
