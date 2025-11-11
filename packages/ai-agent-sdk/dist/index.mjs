@@ -635,9 +635,1313 @@ var ToolRegistry = class {
 ToolRegistry.toolFactories = /* @__PURE__ */ new Map();
 ToolRegistry.registeredTools = /* @__PURE__ */ new Map();
 
+// src/agent/AgentTypes.ts
+var MODEL_SENTINELS = {
+  USE_MINI: "use-mini",
+  USE_NANO: "use-nano"
+};
+
+// src/agent/AgentErrorHandler.ts
+var logger4 = createLogger("AgentErrorHandler");
+var AgentErrorHandler = class _AgentErrorHandler {
+  constructor(config) {
+    this.config = config;
+  }
+  /**
+   * Create an error handler with the given configuration
+   */
+  static createErrorHandler(config) {
+    return new _AgentErrorHandler(config);
+  }
+  /**
+   * Handle unknown tool requests gracefully
+   */
+  handleUnknownTool(toolName, toolCallId) {
+    const { agentName, availableTools = [], continueOnError } = this.config;
+    logger4.warn(`${agentName} requested unknown tool: ${toolName}`);
+    if (!continueOnError) {
+      return {
+        shouldContinue: false,
+        errorMessage: void 0,
+        sessionMessage: void 0
+      };
+    }
+    const availableToolsList = availableTools.length > 0 ? `Available tools: ${availableTools.join(", ")}` : "No tools are currently available";
+    const errorMessage = {
+      entity: "tool_result" /* TOOL_RESULT */,
+      toolName,
+      resultText: `Error: Tool "${toolName}" is not available. ${availableToolsList}`,
+      isError: true,
+      toolCallId,
+      error: `Unknown tool: ${toolName}`
+    };
+    const sessionMessage = {
+      type: "tool_result",
+      content: {
+        type: "tool_result",
+        toolCallId,
+        toolName,
+        success: false,
+        result: null,
+        error: `Unknown tool: ${toolName}`
+      }
+    };
+    logger4.info(`${agentName} Added unknown tool error to conversation, will continue execution`);
+    return {
+      shouldContinue: true,
+      errorMessage,
+      sessionMessage
+    };
+  }
+  /**
+   * Handle LLM response parsing errors gracefully
+   */
+  handleParsingError(error) {
+    const { agentName, continueOnError } = this.config;
+    logger4.warn(`${agentName} LLM response parsing error: ${error}`);
+    if (!continueOnError) {
+      return {
+        shouldContinue: false,
+        errorMessage: void 0,
+        sessionMessage: void 0
+      };
+    }
+    const errorMessage = {
+      entity: "user" /* USER */,
+      text: `Your previous response could not be parsed: ${error}. Please provide a valid response by either calling one of the available tools or providing a final answer.`
+    };
+    const sessionMessage = {
+      type: "reasoning",
+      content: {
+        type: "reasoning",
+        text: `LLM response parsing failed: ${error}. Requesting retry.`
+      }
+    };
+    logger4.info(`${agentName} Added parsing error to conversation, will continue execution`);
+    return {
+      shouldContinue: true,
+      errorMessage,
+      sessionMessage
+    };
+  }
+};
+
+// src/agent/AgentRunnerEventBus.ts
+var AgentRunnerEventBus = class _AgentRunnerEventBus {
+  constructor() {
+    this.listeners = [];
+  }
+  /**
+   * Get the singleton instance
+   */
+  static getInstance() {
+    if (!this.instance) {
+      this.instance = new _AgentRunnerEventBus();
+    }
+    return this.instance;
+  }
+  /**
+   * Emit a progress event to all listeners
+   */
+  emitProgress(event) {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error("Error in AgentRunnerEventBus listener:", error);
+      }
+    }
+  }
+  /**
+   * Add a progress event listener
+   */
+  addListener(callback) {
+    if (!this.listeners.includes(callback)) {
+      this.listeners.push(callback);
+    }
+  }
+  /**
+   * Remove a progress event listener
+   */
+  removeListener(callback) {
+    const index = this.listeners.indexOf(callback);
+    if (index !== -1) {
+      this.listeners.splice(index, 1);
+    }
+  }
+  /**
+   * Remove all listeners
+   */
+  removeAllListeners() {
+    this.listeners = [];
+  }
+  /**
+   * Get the number of active listeners
+   */
+  getListenerCount() {
+    return this.listeners.length;
+  }
+};
+
+// src/agent/AgentRunner.ts
+var logger5 = createLogger("AgentRunner");
+var _AgentRunner = class _AgentRunner {
+  /**
+   * Initialize the event bus
+   */
+  static initializeEventBus() {
+    if (!_AgentRunner.eventBus) {
+      _AgentRunner.eventBus = AgentRunnerEventBus.getInstance();
+    }
+  }
+  /**
+   * Convert chat messages to LLM messages
+   */
+  static convertToLLMMessages(messages) {
+    const llmMessages = [];
+    for (const message of messages) {
+      if (message.entity === "user" /* USER */) {
+        if (message.imageInput) {
+          llmMessages.push({
+            role: "user",
+            content: [
+              { type: "text", text: message.text },
+              {
+                type: "image_url",
+                image_url: {
+                  url: message.imageInput.url || message.imageInput.bytesBase64,
+                  detail: "auto"
+                }
+              }
+            ]
+          });
+        } else {
+          llmMessages.push({
+            role: "user",
+            content: message.text
+          });
+        }
+      } else if (message.entity === "model" /* MODEL */) {
+        const modelMsg = message;
+        if (modelMsg.action === "tool") {
+          llmMessages.push({
+            role: "assistant",
+            content: Array.isArray(modelMsg.reasoning) ? modelMsg.reasoning.join(" ") : modelMsg.reasoning || "",
+            tool_calls: [
+              {
+                id: modelMsg.toolCallId || crypto.randomUUID(),
+                type: "function",
+                function: {
+                  name: modelMsg.toolName || "",
+                  arguments: JSON.stringify(modelMsg.toolArgs || {})
+                }
+              }
+            ]
+          });
+        } else if (modelMsg.action === "final") {
+          llmMessages.push({
+            role: "assistant",
+            content: modelMsg.answer || ""
+          });
+        }
+      } else if (message.entity === "tool_result" /* TOOL_RESULT */) {
+        const toolResult = message;
+        const hasImageData = toolResult.imageData && typeof toolResult.imageData === "string";
+        if (hasImageData) {
+          llmMessages.push({
+            role: "tool",
+            content: [
+              {
+                type: "text",
+                text: toolResult.resultText
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: toolResult.imageData,
+                  detail: "high"
+                }
+              }
+            ],
+            tool_call_id: toolResult.toolCallId
+          });
+        } else {
+          let content = toolResult.resultText;
+          if (toolResult.summary) {
+            content = content + "\n\n" + toolResult.summary;
+          }
+          llmMessages.push({
+            role: "tool",
+            content,
+            tool_call_id: toolResult.toolCallId
+          });
+        }
+      }
+    }
+    return llmMessages;
+  }
+  /**
+   * Sanitizes tool result data for text representation by removing fields
+   * that shouldn't be sent to the LLM (imageData, success, etc.)
+   */
+  static sanitizeToolResultForText(toolResultData) {
+    if (typeof toolResultData !== "object" || toolResultData === null) {
+      return toolResultData;
+    }
+    const sanitized = { ...toolResultData };
+    const fieldsToRemove = ["imageData", "success", "dataUrl", "agentSession"];
+    fieldsToRemove.forEach((field) => {
+      if (sanitized.hasOwnProperty(field)) {
+        delete sanitized[field];
+      }
+    });
+    return sanitized;
+  }
+  /**
+   * Compute the tool result text shown to the LLM for regular tool outputs
+   */
+  static computeToolResultText(toolResultData, imageData) {
+    if (typeof toolResultData === "string") {
+      return toolResultData;
+    }
+    const sanitizedData = this.sanitizeToolResultForText(toolResultData);
+    const sanitizedIsEmptyObject = typeof sanitizedData === "object" && sanitizedData !== null && Object.keys(sanitizedData).length === 0;
+    const hadOnlyImage = !!imageData && sanitizedIsEmptyObject;
+    if (hadOnlyImage) {
+      return "Image omitted (model lacks vision).";
+    }
+    return JSON.stringify(sanitizedData, null, 2);
+  }
+  /**
+   * Execute handoff to another agent
+   */
+  static async executeHandoff(currentMessages, originalArgs, handoffConfig, executingAgent, apiKey, defaultModelName, defaultMaxIterations, defaultTemperature, defaultCreateSuccessResult, defaultCreateErrorResult, llmToolArgs, parentSession, defaultProvider, defaultGetVisionCapability, miniModel, nanoModel, overrides) {
+    const targetAgentName = handoffConfig.targetAgentName;
+    const targetAgentTool = ToolRegistry.getRegisteredTool(targetAgentName);
+    if (!(targetAgentTool && "config" in targetAgentTool)) {
+      const errorMsg = `Handoff target '${targetAgentName}' not found or is not a ConfigurableAgentTool.`;
+      logger5.error(`${errorMsg}`);
+      const errorSession = {
+        agentName: targetAgentName,
+        sessionId: crypto.randomUUID(),
+        status: "error",
+        startTime: /* @__PURE__ */ new Date(),
+        endTime: /* @__PURE__ */ new Date(),
+        messages: [],
+        nestedSessions: [],
+        tools: [],
+        terminationReason: "error"
+      };
+      return { ...defaultCreateErrorResult(errorMsg, currentMessages, "error"), agentSession: errorSession };
+    }
+    const targetAgent = targetAgentTool;
+    logger5.info(`Initiating handoff from ${executingAgent.name} to ${targetAgent.name}`);
+    let handoffMessages = [];
+    const targetConfig = targetAgent.config;
+    if (handoffConfig.includeToolResults && handoffConfig.includeToolResults.length > 0) {
+      handoffMessages = currentMessages.filter((message) => {
+        if (message.entity === "agent_session" /* AGENT_SESSION */) {
+          return false;
+        }
+        if (message.entity === "user" /* USER */) {
+          return true;
+        }
+        if (message.entity === "model" /* MODEL */) {
+          const modelMsg = message;
+          if (modelMsg.action === "final") {
+            return true;
+          }
+          if (modelMsg.action === "tool" && modelMsg.toolName) {
+            return handoffConfig.includeToolResults.includes(modelMsg.toolName);
+          }
+        }
+        if (message.entity === "tool_result" /* TOOL_RESULT */) {
+          const toolResult = message;
+          return !toolResult.isError && toolResult.toolName && handoffConfig.includeToolResults.includes(toolResult.toolName);
+        }
+        return false;
+      });
+    } else {
+      handoffMessages = currentMessages.filter((message) => {
+        return message.entity !== "agent_session" /* AGENT_SESSION */;
+      });
+    }
+    let resolvedModelName;
+    if (typeof targetConfig.modelName === "function") {
+      resolvedModelName = targetConfig.modelName();
+    } else if (targetConfig.modelName === MODEL_SENTINELS.USE_MINI) {
+      if (!miniModel) {
+        throw new Error(
+          `Mini model not provided for handoff to agent '${targetAgentName}'. Ensure miniModel is passed in context.`
+        );
+      }
+      resolvedModelName = miniModel;
+    } else if (targetConfig.modelName === MODEL_SENTINELS.USE_NANO) {
+      if (!nanoModel) {
+        throw new Error(
+          `Nano model not provided for handoff to agent '${targetAgentName}'. Ensure nanoModel is passed in context.`
+        );
+      }
+      resolvedModelName = nanoModel;
+    } else {
+      resolvedModelName = targetConfig.modelName || defaultModelName;
+    }
+    const targetRunnerConfig = {
+      apiKey,
+      modelName: resolvedModelName,
+      systemPrompt: targetConfig.systemPrompt,
+      tools: targetConfig.tools.map((toolName) => ToolRegistry.getRegisteredTool(toolName)).filter((tool) => tool !== null),
+      maxIterations: targetConfig.maxIterations || defaultMaxIterations,
+      temperature: targetConfig.temperature ?? defaultTemperature,
+      provider: defaultProvider,
+      getVisionCapability: defaultGetVisionCapability,
+      miniModel,
+      nanoModel
+    };
+    const targetRunnerHooks = {
+      prepareInitialMessages: void 0,
+      createSuccessResult: targetConfig.createSuccessResult ? (out, steps, reason) => targetConfig.createSuccessResult(out, steps, reason, targetConfig) : defaultCreateSuccessResult,
+      createErrorResult: targetConfig.createErrorResult ? (err, steps, reason) => targetConfig.createErrorResult(err, steps, reason, targetConfig) : defaultCreateErrorResult
+    };
+    const targetAgentArgs = llmToolArgs ?? originalArgs;
+    logger5.info(`Executing handoff target agent: ${targetAgent.name} with ${handoffMessages.length} messages.`);
+    const handoffResult = await _AgentRunner.run(
+      handoffMessages,
+      targetAgentArgs,
+      targetRunnerConfig,
+      targetRunnerHooks,
+      targetAgent,
+      parentSession,
+      overrides,
+      void 0
+    );
+    const { agentSession: childSession, ...actualResult } = handoffResult;
+    if (parentSession) {
+      parentSession.nestedSessions.push(childSession);
+    }
+    logger5.info(`Handoff target agent ${targetAgent.name} finished. Result success: ${actualResult.success}`);
+    if (targetAgent.config.includeIntermediateStepsOnReturn === true) {
+      logger5.info(`Including intermediateSteps from ${targetAgent.name} based on its config.`);
+      const combinedIntermediateSteps = [...currentMessages, ...actualResult.intermediateSteps || []];
+      return {
+        ...actualResult,
+        intermediateSteps: combinedIntermediateSteps,
+        terminationReason: actualResult.terminationReason || "handed_off",
+        agentSession: childSession
+      };
+    }
+    logger5.info(`Omitting intermediateSteps from ${targetAgent.name} based on its config.`);
+    const finalResult = {
+      ...actualResult,
+      terminationReason: actualResult.terminationReason || "handed_off",
+      agentSession: childSession
+    };
+    delete finalResult.intermediateSteps;
+    return finalResult;
+  }
+  /**
+   * Main agent execution loop
+   */
+  static async run(initialMessages, args, config, hooks, executingAgent, parentSession, overrides, abortSignal) {
+    const agentName = executingAgent?.name || "Unknown";
+    logger5.info(`Starting execution loop for agent: ${agentName}`);
+    const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature } = config;
+    const { prepareInitialMessages, createSuccessResult, createErrorResult, afterExecute } = hooks;
+    const agentSession = {
+      agentName,
+      agentQuery: args.query,
+      agentReasoning: args.reasoning,
+      agentDisplayName: executingAgent?.config?.ui?.displayName || agentName,
+      agentDescription: executingAgent?.config?.description,
+      sessionId: overrides?.sessionId || crypto.randomUUID(),
+      parentSessionId: overrides?.parentSessionId || parentSession?.sessionId,
+      status: "running",
+      startTime: /* @__PURE__ */ new Date(),
+      messages: [],
+      nestedSessions: [],
+      tools: config.tools.map((t) => t.name),
+      config: executingAgent?.config,
+      maxIterations,
+      modelUsed: modelName,
+      iterationCount: 0
+    };
+    let currentSession = agentSession;
+    if (_AgentRunner.eventBus) {
+      _AgentRunner.eventBus.emitProgress({
+        type: "session_started",
+        sessionId: agentSession.sessionId,
+        parentSessionId: agentSession.parentSessionId,
+        agentName,
+        timestamp: /* @__PURE__ */ new Date(),
+        data: { session: agentSession }
+      });
+    }
+    const addSessionMessage = (message) => {
+      const fullMessage = {
+        id: crypto.randomUUID(),
+        timestamp: /* @__PURE__ */ new Date(),
+        ...message
+      };
+      currentSession.messages.push(fullMessage);
+      if (_AgentRunner.eventBus && fullMessage.type === "tool_call") {
+        _AgentRunner.eventBus.emitProgress({
+          type: "tool_started",
+          sessionId: currentSession.sessionId,
+          parentSessionId: currentSession.parentSessionId,
+          agentName: currentSession.agentName,
+          timestamp: /* @__PURE__ */ new Date(),
+          data: { session: currentSession, toolCall: fullMessage }
+        });
+      } else if (_AgentRunner.eventBus && fullMessage.type === "tool_result") {
+        _AgentRunner.eventBus.emitProgress({
+          type: "tool_completed",
+          sessionId: currentSession.sessionId,
+          parentSessionId: currentSession.parentSessionId,
+          agentName: currentSession.agentName,
+          timestamp: /* @__PURE__ */ new Date(),
+          data: { session: currentSession, toolResult: fullMessage }
+        });
+      }
+    };
+    let messages = [...initialMessages];
+    if (prepareInitialMessages) {
+      messages = prepareInitialMessages(messages);
+    }
+    const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
+    const toolSchemas = tools.map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.schema
+      }
+    }));
+    const errorHandler = AgentErrorHandler.createErrorHandler({
+      continueOnError: true,
+      agentName,
+      availableTools: Array.from(toolMap.keys()),
+      session: agentSession
+    });
+    if (executingAgent?.config.handoffs) {
+      for (const handoffConfig of executingAgent.config.handoffs) {
+        if (!handoffConfig.trigger || handoffConfig.trigger === "llm_tool_call") {
+          const targetAgentName = handoffConfig.targetAgentName;
+          const targetTool = ToolRegistry.getRegisteredTool(targetAgentName);
+          if (targetTool && "config" in targetTool) {
+            const handoffToolName = `handoff_to_${targetAgentName}`;
+            toolSchemas.push({
+              type: "function",
+              function: {
+                name: handoffToolName,
+                description: `Handoff the current task to the specialized agent: ${targetAgentName}. Use this agent when the task requires ${targetAgentName}'s capabilities. Agent Description: ${targetTool.description}`,
+                parameters: targetTool.schema
+              }
+            });
+            toolMap.set(handoffToolName, targetTool);
+            logger5.info(`Added LLM handoff tool schema: ${handoffToolName}`);
+          } else {
+            logger5.warn(
+              `Configured LLM handoff target '${targetAgentName}' not found or is not a ConfigurableAgentTool.`
+            );
+          }
+        }
+      }
+    }
+    if (args.reasoning) {
+      const reasoningText = Array.isArray(args.reasoning) ? args.reasoning.join(" ") : args.reasoning;
+      addSessionMessage({
+        type: "reasoning",
+        content: {
+          type: "reasoning",
+          text: reasoningText
+        }
+      });
+    }
+    let iteration = 0;
+    for (iteration = 0; iteration < maxIterations; iteration++) {
+      if (abortSignal?.aborted) {
+        logger5.info(`${agentName} execution aborted at iteration ${iteration + 1}/${maxIterations}`);
+        currentSession.status = "error";
+        currentSession.endTime = /* @__PURE__ */ new Date();
+        currentSession.terminationReason = "error";
+        if (_AgentRunner.eventBus) {
+          _AgentRunner.eventBus.emitProgress({
+            type: "session_completed",
+            sessionId: currentSession.sessionId,
+            parentSessionId: currentSession.parentSessionId,
+            agentName,
+            timestamp: /* @__PURE__ */ new Date(),
+            data: { session: currentSession, reason: "aborted" }
+          });
+        }
+        const abortResult = createErrorResult("Execution was cancelled", messages, "error");
+        if (afterExecute) {
+          try {
+            await afterExecute(abortResult, currentSession);
+          } catch (error) {
+            logger5.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+        return { ...abortResult, agentSession: currentSession };
+      }
+      if (currentSession) {
+        currentSession.iterationCount = iteration + 1;
+      }
+      logger5.info(`${agentName} Iteration ${iteration + 1}/${maxIterations}`);
+      const iterationInfo = `
+## Current Progress
+- You are currently on step ${iteration + 1} of ${maxIterations - 1} maximum steps.
+- Focus on making meaningful progress with each step.`;
+      const currentSystemPrompt = systemPrompt + iterationInfo;
+      let llmResponse;
+      try {
+        logger5.info(`${agentName} Calling LLM with ${messages.length} messages`);
+        const provider = LLMProviderRegistry.getProvider(config.provider);
+        if (!provider) {
+          throw new Error(`Provider ${config.provider} not found in registry`);
+        }
+        const llmMessages = _AgentRunner.convertToLLMMessages(messages);
+        let isVisionForMainCall = false;
+        if (typeof config.getVisionCapability === "function") {
+          try {
+            const res = await config.getVisionCapability(modelName);
+            isVisionForMainCall = typeof res === "boolean" ? res : false;
+          } catch {
+            isVisionForMainCall = false;
+          }
+        }
+        const sanitizedForMainCall = sanitizeMessagesForModel(llmMessages, {
+          visionCapable: isVisionForMainCall,
+          placeholderForImageOnly: true
+        });
+        const messagesWithSystem = [
+          { role: "system", content: currentSystemPrompt },
+          ...sanitizedForMainCall
+        ];
+        llmResponse = await provider.callWithMessages(modelName, messagesWithSystem, {
+          tools: toolSchemas,
+          temperature: temperature ?? 0
+        });
+      } catch (error) {
+        logger5.error(`${agentName} LLM call failed:`, error);
+        const errorMsg = `LLM call failed: ${error.message || String(error)}`;
+        const systemErrorMessage = {
+          entity: "tool_result" /* TOOL_RESULT */,
+          toolName: "system_error",
+          resultText: errorMsg,
+          isError: true,
+          error: errorMsg
+        };
+        messages.push(systemErrorMessage);
+        const errorSummary = await this.summarizeAgentProgress(
+          messages,
+          maxIterations,
+          agentName,
+          modelName,
+          "error",
+          config.provider,
+          config.getVisionCapability
+        );
+        agentSession.status = "error";
+        agentSession.endTime = /* @__PURE__ */ new Date();
+        agentSession.terminationReason = "error";
+        if (_AgentRunner.eventBus) {
+          _AgentRunner.eventBus.emitProgress({
+            type: "session_completed",
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: /* @__PURE__ */ new Date(),
+            data: { session: agentSession, reason: "error" }
+          });
+        }
+        const result2 = createErrorResult(errorMsg, messages, "error");
+        result2.summary = {
+          type: "error",
+          content: errorSummary
+        };
+        if (afterExecute) {
+          try {
+            await afterExecute(result2, agentSession);
+          } catch (error2) {
+            logger5.warn(`afterExecute hook failed for ${agentName}:`, error2);
+          }
+        }
+        return { ...result2, agentSession };
+      }
+      const parsedAction = LLMResponseParser.parseResponse(llmResponse);
+      try {
+        let newModelMessage;
+        if (parsedAction.type === "tool_call") {
+          const { name: toolName, args: toolArgs } = parsedAction;
+          const toolCallId = crypto.randomUUID();
+          newModelMessage = {
+            entity: "model" /* MODEL */,
+            action: "tool",
+            toolName,
+            toolArgs,
+            toolCallId,
+            isFinalAnswer: false,
+            reasoning: llmResponse.reasoning?.summary
+          };
+          messages.push(newModelMessage);
+          addSessionMessage({
+            type: "tool_call",
+            content: {
+              type: "tool_call",
+              toolName,
+              toolArgs,
+              toolCallId,
+              reasoning: Array.isArray(llmResponse.reasoning?.summary) ? llmResponse.reasoning.summary.join(" ") : llmResponse.reasoning?.summary || void 0
+            }
+          });
+          logger5.info(`${agentName} LLM requested tool: ${toolName}`);
+          const toolToExecute = toolMap.get(toolName);
+          if (!toolToExecute) {
+            const result2 = errorHandler.handleUnknownTool(toolName, toolCallId);
+            if (result2.shouldContinue && result2.errorMessage) {
+              messages.push(result2.errorMessage);
+              if (result2.sessionMessage) {
+                addSessionMessage(result2.sessionMessage);
+              }
+              continue;
+            }
+            continue;
+          }
+          let toolResultText = "";
+          let toolIsError = false;
+          let toolResultData = null;
+          let imageData;
+          if (toolName.startsWith("handoff_to_") && "config" in toolToExecute) {
+            const targetAgentTool = toolToExecute;
+            const handoffConfig = executingAgent?.config.handoffs?.find(
+              (h) => h.targetAgentName === targetAgentTool.name && (!h.trigger || h.trigger === "llm_tool_call")
+            );
+            if (!handoffConfig) {
+              throw new Error(`Internal error: No matching 'llm_tool_call' handoff config found for ${toolName}`);
+            }
+            const nestedSessionId = crypto.randomUUID();
+            addSessionMessage({
+              type: "handoff",
+              content: {
+                type: "handoff",
+                targetAgent: targetAgentTool.name,
+                reason: `Handing off to ${targetAgentTool.name}`,
+                context: toolArgs,
+                nestedSessionId
+              }
+            });
+            const handoffResult = await _AgentRunner.executeHandoff(
+              messages,
+              toolArgs,
+              handoffConfig,
+              executingAgent,
+              apiKey,
+              modelName,
+              maxIterations,
+              temperature ?? 0,
+              createSuccessResult,
+              createErrorResult,
+              toolArgs,
+              currentSession,
+              config.provider,
+              config.getVisionCapability,
+              config.miniModel,
+              config.nanoModel,
+              { sessionId: nestedSessionId, parentSessionId: currentSession.sessionId }
+            );
+            agentSession.status = "completed";
+            agentSession.endTime = /* @__PURE__ */ new Date();
+            agentSession.terminationReason = "handed_off";
+            if (_AgentRunner.eventBus) {
+              _AgentRunner.eventBus.emitProgress({
+                type: "session_completed",
+                sessionId: agentSession.sessionId,
+                parentSessionId: agentSession.parentSessionId,
+                agentName,
+                timestamp: /* @__PURE__ */ new Date(),
+                data: { session: agentSession, reason: "handed_off" }
+              });
+            }
+            return { ...handoffResult, agentSession };
+          } else {
+            let preallocatedChildId;
+            if ("config" in toolToExecute) {
+              preallocatedChildId = crypto.randomUUID();
+              const childPlaceholder = {
+                sessionId: preallocatedChildId,
+                agentName: toolName,
+                parentSessionId: currentSession.sessionId,
+                status: "running",
+                startTime: /* @__PURE__ */ new Date(),
+                messages: [],
+                nestedSessions: [],
+                tools: []
+              };
+              currentSession.nestedSessions.push(childPlaceholder);
+              addSessionMessage({
+                type: "handoff",
+                content: {
+                  type: "handoff",
+                  targetAgent: toolName,
+                  reason: `Handing off to ${toolName}`,
+                  context: toolArgs,
+                  nestedSessionId: preallocatedChildId
+                }
+              });
+              if (_AgentRunner.eventBus) {
+                _AgentRunner.eventBus.emitProgress({
+                  type: "child_agent_started",
+                  sessionId: currentSession.sessionId,
+                  parentSessionId: currentSession.parentSessionId,
+                  agentName: currentSession.agentName,
+                  timestamp: /* @__PURE__ */ new Date(),
+                  data: {
+                    parentSession: currentSession,
+                    childAgentName: toolName,
+                    childSessionId: preallocatedChildId
+                  }
+                });
+              }
+            }
+            try {
+              logger5.info(`${agentName} Executing tool: ${toolToExecute.name}`);
+              toolResultData = await toolToExecute.execute(toolArgs, {
+                apiKey: config.apiKey,
+                provider: config.provider,
+                model: modelName,
+                miniModel: config.miniModel,
+                nanoModel: config.nanoModel,
+                getVisionCapability: config.getVisionCapability,
+                abortSignal,
+                overrideSessionId: preallocatedChildId,
+                overrideParentSessionId: currentSession.sessionId
+              });
+              if ("config" in toolToExecute && toolResultData?.agentSession) {
+                const index = currentSession.nestedSessions.findIndex((s) => s.sessionId === preallocatedChildId);
+                if (index !== -1) {
+                  try {
+                    toolResultData.agentSession.parentSessionId = currentSession.sessionId;
+                  } catch {
+                  }
+                  currentSession.nestedSessions[index] = toolResultData.agentSession;
+                }
+              }
+              if (typeof toolResultData === "object" && toolResultData !== null) {
+                imageData = toolResultData.imageData;
+              }
+              if (typeof toolResultData === "object" && toolResultData !== null && "success" in toolResultData && ("output" in toolResultData || "error" in toolResultData)) {
+                toolResultText = toolResultData.success ? toolResultData.output || "Agent completed successfully" : toolResultData.error || "Agent failed";
+              } else {
+                toolResultText = _AgentRunner.computeToolResultText(toolResultData, imageData);
+              }
+              if (typeof toolResultData === "object" && toolResultData !== null) {
+                if (toolResultData.hasOwnProperty("error") && !!toolResultData.error) {
+                  toolIsError = true;
+                  toolResultText = toolResultData.error || toolResultText;
+                } else if (toolResultData.hasOwnProperty("success") && toolResultData.success === false) {
+                  toolIsError = true;
+                  toolResultText = toolResultData.error || toolResultData.message || toolResultText;
+                }
+              }
+            } catch (err) {
+              logger5.error(`${agentName} Error executing tool ${toolToExecute.name}:`, err);
+              toolResultText = `Error during tool execution: ${err.message || String(err)}`;
+              toolIsError = true;
+              toolResultData = { error: toolResultText };
+            }
+          }
+          const toolResultMessage = {
+            entity: "tool_result" /* TOOL_RESULT */,
+            toolName,
+            resultText: toolResultText,
+            isError: toolIsError,
+            toolCallId,
+            ...toolIsError && { error: toolResultText },
+            ...toolResultData && { resultData: toolResultData },
+            ...imageData && { imageData }
+          };
+          if (typeof toolResultData === "object" && toolResultData !== null && "success" in toolResultData && toolResultData.summary) {
+            toolResultMessage.summary = toolResultData.summary.content;
+          }
+          messages.push(toolResultMessage);
+          addSessionMessage({
+            type: "tool_result",
+            content: {
+              type: "tool_result",
+              toolCallId,
+              toolName,
+              success: !toolIsError,
+              result: toolResultData,
+              error: toolIsError ? toolResultText : void 0
+            }
+          });
+          logger5.info(`${agentName} Tool ${toolName} execution result added. Error: ${toolIsError}`);
+        } else if (parsedAction.type === "final_answer") {
+          const { answer } = parsedAction;
+          newModelMessage = {
+            entity: "model" /* MODEL */,
+            action: "final",
+            answer,
+            isFinalAnswer: true,
+            reasoning: llmResponse.reasoning?.summary
+          };
+          messages.push(newModelMessage);
+          addSessionMessage({
+            type: "final_answer",
+            content: {
+              type: "final_answer",
+              answer,
+              summary: Array.isArray(llmResponse.reasoning?.summary) ? llmResponse.reasoning.summary.join(" ") : llmResponse.reasoning?.summary || void 0
+            }
+          });
+          logger5.info(`${agentName} LLM provided final answer.`);
+          let finalAnswer = answer;
+          if (executingAgent?.config?.includeSummaryInAnswer === true) {
+            logger5.info(`Generating summary for ${agentName} (includeSummaryInAnswer=true)`);
+            const completionSummary = await this.summarizeAgentProgress(
+              messages,
+              maxIterations,
+              agentName,
+              modelName,
+              "final_answer",
+              config.provider,
+              config.getVisionCapability
+            );
+            finalAnswer = `${answer}
+
+---
+
+### Analysis of Agentic Conversation
+
+${completionSummary}`;
+          } else {
+            logger5.info(`Skipping summary for ${agentName} (includeSummaryInAnswer not enabled)`);
+          }
+          agentSession.status = "completed";
+          agentSession.endTime = /* @__PURE__ */ new Date();
+          agentSession.terminationReason = "final_answer";
+          if (_AgentRunner.eventBus) {
+            _AgentRunner.eventBus.emitProgress({
+              type: "session_completed",
+              sessionId: agentSession.sessionId,
+              parentSessionId: agentSession.parentSessionId,
+              agentName,
+              timestamp: /* @__PURE__ */ new Date(),
+              data: { session: agentSession, reason: "final_answer" }
+            });
+          }
+          const result2 = createSuccessResult(finalAnswer, messages, "final_answer");
+          if (afterExecute) {
+            try {
+              await afterExecute(result2, agentSession);
+            } catch (error) {
+              logger5.warn(`afterExecute hook failed for ${agentName}:`, error);
+            }
+          }
+          return { ...result2, agentSession };
+        } else if (parsedAction.type === "error") {
+          const result2 = errorHandler.handleParsingError(parsedAction.error);
+          if (result2.shouldContinue && result2.errorMessage) {
+            messages.push(result2.errorMessage);
+            if (result2.sessionMessage) {
+              addSessionMessage(result2.sessionMessage);
+            }
+            continue;
+          }
+        } else {
+          throw new Error(`Unknown parsed action type: ${parsedAction.type}`);
+        }
+      } catch (error) {
+        logger5.error(`${agentName} Error processing LLM response or executing tool:`, error);
+        const errorMsg = `Agent loop error: ${error.message || String(error)}`;
+        const systemErrorMessage = {
+          entity: "tool_result" /* TOOL_RESULT */,
+          toolName: "system_error",
+          resultText: errorMsg,
+          isError: true,
+          error: errorMsg
+        };
+        messages.push(systemErrorMessage);
+        const errorSummary = await this.summarizeAgentProgress(
+          messages,
+          maxIterations,
+          agentName,
+          modelName,
+          "error",
+          config.provider,
+          config.getVisionCapability
+        );
+        agentSession.status = "error";
+        agentSession.endTime = /* @__PURE__ */ new Date();
+        agentSession.terminationReason = "error";
+        if (_AgentRunner.eventBus) {
+          _AgentRunner.eventBus.emitProgress({
+            type: "session_completed",
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: /* @__PURE__ */ new Date(),
+            data: { session: agentSession, reason: "error" }
+          });
+        }
+        const result2 = createErrorResult(errorMsg, messages, "error");
+        result2.summary = {
+          type: "error",
+          content: errorSummary
+        };
+        if (afterExecute) {
+          try {
+            await afterExecute(result2, agentSession);
+          } catch (error2) {
+            logger5.warn(`afterExecute hook failed for ${agentName}:`, error2);
+          }
+        }
+        return { ...result2, agentSession };
+      }
+    }
+    logger5.warn(`${agentName} Reached max iterations (${maxIterations}) without completion.`);
+    if (executingAgent?.config.handoffs) {
+      const maxIterHandoffConfig = executingAgent.config.handoffs.find((h) => h.trigger === "max_iterations");
+      if (maxIterHandoffConfig) {
+        logger5.info(
+          `${agentName} Found 'max_iterations' handoff config. Initiating handoff to ${maxIterHandoffConfig.targetAgentName}.`
+        );
+        const handoffResult = await _AgentRunner.executeHandoff(
+          messages,
+          args,
+          maxIterHandoffConfig,
+          executingAgent,
+          apiKey,
+          modelName,
+          maxIterations,
+          temperature ?? 0,
+          createSuccessResult,
+          createErrorResult,
+          void 0,
+          currentSession,
+          config.provider,
+          config.getVisionCapability,
+          config.miniModel,
+          config.nanoModel
+        );
+        const { agentSession: childSession, ...actualResult } = handoffResult;
+        if (currentSession) {
+          currentSession.nestedSessions.push(childSession);
+        }
+        agentSession.status = "completed";
+        agentSession.endTime = /* @__PURE__ */ new Date();
+        agentSession.terminationReason = "handed_off";
+        if (_AgentRunner.eventBus) {
+          _AgentRunner.eventBus.emitProgress({
+            type: "session_completed",
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: /* @__PURE__ */ new Date(),
+            data: { session: agentSession, reason: "handed_off" }
+          });
+        }
+        return { ...actualResult, agentSession };
+      }
+    }
+    logger5.warn(`${agentName} No 'max_iterations' handoff configured. Returning error.`);
+    agentSession.status = "error";
+    agentSession.endTime = /* @__PURE__ */ new Date();
+    agentSession.terminationReason = "max_iterations";
+    if (_AgentRunner.eventBus) {
+      _AgentRunner.eventBus.emitProgress({
+        type: "session_completed",
+        sessionId: agentSession.sessionId,
+        parentSessionId: agentSession.parentSessionId,
+        agentName,
+        timestamp: /* @__PURE__ */ new Date(),
+        data: { session: agentSession, reason: "max_iterations" }
+      });
+    }
+    const progressSummary = await this.summarizeAgentProgress(
+      messages,
+      maxIterations,
+      agentName,
+      modelName,
+      "max_iterations",
+      config.provider,
+      config.getVisionCapability
+    );
+    const result = createErrorResult("Agent reached maximum iterations", messages, "max_iterations");
+    result.summary = {
+      type: "timeout",
+      content: progressSummary
+    };
+    if (afterExecute) {
+      try {
+        await afterExecute(result, agentSession);
+      } catch (error) {
+        logger5.warn(`afterExecute hook failed for ${agentName}:`, error);
+      }
+    }
+    return { ...result, agentSession };
+  }
+  /**
+   * Generate a summary of agent progress using LLM
+   */
+  static async summarizeAgentProgress(messages, maxIterations, agentName, modelName, completionType = "max_iterations", provider, getVisionCapability) {
+    logger5.info(`Generating summary for agent "${agentName}" with completion type: ${completionType}`);
+    try {
+      const llmMessages = this.convertToLLMMessages(messages);
+      llmMessages.unshift({
+        role: "system",
+        content: `You are an expert AI agent analyzer specializing in understanding multi-agent workflows and execution patterns. Your task is to analyze agent conversations and generate actionable summaries.`
+      });
+      let summaryPrompt;
+      switch (completionType) {
+        case "final_answer":
+          summaryPrompt = `Please analyze the entire conversation above and provide a concise summary that includes:
+
+1. **User Request**: What the user originally asked for
+2. **Agent Decisions**: Key decisions and actions the agent took to accomplish the task
+3. **Final Outcome**: What the agent accomplished`;
+          break;
+        case "error":
+          summaryPrompt = `1. **User Request**: What the user originally asked for
+2. **Agent Decisions**: Key decisions and actions the agent took before the error
+3. **Error Context**: What the agent was attempting when the error occurred`;
+          break;
+        case "max_iterations":
+        default:
+          summaryPrompt = `The agent "${agentName}" has reached its maximum iteration limit of ${maxIterations}.
+
+Please analyze the entire conversation above and provide a COMPREHENSIVE summary that includes:
+
+1. **User Request**: What the user originally asked for
+2. **Agent Decisions**: Key decisions and actions taken
+3. **Progress Assessment**: Whether meaningful progress was made
+4. **Recommendations**: Specific next steps to continue this work`;
+          break;
+      }
+      llmMessages.push({
+        role: "user",
+        content: summaryPrompt
+      });
+      const selectedProvider = LLMProviderRegistry.getProvider(provider);
+      if (!selectedProvider) {
+        throw new Error(`Provider ${provider} not found in registry`);
+      }
+      let isVision = false;
+      if (typeof getVisionCapability === "function") {
+        try {
+          const res = await getVisionCapability(modelName);
+          isVision = typeof res === "boolean" ? res : false;
+        } catch {
+          isVision = false;
+        }
+      }
+      const sanitizedMessages = sanitizeMessagesForModel(llmMessages, {
+        visionCapable: isVision,
+        placeholderForImageOnly: true
+      });
+      const response = await selectedProvider.callWithMessages(modelName, sanitizedMessages, {
+        temperature: 0.1
+      });
+      logger5.info(`Generated summary for agent "${agentName}":`, response.text || "No summary generated.");
+      return response.text || "No summary generated.";
+    } catch (error) {
+      logger5.error("Failed to generate agent progress summary:", error);
+      return `Agent ${agentName} reached maximum iterations (${maxIterations}). Summary generation failed.`;
+    }
+  }
+};
+// Event bus for progress tracking (optional)
+_AgentRunner.eventBus = null;
+var AgentRunner = _AgentRunner;
+
+// src/agent/ConfigurableAgentTool.ts
+var logger6 = createLogger("ConfigurableAgentTool");
+var ConfigurableAgentTool = class {
+  constructor(config) {
+    this.name = config.name;
+    this.description = config.description;
+    this.config = config;
+    this.schema = config.schema;
+    if (!config.systemPrompt) {
+      throw new Error(`ConfigurableAgentTool: systemPrompt is required for ${config.name}`);
+    }
+    if (config.init) {
+      config.init(this);
+    }
+  }
+  /**
+   * Get the tool instances for this agent
+   */
+  getToolInstances() {
+    return this.config.tools.map((toolName) => ToolRegistry.getRegisteredTool(toolName)).filter((tool) => tool !== null);
+  }
+  /**
+   * Prepare initial messages for the agent
+   */
+  prepareInitialMessages(args) {
+    if (this.config.prepareMessages) {
+      return this.config.prepareMessages(args, this.config);
+    }
+    return [
+      {
+        entity: "user" /* USER */,
+        text: args.query
+      }
+    ];
+  }
+  /**
+   * Create a success result
+   */
+  createSuccessResult(output, intermediateSteps, reason) {
+    if (this.config.createSuccessResult) {
+      return this.config.createSuccessResult(output, intermediateSteps, reason, this.config);
+    }
+    const result = {
+      success: true,
+      output,
+      terminationReason: reason
+    };
+    if (this.config.includeIntermediateStepsOnReturn === true) {
+      result.intermediateSteps = intermediateSteps;
+    }
+    return result;
+  }
+  /**
+   * Create an error result
+   */
+  createErrorResult(error, intermediateSteps, reason) {
+    if (this.config.createErrorResult) {
+      return this.config.createErrorResult(error, intermediateSteps, reason, this.config);
+    }
+    const result = {
+      success: false,
+      error,
+      terminationReason: reason
+    };
+    if (this.config.includeIntermediateStepsOnReturn === true) {
+      result.intermediateSteps = intermediateSteps;
+    }
+    return result;
+  }
+  /**
+   * Execute the agent
+   */
+  async execute(args, ctx) {
+    logger6.info(`Executing ${this.name} via AgentRunner with args:`, args);
+    const callCtx = ctx || {};
+    const apiKey = callCtx.apiKey;
+    const provider = callCtx.provider;
+    const requiresApiKey = provider !== "litellm" && provider !== "browseroperator";
+    if (requiresApiKey && !apiKey) {
+      const errorResult2 = this.createErrorResult(`API key not configured for ${this.name}`, [], "error");
+      const errorSession = {
+        agentName: this.name,
+        agentQuery: args.query,
+        agentReasoning: args.reasoning,
+        sessionId: crypto.randomUUID(),
+        status: "error",
+        startTime: /* @__PURE__ */ new Date(),
+        endTime: /* @__PURE__ */ new Date(),
+        messages: [],
+        nestedSessions: [],
+        tools: [],
+        terminationReason: "error"
+      };
+      return { ...errorResult2, agentSession: errorSession };
+    }
+    if (this.config.beforeExecute) {
+      try {
+        await this.config.beforeExecute(callCtx);
+      } catch (error) {
+        logger6.warn(`beforeExecute hook failed for ${this.name}:`, error);
+      }
+    }
+    const maxIterations = this.config.maxIterations || 10;
+    let modelName;
+    if (this.config.modelName === MODEL_SENTINELS.USE_MINI) {
+      modelName = callCtx.miniModel || callCtx.mainModel || callCtx.model || "";
+      if (!modelName) {
+        throw new Error(
+          `Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel or mainModel.`
+        );
+      }
+    } else if (this.config.modelName === MODEL_SENTINELS.USE_NANO) {
+      modelName = callCtx.nanoModel || callCtx.miniModel || callCtx.mainModel || callCtx.model || "";
+      if (!modelName) {
+        throw new Error(
+          `Nano model not provided in context for agent '${this.name}'. Ensure context includes nanoModel, miniModel, or mainModel.`
+        );
+      }
+    } else if (typeof this.config.modelName === "function") {
+      modelName = this.config.modelName();
+    } else if (this.config.modelName) {
+      modelName = this.config.modelName;
+    } else {
+      const contextModel = callCtx.mainModel || callCtx.model;
+      if (!contextModel) {
+        throw new Error(
+          `No model provided for agent '${this.name}'. Ensure context includes model or mainModel.`
+        );
+      }
+      modelName = contextModel;
+    }
+    if (callCtx.model && !this.config.modelName) {
+      modelName = callCtx.model;
+    }
+    if (this.config.modelName === MODEL_SENTINELS.USE_MINI && !callCtx.miniModel) {
+      callCtx.miniModel = modelName;
+    }
+    if (this.config.modelName === MODEL_SENTINELS.USE_NANO && !callCtx.nanoModel) {
+      callCtx.nanoModel = modelName;
+    }
+    if (!callCtx.provider) {
+      throw new Error(
+        `Provider not provided in context for agent '${this.name}'. Ensure context includes provider.`
+      );
+    }
+    const temperature = this.config.temperature ?? 0;
+    const systemPrompt = this.config.systemPrompt;
+    const tools = this.getToolInstances();
+    const internalMessages = this.prepareInitialMessages(args);
+    const runnerConfig = {
+      apiKey: apiKey || "",
+      modelName,
+      systemPrompt,
+      tools,
+      maxIterations,
+      temperature,
+      provider: callCtx.provider,
+      getVisionCapability: callCtx.getVisionCapability ?? (() => false),
+      miniModel: callCtx.miniModel,
+      nanoModel: callCtx.nanoModel
+    };
+    const runnerHooks = {
+      prepareInitialMessages: void 0,
+      createSuccessResult: this.config.createSuccessResult ? (out, steps, reason) => this.config.createSuccessResult(out, steps, reason, this.config) : (out, steps, reason) => this.createSuccessResult(out, steps, reason),
+      createErrorResult: this.config.createErrorResult ? (err, steps, reason) => this.config.createErrorResult(err, steps, reason, this.config) : (err, steps, reason) => this.createErrorResult(err, steps, reason),
+      afterExecute: this.config.afterExecute ? async (result2, agentSession) => this.config.afterExecute(result2, agentSession, callCtx) : void 0
+    };
+    const result = await AgentRunner.run(
+      internalMessages,
+      args,
+      runnerConfig,
+      runnerHooks,
+      this,
+      void 0,
+      {
+        sessionId: callCtx.overrideSessionId,
+        parentSessionId: callCtx.overrideParentSessionId
+      },
+      callCtx.abortSignal
+    );
+    return result;
+  }
+};
+
 // src/index.ts
 var VERSION = "0.1.0";
 
-export { ChatMessageEntity, DEFAULT_AGENT_UI, LLMBaseProvider, LLMErrorType, LLMProviderRegistry, LLMResponseParser, LogLevel, Logger, ToolRegistry, VERSION, createLogger, createModelMessage, createToolResult, createToolResultMessage, createUserMessage, errorResult, formatAgentName, getAgentDescription, getAgentDisplayName, getAgentUIConfig, getGlobalLogLevel, sanitizeMessagesForModel, setGlobalLogLevel, successResult };
+export { AgentErrorHandler, AgentRunner, AgentRunnerEventBus, ChatMessageEntity, ConfigurableAgentTool, DEFAULT_AGENT_UI, LLMBaseProvider, LLMErrorType, LLMProviderRegistry, LLMResponseParser, LogLevel, Logger, MODEL_SENTINELS, ToolRegistry, VERSION, createLogger, createModelMessage, createToolResult, createToolResultMessage, createUserMessage, errorResult, formatAgentName, getAgentDescription, getAgentDisplayName, getAgentUIConfig, getGlobalLogLevel, sanitizeMessagesForModel, setGlobalLogLevel, successResult };
 //# sourceMappingURL=index.mjs.map
 //# sourceMappingURL=index.mjs.map
