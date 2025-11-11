@@ -102,3 +102,24 @@ export {
   type ToolExecutionOptions,
   type OpenAIFunctionDefinition,
 } from './tools/index.js';
+
+// Workflows
+export {
+  createStep,
+  createWorkflow,
+  WorkflowBuilder,
+  CompiledWorkflow,
+  type StepConfig,
+  type StepExecutionContext,
+  type WorkflowStep,
+  type StepResult,
+  type WorkflowConfig,
+  type WorkflowNode,
+  type WorkflowResult,
+  type WorkflowStatus,
+  type WorkflowExecutionOptions,
+  type WorkflowEvent,
+  type Condition,
+  type MapFunction,
+  type ForeachOptions,
+} from './workflows/index.js';

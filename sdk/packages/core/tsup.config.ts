@@ -5,6 +5,7 @@ export default defineConfig({
     index: 'src/index.ts',
     'agent/index': 'src/agent/index.ts',
     'tools/index': 'src/tools/index.ts',
+    'workflows/index': 'src/workflows/index.ts',
     'state/index': 'src/state/index.ts',
     'hooks/index': 'src/hooks/index.ts',
     'events/index': 'src/events/index.ts',

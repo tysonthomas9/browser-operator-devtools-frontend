@@ -28,6 +28,11 @@
       "require": "./dist/tools/index.js",
       "types": "./dist/tools/index.d.ts"
     },
+    "./workflows": {
+      "import": "./dist/workflows/index.mjs",
+      "require": "./dist/workflows/index.js",
+      "types": "./dist/workflows/index.d.ts"
+    },
     "./state": {
       "import": "./dist/state/index.mjs",
       "require": "./dist/state/index.js",
