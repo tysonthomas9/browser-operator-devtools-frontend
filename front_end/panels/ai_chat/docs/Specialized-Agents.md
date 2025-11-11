@@ -89,31 +89,26 @@ Agents for executing browser actions.
 
 **Purpose**: General-purpose browser action execution.
 
-**Description**: Executes a wide variety of browser actions including clicks, form fills, navigation, scrolling, and keyboard input.
+**Description**: Executes a wide variety of browser actions including clicks, form fills, navigation, scrolling, and keyboard input using DOM manipulation via NodeIDs.
 
 **Tools**:
-- ClickActionAgent (via handoff)
-- FormFillActionAgent (via handoff)
-- HoverActionAgent (via handoff)
-- KeyboardInputActionAgent (via handoff)
-- ScrollActionAgent (via handoff)
-- NavigateURLTool
-- VisualIndicatorTool
-- FullPageAccessibilityTreeToMarkdownTool
+- get_page_content (GetAccessibilityTreeTool)
+- perform_action (PerformActionTool)
+- extract_data (SchemaBasedExtractorTool)
+- node_ids_to_urls
+- scroll_page
+- take_screenshot
+- render_webapp, get_webapp_data, remove_webapp
+- create_file, update_file, delete_file, read_file, list_files
 
 **Configuration**:
 ```typescript
 {
-  name: 'ActionAgent',
+  name: 'action_agent',
   description: 'Executes browser actions like clicking, filling forms, navigating, scrolling',
   systemPrompt: `You are an action execution agent...`,
-  tools: ['click', 'form_fill', 'hover', 'keyboard', 'scroll', 'navigate'],
-  handoffs: [
-    { targetAgent: 'ClickActionAgent', condition: 'click required' },
-    { targetAgent: 'FormFillActionAgent', condition: 'form input required' },
-    // ...
-  ],
-  maxIterations: 5
+  tools: ['get_page_content', 'perform_action', 'extract_data', 'node_ids_to_urls', 'scroll_page', 'take_screenshot', 'render_webapp', 'get_webapp_data', 'remove_webapp', 'create_file', 'update_file', 'delete_file', 'read_file', 'list_files'],
+  maxIterations: 10
 }
 ```
 
@@ -146,20 +141,22 @@ const result = await ActionAgent.execute({
 
 **Purpose**: Specialized agent for click actions.
 
-**Description**: Identifies and clicks on elements with high accuracy using accessibility tree and visual indicators.
+**Description**: Identifies and clicks on elements with high accuracy using accessibility tree and perform_action tool.
 
 **Tools**:
-- VisualIndicatorTool
-- FullPageAccessibilityTreeToMarkdownTool
-- DOM inspection tools
+- get_page_content (GetAccessibilityTreeTool)
+- perform_action (PerformActionTool)
+- extract_data (SchemaBasedExtractorTool)
+- node_ids_to_urls
+- scroll_page
 
 **Configuration**:
 ```typescript
 {
-  name: 'ClickActionAgent',
+  name: 'click_action_agent',
   description: 'Clicks on elements with precision using accessibility tree',
   systemPrompt: `You are a click action specialist...`,
-  tools: ['visual_indicator', 'a11y_tree', 'dom_inspect'],
+  tools: ['get_page_content', 'perform_action', 'extract_data', 'node_ids_to_urls', 'scroll_page'],
   maxIterations: 3
 }
 ```

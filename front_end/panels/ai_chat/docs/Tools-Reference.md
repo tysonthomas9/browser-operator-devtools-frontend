@@ -4,7 +4,7 @@ Comprehensive reference guide for all tools available in the AI Chat multi-agent
 
 ## Overview
 
-The AI Chat framework provides 48 tools organized into 8 categories. Tools implement a standard interface and can be used by both the primary orchestrator and specialized agents.
+The AI Chat framework provides 47 tools organized into 8 categories. Tools implement a standard interface and can be used by both the primary orchestrator and specialized agents.
 
 ## Tool Interface
 
@@ -376,52 +376,7 @@ await RemoveWebAppTool.execute({ instanceId: "test-instance-1" });
 
 ---
 
-### 11. VisualIndicatorTool
-
-**Purpose**: Highlight elements on the page for user feedback or debugging.
-
-**Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "selector": {
-      "type": "string",
-      "description": "CSS selector of element to highlight"
-    },
-    "color": {
-      "type": "string",
-      "description": "Highlight color (default: 'red')"
-    },
-    "duration": {
-      "type": "number",
-      "description": "Highlight duration in ms (default: 2000)"
-    }
-  },
-  "required": ["selector"]
-}
-```
-
-**Usage Example**:
-```typescript
-await VisualIndicatorTool.execute({
-  selector: "#submit-button",
-  color: "green",
-  duration: 3000
-});
-```
-
-**Returns**: Success status.
-
-**Use Cases**:
-- Visual feedback during automation
-- Debugging element selection
-- User guidance
-- Verification of element location
-
----
-
-### 12. ScrollPageTool
+### 11. ScrollPageTool
 
 **Purpose**: Scroll the page to a specific position, direction, or by viewport pages.
 
@@ -482,7 +437,7 @@ await ScrollPageTool.execute({
 
 ---
 
-### 13. SearchContentTool
+### 12. SearchContentTool
 
 **Purpose**: Search for text content on the page and return matching elements.
 
@@ -522,7 +477,7 @@ const results = await SearchContentTool.execute({
 
 ---
 
-### 14. TakeScreenshotTool
+### 13. TakeScreenshotTool
 
 **Purpose**: Capture a screenshot of the current page or full page.
 
@@ -561,7 +516,7 @@ const screenshot = await TakeScreenshotTool.execute({
 
 ---
 
-### 15. GetAccessibilityTreeTool
+### 14. GetAccessibilityTreeTool
 
 **Purpose**: Get the accessibility tree of the current page.
 
@@ -596,7 +551,7 @@ const tree = await GetAccessibilityTreeTool.execute({
 
 ---
 
-### 16. PerformActionTool
+### 15. PerformActionTool
 
 **Purpose**: Perform actions on DOM elements identified by NodeID.
 
@@ -654,7 +609,7 @@ await PerformActionTool.execute({
 
 ---
 
-### 17. NodeIDsToURLsTool
+### 16. NodeIDsToURLsTool
 
 **Purpose**: Get URLs associated with DOM elements by their NodeIDs.
 
@@ -1550,7 +1505,7 @@ const result = await MCPMetaInvokeTool.execute({
 
 | Category | Count | Purpose |
 |----------|-------|---------|
-| **Browser/Page** | 17 | Web page interaction, scrolling, screenshots, accessibility, and actions |
+| **Browser/Page** | 16 | Web page interaction, scrolling, screenshots, accessibility, and actions |
 | **Data Collection** | 6 | Fetching, storing, and searching data |
 | **File Management** | 5 | In-memory file system operations |
 | **Quality Assurance** | 2 | Self-assessment and task tracking |
@@ -1559,7 +1514,7 @@ const result = await MCPMetaInvokeTool.execute({
 | **MCP** | 2 | External tool discovery and invocation |
 | **Agent** | 13 | Specialized agent composition |
 
-**Total**: 48 tools fully documented
+**Total**: 47 tools fully documented
 
 ---
 
