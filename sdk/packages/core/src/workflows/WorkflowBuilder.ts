@@ -17,16 +17,22 @@ import type {
   MapFunction,
   ForeachOptions,
 } from './types.js';
+import type { WorkflowCheckpoint, WorkflowStorage } from './persistence.js';
 import { WorkflowExecutor } from './WorkflowExecutor.js';
 
 /**
  * Compiled workflow ready for execution
  */
 export class CompiledWorkflow<TInput, TOutput, TState> {
+  private storage?: WorkflowStorage;
+
   constructor(
     public readonly config: WorkflowConfig<TInput, TOutput, TState>,
-    public readonly nodes: WorkflowNode[]
-  ) {}
+    public readonly nodes: WorkflowNode[],
+    storage?: WorkflowStorage
+  ) {
+    this.storage = storage;
+  }
 
   /**
    * Execute workflow and wait for completion
@@ -42,7 +48,7 @@ export class CompiledWorkflow<TInput, TOutput, TState> {
     input: TInput,
     options?: WorkflowExecutionOptions
   ): Promise<WorkflowResult<TOutput>> {
-    const executor = new WorkflowExecutor(this.config, this.nodes);
+    const executor = new WorkflowExecutor(this.config, this.nodes, this.storage);
     return executor.execute(input, options);
   }
 
@@ -62,8 +68,47 @@ export class CompiledWorkflow<TInput, TOutput, TState> {
     input: TInput,
     options?: WorkflowExecutionOptions
   ): AsyncIterable<WorkflowEvent> {
-    const executor = new WorkflowExecutor(this.config, this.nodes);
+    const executor = new WorkflowExecutor(this.config, this.nodes, this.storage);
     yield* executor.stream(input, options);
+  }
+
+  /**
+   * Resume workflow from a checkpoint
+   *
+   * @example
+   * ```typescript
+   * const checkpoint = await storage.load(workflowId);
+   * const result = await workflow.resume(checkpoint);
+   * ```
+   */
+  async resume(checkpoint: WorkflowCheckpoint<TState>): Promise<WorkflowResult<TOutput>> {
+    if (!this.storage) {
+      throw new Error('Storage not configured for resuming workflows');
+    }
+
+    const executor = new WorkflowExecutor(this.config, this.nodes, this.storage);
+    return executor.execute({} as TInput, { resumeFromCheckpoint: checkpoint });
+  }
+
+  /**
+   * Resume workflow from storage by workflow ID
+   *
+   * @example
+   * ```typescript
+   * const result = await workflow.resumeById('workflow-123');
+   * ```
+   */
+  async resumeById(workflowId: string): Promise<WorkflowResult<TOutput>> {
+    if (!this.storage) {
+      throw new Error('Storage not configured for resuming workflows');
+    }
+
+    const checkpoint = await this.storage.load(workflowId);
+    if (!checkpoint) {
+      throw new Error(`No checkpoint found for workflow ID: ${workflowId}`);
+    }
+
+    return this.resume(checkpoint as WorkflowCheckpoint<TState>);
   }
 
   /**
@@ -78,6 +123,13 @@ export class CompiledWorkflow<TInput, TOutput, TState> {
    */
   getNodes(): WorkflowNode[] {
     return [...this.nodes];
+  }
+
+  /**
+   * Get the storage adapter (if configured)
+   */
+  getStorage(): WorkflowStorage | undefined {
+    return this.storage;
   }
 }
 
@@ -101,9 +153,30 @@ export class WorkflowBuilder<TInput, TOutput, TState> {
   private config: WorkflowConfig<TInput, TOutput, TState>;
   private nodes: WorkflowNode[] = [];
   private committed: boolean = false;
+  private storage?: WorkflowStorage;
 
   constructor(config: WorkflowConfig<TInput, TOutput, TState>) {
     this.config = config;
+  }
+
+  /**
+   * Configure storage for workflow persistence
+   *
+   * @example
+   * ```typescript
+   * import { IndexedDBWorkflowStorage } from '@browser-operator/core/workflows';
+   *
+   * const storage = new IndexedDBWorkflowStorage();
+   * const workflow = createWorkflow({ ... })
+   *   .withStorage(storage)
+   *   .then(step1)
+   *   .commit();
+   * ```
+   */
+  withStorage(storage: WorkflowStorage): WorkflowBuilder<TInput, TOutput, TState> {
+    this.ensureNotCommitted();
+    this.storage = storage;
+    return this;
   }
 
   /**
@@ -262,7 +335,7 @@ export class WorkflowBuilder<TInput, TOutput, TState> {
    */
   commit(): CompiledWorkflow<TInput, TOutput, TState> {
     this.committed = true;
-    return new CompiledWorkflow(this.config, this.nodes);
+    return new CompiledWorkflow(this.config, this.nodes, this.storage);
   }
 
   /**

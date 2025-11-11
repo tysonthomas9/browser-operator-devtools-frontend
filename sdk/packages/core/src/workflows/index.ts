@@ -78,6 +78,13 @@ export { createWorkflow } from './createWorkflow.js';
 // Builder and compiled workflow
 export { WorkflowBuilder, CompiledWorkflow } from './WorkflowBuilder.js';
 
+// Persistence
+export {
+  InMemoryWorkflowStorage,
+  IndexedDBWorkflowStorage,
+  LocalStorageWorkflowStorage,
+} from './persistence.js';
+
 // Types
 export type {
   // Step types
@@ -97,3 +104,6 @@ export type {
   MapFunction,
   ForeachOptions,
 } from './types.js';
+
+// Persistence types
+export type { WorkflowCheckpoint, WorkflowStorage } from './persistence.js';

@@ -231,6 +231,16 @@ export interface WorkflowExecutionOptions {
    * Timeout in milliseconds
    */
   timeout?: number;
+
+  /**
+   * Resume from a previous checkpoint
+   */
+  resumeFromCheckpoint?: unknown;
+
+  /**
+   * Automatically save checkpoints after each step
+   */
+  autoCheckpoint?: boolean;
 }
 
 /**
