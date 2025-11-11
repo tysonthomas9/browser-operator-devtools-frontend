@@ -52,6 +52,11 @@
       "import": "./dist/types/index.mjs",
       "require": "./dist/types/index.js",
       "types": "./dist/types/index.d.ts"
+    },
+    "./memory": {
+      "import": "./dist/memory/index.mjs",
+      "require": "./dist/memory/index.js",
+      "types": "./dist/memory/index.d.ts"
     }
   },
   "files": [

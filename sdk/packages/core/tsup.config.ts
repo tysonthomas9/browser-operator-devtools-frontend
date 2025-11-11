@@ -11,6 +11,7 @@ export default defineConfig({
     'events/index': 'src/events/index.ts',
     'types/index': 'src/types/index.ts',
     'llm/index': 'src/llm/index.ts',
+    'memory/index': 'src/memory/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
