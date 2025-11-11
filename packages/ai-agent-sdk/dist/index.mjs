@@ -450,9 +450,194 @@ function sanitizeMessagesForModel(messages, options) {
   return sanitized;
 }
 
+// src/messaging/ChatMessage.ts
+var ChatMessageEntity = /* @__PURE__ */ ((ChatMessageEntity2) => {
+  ChatMessageEntity2["USER"] = "user";
+  ChatMessageEntity2["MODEL"] = "model";
+  ChatMessageEntity2["TOOL_RESULT"] = "tool_result";
+  ChatMessageEntity2["AGENT_SESSION"] = "agent_session";
+  return ChatMessageEntity2;
+})(ChatMessageEntity || {});
+function createUserMessage(text, imageInput) {
+  return {
+    entity: "user" /* USER */,
+    text,
+    imageInput
+  };
+}
+function createModelMessage(action, options) {
+  return {
+    entity: "model" /* MODEL */,
+    action,
+    isFinalAnswer: action === "final",
+    ...options
+  };
+}
+function createToolResultMessage(toolName, resultText, isError = false, options) {
+  return {
+    entity: "tool_result" /* TOOL_RESULT */,
+    toolName,
+    resultText,
+    isError,
+    ...options
+  };
+}
+
+// src/messaging/AgentSession.ts
+var DEFAULT_AGENT_UI = {
+  displayName: "AI Assistant",
+  avatar: "\u{1F916}",
+  color: "#6b7280",
+  backgroundColor: "#f9fafb"
+};
+function formatAgentName(agentName) {
+  return agentName.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+function getAgentDisplayName(agentName, config) {
+  if (config?.ui?.displayName) {
+    return config.ui.displayName;
+  }
+  if (config?.description) {
+    const firstLine = config.description.split("\n")[0].trim();
+    if (firstLine && !firstLine.includes("agent") && firstLine.length < 50) {
+      return firstLine;
+    }
+  }
+  return formatAgentName(agentName);
+}
+function getAgentDescription(agentName, config) {
+  if (config?.description) {
+    return config.description;
+  }
+  return `${getAgentDisplayName(agentName, config)} - AI Assistant`;
+}
+function getAgentUIConfig(agentName, config) {
+  return {
+    displayName: getAgentDisplayName(agentName, config),
+    avatar: config?.ui?.avatar || DEFAULT_AGENT_UI.avatar,
+    color: config?.ui?.color || DEFAULT_AGENT_UI.color,
+    backgroundColor: config?.ui?.backgroundColor || DEFAULT_AGENT_UI.backgroundColor
+  };
+}
+
+// src/tools/Tool.ts
+function createToolResult(success, result, error, duration) {
+  return {
+    success,
+    result,
+    error,
+    duration
+  };
+}
+function successResult(result, duration) {
+  return createToolResult(true, result, void 0, duration);
+}
+function errorResult(error, duration) {
+  return createToolResult(false, void 0, error, duration);
+}
+
+// src/tools/ToolRegistry.ts
+var logger3 = createLogger("ToolRegistry");
+var ToolRegistry = class {
+  // Store instances
+  /**
+   * Register a tool factory and create/store an instance
+   */
+  static registerToolFactory(name, factory) {
+    if (this.toolFactories.has(name)) {
+      logger3.warn(`Tool factory already registered for: ${name}. Overwriting.`);
+    }
+    if (this.registeredTools.has(name)) {
+      logger3.warn(`Tool instance already registered for: ${name}. Overwriting.`);
+    }
+    this.toolFactories.set(name, factory);
+    try {
+      const instance = factory();
+      this.registeredTools.set(name, instance);
+      logger3.info(`Registered and instantiated tool: ${name}`);
+    } catch (error) {
+      logger3.error(`Failed to instantiate tool '${name}' during registration:`, error);
+      this.toolFactories.delete(name);
+    }
+  }
+  /**
+   * Get a tool instance by name (creates new instance from factory)
+   */
+  static getToolInstance(name) {
+    const factory = this.toolFactories.get(name);
+    return factory ? factory() : null;
+  }
+  /**
+   * Get a pre-registered tool instance by name (returns cached instance)
+   */
+  static getRegisteredTool(name) {
+    const instance = this.registeredTools.get(name);
+    if (!instance) {
+      return null;
+    }
+    return instance;
+  }
+  /**
+   * Check if a tool is registered
+   */
+  static hasTool(name) {
+    return this.toolFactories.has(name);
+  }
+  /**
+   * Get all registered tool names
+   */
+  static getRegisteredToolNames() {
+    return Array.from(this.toolFactories.keys());
+  }
+  /**
+   * Get all registered tool instances
+   */
+  static getAllRegisteredTools() {
+    return Array.from(this.registeredTools.values());
+  }
+  /**
+   * Clear all registered tools (useful for testing)
+   */
+  static clear() {
+    this.toolFactories.clear();
+    this.registeredTools.clear();
+    logger3.info("Tool Registry cleared");
+  }
+  /**
+   * Get registry statistics
+   */
+  static getStats() {
+    return {
+      toolCount: this.toolFactories.size,
+      toolNames: Array.from(this.toolFactories.keys())
+    };
+  }
+  /**
+   * Unregister a specific tool
+   */
+  static unregisterTool(name) {
+    const hadFactory = this.toolFactories.delete(name);
+    const hadInstance = this.registeredTools.delete(name);
+    if (hadFactory || hadInstance) {
+      logger3.info(`Unregistered tool: ${name}`);
+    }
+    return hadFactory || hadInstance;
+  }
+  /**
+   * Register multiple tools at once
+   */
+  static registerTools(tools) {
+    for (const [name, factory] of Object.entries(tools)) {
+      this.registerToolFactory(name, factory);
+    }
+  }
+};
+ToolRegistry.toolFactories = /* @__PURE__ */ new Map();
+ToolRegistry.registeredTools = /* @__PURE__ */ new Map();
+
 // src/index.ts
 var VERSION = "0.1.0";
 
-export { LLMBaseProvider, LLMErrorType, LLMProviderRegistry, LLMResponseParser, LogLevel, Logger, VERSION, createLogger, getGlobalLogLevel, sanitizeMessagesForModel, setGlobalLogLevel };
+export { ChatMessageEntity, DEFAULT_AGENT_UI, LLMBaseProvider, LLMErrorType, LLMProviderRegistry, LLMResponseParser, LogLevel, Logger, ToolRegistry, VERSION, createLogger, createModelMessage, createToolResult, createToolResultMessage, createUserMessage, errorResult, formatAgentName, getAgentDescription, getAgentDisplayName, getAgentUIConfig, getGlobalLogLevel, sanitizeMessagesForModel, setGlobalLogLevel, successResult };
 //# sourceMappingURL=index.mjs.map
 //# sourceMappingURL=index.mjs.map

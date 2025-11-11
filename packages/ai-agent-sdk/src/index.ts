@@ -13,6 +13,8 @@
 // Re-export all modules
 export * from './llm/index.js';
 export * from './observability/index.js';
+export * from './messaging/index.js';
+export * from './tools/index.js';
 
 // Version
 export const VERSION = '0.1.0';
