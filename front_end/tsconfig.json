@@ -15,6 +15,11 @@
       "webworker",
       "webworker.iterable"
     ],
+    "baseUrl": ".",
+    "paths": {
+      "@browser-operator/ai-agent-sdk": ["../packages/ai-agent-sdk/src/index.ts"],
+      "@browser-operator/ai-agent-sdk/*": ["../packages/ai-agent-sdk/src/*"]
+    },
     "plugins": [
       {
         "name": "ts-lit-plugin",
