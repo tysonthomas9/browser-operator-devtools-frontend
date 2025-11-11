@@ -45,3 +45,6 @@
 export * from './types.js';
 export * from './createTool.js';
 export * from './utils.js';
+
+// Migrated tools from ai_chat
+export * from './readFile.js';
