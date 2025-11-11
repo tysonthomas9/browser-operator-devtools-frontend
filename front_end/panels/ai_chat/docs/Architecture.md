@@ -8,7 +8,7 @@ The AI Chat Panel is a sophisticated multi-agent browser automation framework in
 
 - **Multi-Provider LLM Support**: OpenAI, LiteLLM (Claude, Gemini, Mistral, etc.), Groq, OpenRouter, and BrowserOperator
 - **Multi-Agent Orchestration**: Primary orchestrator delegates to specialized agents with handoff capabilities
-- **Rich Tool Ecosystem**: 40+ tools for browser automation, data extraction, and file management
+- **Rich Tool Ecosystem**: 42+ tools for browser automation, data extraction, and file management
 - **Real-Time Updates**: Event-driven architecture with streaming updates to UI
 - **Comprehensive Tracing**: Distributed tracing and observability via Langfuse integration
 - **Evaluation Framework**: Testing and validation system for agents and tools
@@ -629,16 +629,14 @@ interface CallCtx {
 10. **RemoveWebAppTool**: Clean up web app instances
 11. **VisualIndicatorTool**: Highlight elements on page
 
-**Data Collection Tools** (8 tools)
+**Data Collection Tools** (6 tools)
 
 1. **FetcherTool**: HTTP requests (GET, POST, etc.)
 2. **BookmarkStoreTool**: Store bookmarks for later
-3. **DocumentSearchTool**: Search stored documents
+3. **DocumentSearchTool**: Search stored documents (uses VectorDBClient internally for semantic search)
 4. **GetVisitsByDomainTool**: Retrieve visit history by domain
 5. **GetVisitsByKeywordTool**: Search visit history
 6. **SearchVisitHistoryTool**: Full-text history search
-7. **VectorDBClient**: Semantic search capabilities
-8. **WebSearchTool**: Web search integration
 
 **File Management Tools** (5 tools)
 
@@ -650,20 +648,14 @@ Uses **FileStorageManager** (in-memory file system):
 4. **ReadFileTool**: Read file contents
 5. **ListFilesTool**: List available files
 
-**Quality Assurance Tools** (3 tools)
+**Quality Assurance Tools** (2 tools)
 
-1. **CritiqueTool**: Critique agent's own work
-2. **FinalizeWithCritiqueTool**: Final answer with self-assessment
-3. **UpdateTodoTool**: Update task list
+1. **FinalizeWithCritiqueTool**: Final answer with self-assessment
+2. **UpdateTodoTool**: Update task list
 
-**Development Tools** (2 tools)
+**Development Tools** (1 tool)
 
-1. **ExecuteCodeTool**: Execute JavaScript code
-2. **DebugTool**: Debugging utilities
-
-**LLM Tools** (1 tool)
-
-1. **LLMTracingWrapper**: Wraps LLM calls with tracing
+1. **ExecuteCodeTool**: Execute JavaScript code in sandboxed environment
 
 **Agent Tools** (Dynamic)
 
@@ -1570,7 +1562,7 @@ The AI Chat Panel is a production-ready, enterprise-grade multi-agent browser au
 - **Modular 7-layer architecture** with clear separation of concerns
 - **Multi-provider LLM support** with unified interface (5 providers)
 - **Sophisticated multi-agent system** with 13+ specialized agents and handoff capabilities
-- **Comprehensive tool ecosystem** with 40+ tools across 6 categories
+- **Comprehensive tool ecosystem** with 42+ tools across multiple categories
 - **Event-driven architecture** enabling real-time UI updates and loose coupling
 - **Full observability** via Langfuse integration and distributed tracing
 - **Robust evaluation framework** for testing and validation

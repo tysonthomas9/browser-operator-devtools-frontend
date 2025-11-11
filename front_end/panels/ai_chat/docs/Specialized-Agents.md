@@ -384,22 +384,23 @@ Agents for information gathering and analysis.
 **Description**: Performs comprehensive research using multiple queries, analyzes results, synthesizes information, and provides detailed findings with citations.
 
 **Tools**:
-- WebSearchTool
-- HTMLToMarkdownTool
-- SchemaBasedExtractorTool
-- BookmarkStoreTool
-- DocumentSearchTool
-- FetcherTool
+- navigate_url
+- navigate_back
+- fetcher_tool
+- extract_data (SchemaBasedExtractorTool)
+- node_ids_to_urls
+- html_to_markdown
+- create_file, update_file, read_file, list_files
 
 **Configuration**:
 ```typescript
 {
-  name: 'ResearchAgent',
+  name: 'research_agent',
   description: 'Conducts thorough research with multiple sources and synthesis',
   systemPrompt: `You are a research specialist...`,
-  tools: ['web_search', 'html_to_markdown', 'extractor', 'bookmark', 'document_search', 'fetch'],
-  maxIterations: 15,
-  temperature: 0.3  // Lower for factual accuracy
+  tools: ['navigate_url', 'navigate_back', 'fetcher_tool', 'extract_data', 'node_ids_to_urls', 'html_to_markdown', 'create_file', 'update_file', 'read_file', 'list_files'],
+  maxIterations: 30,
+  temperature: 0
 }
 ```
 
@@ -453,25 +454,30 @@ const result = await ResearchAgent.execute({
 
 ### SearchAgent
 
-**Purpose**: Performs web searches and analyzes results.
+**Purpose**: Performs precision searches to find hard-to-locate facts.
 
-**Description**: Executes targeted web searches, extracts relevant information from results, and provides concise summaries.
+**Description**: A precision search agent that excels at pinpointing hard-to-find facts (contact details, team rosters, niche professionals) and returns verified findings in structured JSON with citations.
 
 **Tools**:
-- WebSearchTool
-- HTMLToMarkdownTool
-- SchemaBasedExtractorTool
-- StreamlinedSchemaExtractorTool
+- navigate_url
+- navigate_back
+- node_ids_to_urls
+- fetcher_tool
+- extract_data (SchemaBasedExtractorTool)
+- scroll_page
+- action_agent
+- html_to_markdown
+- create_file, update_file, delete_file, read_file, list_files
 
 **Configuration**:
 ```typescript
 {
-  name: 'SearchAgent',
-  description: 'Performs web searches and extracts relevant information',
-  systemPrompt: `You are a search specialist...`,
-  tools: ['web_search', 'html_to_markdown', 'schema_extractor'],
-  maxIterations: 8,
-  temperature: 0.2
+  name: 'search_agent',
+  description: 'Precision search agent for hard-to-find facts with structured JSON output',
+  systemPrompt: `You are an investigative search specialist...`,
+  tools: ['navigate_url', 'navigate_back', 'node_ids_to_urls', 'fetcher_tool', 'extract_data', 'scroll_page', 'action_agent', 'html_to_markdown', 'create_file', 'update_file', 'delete_file', 'read_file', 'list_files'],
+  maxIterations: 12,
+  temperature: 0
 }
 ```
 

@@ -4,7 +4,7 @@ Comprehensive reference guide for all tools available in the AI Chat multi-agent
 
 ## Overview
 
-The AI Chat framework provides 40+ tools organized into 6 categories. Tools implement a standard interface and can be used by both the primary orchestrator and specialized agents.
+The AI Chat framework provides 42+ tools organized into multiple categories. This document covers the 38 most commonly used tools. Tools implement a standard interface and can be used by both the primary orchestrator and specialized agents.
 
 ## Tool Interface
 
@@ -697,100 +697,6 @@ const visits = await SearchVisitHistoryTool.execute({
 
 ---
 
-### 7. VectorDBClient
-
-**Purpose**: Semantic search using vector embeddings.
-
-**Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "query": {
-      "type": "string",
-      "description": "Semantic search query"
-    },
-    "collection": {
-      "type": "string",
-      "description": "Vector collection to search"
-    },
-    "topK": {
-      "type": "number",
-      "description": "Number of results (default: 10)"
-    },
-    "filters": {
-      "type": "object",
-      "description": "Metadata filters"
-    }
-  },
-  "required": ["query", "collection"]
-}
-```
-
-**Usage Example**:
-```typescript
-const results = await VectorDBClient.execute({
-  query: "How to implement authentication?",
-  collection: "documentation",
-  topK: 5
-});
-```
-
-**Returns**: Semantically similar documents with scores.
-
-**Use Cases**:
-- Semantic search
-- RAG (Retrieval Augmented Generation)
-- Context retrieval for LLM
-- Similar document finding
-
----
-
-### 8. WebSearchTool
-
-**Purpose**: Perform web searches (integration with search APIs).
-
-**Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "query": {
-      "type": "string",
-      "description": "Search query"
-    },
-    "numResults": {
-      "type": "number",
-      "description": "Number of results (default: 10)"
-    },
-    "engine": {
-      "type": "string",
-      "enum": ["google", "bing", "duckduckgo"],
-      "description": "Search engine to use"
-    }
-  },
-  "required": ["query"]
-}
-```
-
-**Usage Example**:
-```typescript
-const results = await WebSearchTool.execute({
-  query: "latest AI developments 2024",
-  numResults: 15,
-  engine: "google"
-});
-```
-
-**Returns**: Array of search results with titles, URLs, snippets.
-
-**Use Cases**:
-- Information gathering
-- Research augmentation
-- Real-time information retrieval
-
----
-
 ## File Management Tools
 
 In-memory file system for agent file operations.
@@ -990,47 +896,7 @@ const files = await ListFilesTool.execute({
 
 Tools for agent self-assessment and task tracking.
 
-### 1. CritiqueTool
-
-**Purpose**: Agent critiques its own work for quality improvement.
-
-**Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "work": {
-      "type": "string",
-      "description": "The work to critique"
-    },
-    "criteria": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Criteria to evaluate against"
-    }
-  },
-  "required": ["work"]
-}
-```
-
-**Usage Example**:
-```typescript
-const critique = await CritiqueTool.execute({
-  work: "Generated report content...",
-  criteria: ["accuracy", "completeness", "clarity"]
-});
-```
-
-**Returns**: Critique with scores and suggestions.
-
-**Use Cases**:
-- Self-correction loops
-- Quality assurance
-- Iterative improvement
-
----
-
-### 2. FinalizeWithCritiqueTool
+### 1. FinalizeWithCritiqueTool
 
 **Purpose**: Provide final answer with self-assessment.
 
@@ -1075,7 +941,7 @@ await FinalizeWithCritiqueTool.execute({
 
 ---
 
-### 3. UpdateTodoTool
+### 2. UpdateTodoTool
 
 **Purpose**: Update agent's task list.
 
@@ -1176,105 +1042,6 @@ const result = await ExecuteCodeTool.execute({
 
 ---
 
-### 2. DebugTool
-
-**Purpose**: Debugging utilities for agent development.
-
-**Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "action": {
-      "type": "string",
-      "enum": ["log", "inspect", "trace"],
-      "description": "Debug action"
-    },
-    "data": {
-      "type": "any",
-      "description": "Data to debug"
-    },
-    "label": {
-      "type": "string",
-      "description": "Debug label"
-    }
-  },
-  "required": ["action", "data"]
-}
-```
-
-**Usage Example**:
-```typescript
-await DebugTool.execute({
-  action: "inspect",
-  data: complexObject,
-  label: "Agent State"
-});
-```
-
-**Returns**: Debug output.
-
-**Use Cases**:
-- Agent debugging
-- Development troubleshooting
-- State inspection
-
----
-
-## LLM Tools
-
-Tools for wrapping and tracing LLM calls.
-
-### 1. LLMTracingWrapper
-
-**Purpose**: Wrap LLM calls with tracing and observability.
-
-**Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "provider": {
-      "type": "string",
-      "description": "LLM provider"
-    },
-    "model": {
-      "type": "string",
-      "description": "Model name"
-    },
-    "messages": {
-      "type": "array",
-      "description": "Conversation messages"
-    },
-    "traceId": {
-      "type": "string",
-      "description": "Parent trace ID"
-    }
-  },
-  "required": ["provider", "model", "messages"]
-}
-```
-
-**Usage Example**:
-```typescript
-const response = await LLMTracingWrapper.execute({
-  provider: "openai",
-  model: "gpt-4",
-  messages: [{ role: "user", content: "Hello" }],
-  traceId: "trace-123"
-});
-```
-
-**Returns**: LLM response with tracing metadata.
-
-**Use Cases**:
-- LLM call instrumentation
-- Cost tracking
-- Performance monitoring
-- Debugging
-
----
-
 ## Agent Tools (Dynamic)
 
 All `ConfigurableAgentTool`s are available as tools, enabling agent composition. See [Specialized-Agents.md](./Specialized-Agents.md) for details on each agent.
@@ -1301,14 +1068,15 @@ All `ConfigurableAgentTool`s are available as tools, enabling agent composition.
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Browser/Page** | 11 | Web page interaction and data extraction |
-| **Data Collection** | 8 | Fetching, storing, and searching data |
+| **Data Collection** | 6 | Fetching, storing, and searching data |
 | **File Management** | 5 | In-memory file system operations |
-| **Quality Assurance** | 3 | Self-assessment and task tracking |
-| **Development** | 2 | Code execution and debugging |
-| **LLM** | 1 | LLM call instrumentation |
-| **Agent** | 13+ | Specialized agent composition |
+| **Quality Assurance** | 2 | Self-assessment and task tracking |
+| **Development** | 1 | Code execution |
+| **Agent** | 13 | Specialized agent composition |
 
-**Total**: 40+ tools
+**Total**: 38 tools documented (42+ tools including undocumented core tools)
+
+**Note**: Additional tools registered in the system but not yet fully documented include: node_ids_to_urls, scroll_page, search_content, take_screenshot, get_page_content, perform_action, thinking, wait_for_page_load, and MCP meta-tools (mcp.search, mcp.invoke).
 
 ---
 
