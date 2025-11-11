@@ -4706,6 +4706,221 @@ function createPassthroughNode() {
   };
 }
 
+// src/orchestration/GraphNodeHelpers.ts
+init_Logger();
+var logger15 = createLogger("GraphNodeHelpers");
+function createTransformNode(name, transform) {
+  return {
+    async invoke(state, signal) {
+      if (signal?.aborted) {
+        throw new Error(`${name} aborted`);
+      }
+      logger15.debug(`${name}: Transforming state`);
+      return transform(state);
+    }
+  };
+}
+function createAsyncTransformNode(name, transform) {
+  return {
+    async invoke(state, signal) {
+      if (signal?.aborted) {
+        throw new Error(`${name} aborted`);
+      }
+      logger15.debug(`${name}: Async transforming state`);
+      return await transform(state, signal);
+    }
+  };
+}
+function createConditionalNode(name, condition, ifTrue, ifFalse) {
+  return {
+    async invoke(state, signal) {
+      if (signal?.aborted) {
+        throw new Error(`${name} aborted`);
+      }
+      const conditionResult = condition(state);
+      logger15.debug(`${name}: Condition evaluated to ${conditionResult}`);
+      return conditionResult ? ifTrue(state) : ifFalse(state);
+    }
+  };
+}
+function createValidationNode(name, validate, errorMessage) {
+  return {
+    async invoke(state, signal) {
+      if (signal?.aborted) {
+        throw new Error(`${name} aborted`);
+      }
+      const isValid = validate(state);
+      if (!isValid) {
+        logger15.warn(`${name}: Validation failed - ${errorMessage}`);
+        return {
+          ...state,
+          error: errorMessage
+        };
+      }
+      logger15.debug(`${name}: Validation passed`);
+      return state;
+    }
+  };
+}
+function createRetryNode(name, node, options) {
+  return {
+    async invoke(state, signal) {
+      let lastError;
+      for (let attempt = 0; attempt <= options.maxRetries; attempt++) {
+        if (signal?.aborted) {
+          throw new Error(`${name} aborted`);
+        }
+        try {
+          logger15.debug(`${name}: Attempt ${attempt + 1}/${options.maxRetries + 1}`);
+          return await node.invoke(state, signal);
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (options.shouldRetry && !options.shouldRetry(lastError)) {
+            logger15.warn(`${name}: Error not retryable, failing immediately`);
+            throw lastError;
+          }
+          if (attempt < options.maxRetries) {
+            logger15.warn(`${name}: Attempt ${attempt + 1} failed, retrying after ${options.delayMs}ms`);
+            await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+          }
+        }
+      }
+      logger15.error(`${name}: All ${options.maxRetries + 1} attempts failed`);
+      throw lastError || new Error(`${name}: All attempts failed`);
+    }
+  };
+}
+function createLoggingNode(name, getMessage) {
+  return {
+    async invoke(state, signal) {
+      if (signal?.aborted) {
+        throw new Error(`${name} aborted`);
+      }
+      const message = getMessage(state);
+      logger15.info(`${name}: ${message}`);
+      return state;
+    }
+  };
+}
+function createFinalNode(name, validateFinal) {
+  return {
+    async invoke(state, signal) {
+      if (signal?.aborted) {
+        throw new Error(`${name} aborted`);
+      }
+      if (validateFinal && !validateFinal(state)) {
+        logger15.error(`${name}: Final state validation failed`);
+        throw new Error(`${name}: Invalid final state`);
+      }
+      logger15.info(`${name}: Workflow completed successfully`);
+      return state;
+    }
+  };
+}
+
+// src/orchestration/GraphRoutingHelpers.ts
+init_Logger();
+var logger16 = createLogger("GraphRoutingHelpers");
+function createPropertyRouter(propertyName, routeMap, defaultRoute = END_NODE) {
+  return (state) => {
+    const value = String(state[propertyName]);
+    const route = routeMap[value] || defaultRoute;
+    logger16.debug(`Property router: ${String(propertyName)}=${value} -> ${route}`);
+    return route;
+  };
+}
+function createConditionalRouter(condition, ifTrue, ifFalse) {
+  return (state) => {
+    const result = condition(state);
+    const route = result ? ifTrue : ifFalse;
+    logger16.debug(`Conditional router: ${result} -> ${route}`);
+    return route;
+  };
+}
+function createErrorRouter(errorRoute, successRoute) {
+  return (state) => {
+    const hasError = !!state.error;
+    const route = hasError ? errorRoute : successRoute;
+    logger16.debug(`Error router: hasError=${hasError} -> ${route}`);
+    return route;
+  };
+}
+function createMultiConditionRouter(conditions, defaultRoute = END_NODE) {
+  return (state) => {
+    for (const { condition, route } of conditions) {
+      if (condition(state)) {
+        logger16.debug(`Multi-condition router: matched -> ${route}`);
+        return route;
+      }
+    }
+    logger16.debug(`Multi-condition router: no match, using default -> ${defaultRoute}`);
+    return defaultRoute;
+  };
+}
+function createRangeRouter(getValue, ranges, defaultRoute = END_NODE) {
+  return (state) => {
+    const value = getValue(state);
+    for (const { max, route } of ranges) {
+      if (value <= max) {
+        logger16.debug(`Range router: ${value} <= ${max} -> ${route}`);
+        return route;
+      }
+    }
+    logger16.debug(`Range router: ${value} out of range, using default -> ${defaultRoute}`);
+    return defaultRoute;
+  };
+}
+function createCycleRouter(getIndex, nodes, finalRoute = END_NODE) {
+  return (state) => {
+    const index = getIndex(state);
+    if (index >= 0 && index < nodes.length) {
+      const route = nodes[index];
+      logger16.debug(`Cycle router: index=${index} -> ${route}`);
+      return route;
+    }
+    logger16.debug(`Cycle router: index=${index} out of bounds -> ${finalRoute}`);
+    return finalRoute;
+  };
+}
+function createEndRouter() {
+  return (_state) => {
+    logger16.debug("End router: -> END");
+    return END_NODE;
+  };
+}
+function createFixedRouter(route) {
+  return (_state) => {
+    logger16.debug(`Fixed router: -> ${route}`);
+    return route;
+  };
+}
+function combineRouters(routers, fallbackRoute = END_NODE) {
+  return (state) => {
+    for (const router of routers) {
+      const route = router(state);
+      if (route !== fallbackRoute) {
+        logger16.debug(`Combined router: selected route -> ${route}`);
+        return route;
+      }
+    }
+    logger16.debug(`Combined router: all routes matched fallback -> ${fallbackRoute}`);
+    return fallbackRoute;
+  };
+}
+function createTypeRouter(guard, routeIfTrue, routeIfFalse) {
+  return (state) => {
+    if (guard(state)) {
+      const route = routeIfTrue(state);
+      logger16.debug(`Type router: guard passed -> ${route}`);
+      return route;
+    } else {
+      const route = typeof routeIfFalse === "string" ? routeIfFalse : routeIfFalse(state);
+      logger16.debug(`Type router: guard failed -> ${route}`);
+      return route;
+    }
+  };
+}
+
 // src/index.ts
 var VERSION = "0.1.0";
 
@@ -4727,14 +4942,31 @@ exports.RoutingError = RoutingError;
 exports.StateGraph = StateGraph;
 exports.ToolRegistry = ToolRegistry;
 exports.VERSION = VERSION;
+exports.combineRouters = combineRouters;
+exports.createAsyncTransformNode = createAsyncTransformNode;
+exports.createConditionalNode = createConditionalNode;
+exports.createConditionalRouter = createConditionalRouter;
+exports.createCycleRouter = createCycleRouter;
+exports.createEndRouter = createEndRouter;
+exports.createErrorRouter = createErrorRouter;
+exports.createFinalNode = createFinalNode;
+exports.createFixedRouter = createFixedRouter;
 exports.createLogger = createLogger;
+exports.createLoggingNode = createLoggingNode;
 exports.createModelMessage = createModelMessage;
+exports.createMultiConditionRouter = createMultiConditionRouter;
 exports.createNode = createNode;
 exports.createPassthroughNode = createPassthroughNode;
+exports.createPropertyRouter = createPropertyRouter;
+exports.createRangeRouter = createRangeRouter;
+exports.createRetryNode = createRetryNode;
 exports.createSyncNode = createSyncNode;
 exports.createToolResult = createToolResult;
 exports.createToolResultMessage = createToolResultMessage;
+exports.createTransformNode = createTransformNode;
+exports.createTypeRouter = createTypeRouter;
 exports.createUserMessage = createUserMessage;
+exports.createValidationNode = createValidationNode;
 exports.errorResult = errorResult;
 exports.formatAgentName = formatAgentName;
 exports.getAgentDescription = getAgentDescription;

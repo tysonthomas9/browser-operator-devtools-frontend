@@ -15,3 +15,9 @@ export { StateGraph, type StateGraphConfig } from './StateGraph.js';
 
 // Graph builder utilities
 export { GraphBuilder, createNode, createSyncNode, createPassthroughNode } from './GraphBuilder.js';
+
+// Node helpers
+export * from './GraphNodeHelpers.js';
+
+// Routing helpers
+export * from './GraphRoutingHelpers.js';

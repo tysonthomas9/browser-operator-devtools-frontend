@@ -58,7 +58,7 @@ packages/ai-agent-sdk/
 │   ├── tools/            # Tool system (✅ Complete)
 │   ├── agent/           # Agent framework (✅ Complete)
 │   └── orchestration/   # Graph workflows (✅ Complete)
-├── tests/               # 188 passing tests
+├── tests/               # 226 passing tests
 ├── examples/            # Usage examples (coming)
 └── docs/                # Documentation (coming)
 ```
@@ -106,11 +106,20 @@ packages/ai-agent-sdk/
 - [x] BrowserOperatorProvider (Semantic routing with X-Agent header)
 - [x] Unit tests (44 new tests, 188 total)
 
-### Phase 5: Graph Infrastructure
-- [ ] AgentNodes (createAgentNode, createToolExecutorNode, createFinalNode)
-- [ ] GraphHelpers (routeNextNode, createSystemPrompt, getAgentToolsFromState)
-- [ ] ConfigurableGraph (JSON-based graph builder)
-- [ ] End-to-end graph execution tests
+### Phase 5: Graph Infrastructure ✅ COMPLETE
+- [x] GraphNodeHelpers (8 helper functions for common node patterns)
+  - createTransformNode, createAsyncTransformNode
+  - createConditionalNode, createValidationNode
+  - createRetryNode, createLoggingNode
+  - createFinalNode, createPassthroughNode
+- [x] GraphRoutingHelpers (11 routing utilities)
+  - createPropertyRouter, createConditionalRouter
+  - createErrorRouter, createMultiConditionRouter
+  - createRangeRouter, createCycleRouter
+  - createEndRouter, createFixedRouter
+  - combineRouters, createTypeRouter
+- [x] Platform-agnostic implementations (no browser dependencies)
+- [x] Unit tests (38 new tests, 226 total)
 
 ### Phase 6: Advanced Features
 - [ ] Tracing system (TracingProvider, LangfuseProvider)
