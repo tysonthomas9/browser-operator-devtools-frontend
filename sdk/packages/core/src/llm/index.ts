@@ -11,7 +11,7 @@ export type {
   LLMResponse,
   LLMProviderConfig,
   ILLMProvider,
-  Tool,
+  OpenAITool,
   ToolCall,
   MessageContent,
   ModelInfo,

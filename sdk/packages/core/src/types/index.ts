@@ -3,7 +3,6 @@
  * Extracted from front_end/panels/ai_chat/models/ChatTypes.ts
  */
 
-import type { LanguageModel } from 'ai';
 import type { z } from 'zod';
 
 /**
@@ -118,9 +117,9 @@ export interface AgentConfig<TTools extends ToolSet = ToolSet> {
   instructions?: string;
 
   /**
-   * LLM model to use
+   * LLM model to use (e.g., 'gpt-4', 'gpt-3.5-turbo', 'claude-3-opus')
    */
-  model: LanguageModel;
+  model: string;
 
   /**
    * Tools available to the agent

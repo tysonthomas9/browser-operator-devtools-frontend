@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Operator SDK - Tools Example</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .config {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-family: inherit;
+        }
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        .output h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .response {
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .tool-info {
+            background: #e8f4f8;
+            border-left: 3px solid #007bff;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .tool-info strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .tool-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tool-card {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .tool-card h4 {
+            margin: 0 0 5px 0;
+            color: #007bff;
+        }
+        .tool-card p {
+            margin: 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ef9a9a;
+        }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛠️ Browser Operator SDK - Tools</h1>
+        <p class="subtitle">Agents with Function Calling (Browser-Compatible)</p>
+
+        <div class="note">
+            <strong>⚠️ Note:</strong> This example demonstrates tool calling with LLMs. Your API key stays in your browser and is never sent to our servers.
+        </div>
+
+        <div class="tool-info">
+            <strong>Available Tools:</strong>
+            <div class="tool-list">
+                <div class="tool-card">
+                    <h4>🌤️ get_weather</h4>
+                    <p>Get current weather for a city</p>
+                </div>
+                <div class="tool-card">
+                    <h4>🧮 calculator</h4>
+                    <p>Perform basic math operations</p>
+                </div>
+                <div class="tool-card">
+                    <h4>🕐 get_current_time</h4>
+                    <p>Get current date and time</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="config">
+            <label for="apiKey">OpenAI API Key:</label>
+            <input type="password" id="apiKey" placeholder="sk-...">
+
+            <label for="model">Model:</label>
+            <select id="model">
+                <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                <option value="gpt-4">gpt-4</option>
+                <option value="gpt-4-turbo-preview">gpt-4-turbo-preview</option>
+            </select>
+
+            <label for="prompt">Your Message:</label>
+            <textarea id="prompt" placeholder="Try asking about the weather, time, or math problems...">What's the weather like in San Francisco? Also, what's 15 * 24?</textarea>
+
+            <button id="runBtn" onclick="runAgentWithTools()">Run Agent with Tools</button>
+        </div>
+
+        <div class="output" id="output" style="display: none;">
+            <h3>Response:</h3>
+            <div class="response" id="response"></div>
+        </div>
+    </div>
+
+    <!-- Load the SDK -->
+    <script type="module">
+        import {
+            Agent,
+            OpenAIProvider,
+            AgentEvent,
+            createTool,
+        } from '../../packages/core/dist/index.mjs';
+        import { z } from 'https://cdn.jsdelivr.net/npm/zod@3/+esm';
+
+        // Make available globally
+        window.Agent = Agent;
+        window.OpenAIProvider = OpenAIProvider;
+        window.AgentEvent = AgentEvent;
+        window.createTool = createTool;
+        window.z = z;
+
+        console.log('✅ Browser Operator SDK loaded successfully!');
+    </script>
+
+    <script>
+        // Define tools
+        function createTools() {
+            const { createTool, z } = window;
+
+            const weatherTool = createTool({
+                id: 'get_weather',
+                description: 'Get current weather information for a given city',
+                inputSchema: z.object({
+                    city: z.string().describe('The city name'),
+                    units: z.enum(['celsius', 'fahrenheit']).default('celsius'),
+                }),
+                outputSchema: z.object({
+                    temperature: z.number(),
+                    conditions: z.string(),
+                    humidity: z.number(),
+                }),
+                execute: async ({ context }) => {
+                    const { city, units } = context;
+                    const isCelsius = units === 'celsius';
+
+                    return {
+                        temperature: isCelsius ? 22 : 72,
+                        conditions: 'sunny',
+                        humidity: 65,
+                    };
+                },
+            });
+
+            const calculatorTool = createTool({
+                id: 'calculator',
+                description: 'Perform basic mathematical calculations (add, subtract, multiply, divide)',
+                inputSchema: z.object({
+                    operation: z.enum(['add', 'subtract', 'multiply', 'divide']),
+                    a: z.number(),
+                    b: z.number(),
+                }),
+                outputSchema: z.object({
+                    result: z.number(),
+                }),
+                execute: async ({ context }) => {
+                    const { operation, a, b } = context;
+                    let result;
+
+                    switch (operation) {
+                        case 'add': result = a + b; break;
+                        case 'subtract': result = a - b; break;
+                        case 'multiply': result = a * b; break;
+                        case 'divide':
+                            if (b === 0) throw new Error('Cannot divide by zero');
+                            result = a / b;
+                            break;
+                    }
+
+                    return { result };
+                },
+            });
+
+            const timeTool = createTool({
+                id: 'get_current_time',
+                description: 'Get the current date and time',
+                inputSchema: z.object({
+                    timezone: z.string().optional(),
+                }),
+                outputSchema: z.object({
+                    dateString: z.string(),
+                    timeString: z.string(),
+                }),
+                execute: async () => {
+                    const now = new Date();
+                    return {
+                        dateString: now.toLocaleDateString(),
+                        timeString: now.toLocaleTimeString(),
+                    };
+                },
+            });
+
+            return {
+                get_weather: weatherTool,
+                calculator: calculatorTool,
+                get_current_time: timeTool,
+            };
+        }
+
+        // Run agent with tools
+        async function runAgentWithTools() {
+            const apiKey = document.getElementById('apiKey').value;
+            const model = document.getElementById('model').value;
+            const prompt = document.getElementById('prompt').value;
+
+            if (!apiKey) {
+                alert('Please enter your OpenAI API key');
+                return;
+            }
+
+            // Reset output
+            document.getElementById('output').style.display = 'block';
+            document.getElementById('response').textContent = 'Running agent with tools...';
+            document.getElementById('runBtn').disabled = true;
+
+            try {
+                // Create provider
+                const provider = new window.OpenAIProvider(apiKey);
+
+                // Create tools
+                const tools = createTools();
+
+                // Create agent with tools
+                const agent = new window.Agent({
+                    name: 'tool-agent',
+                    model: model,
+                    instructions: 'You are a helpful assistant with access to tools. Use the available tools to answer user questions accurately.',
+                    temperature: 0.7,
+                    tools: tools, // Pass tools to agent
+                    maxIterations: 5,
+                }, provider);
+
+                // Subscribe to events
+                agent.on(window.AgentEvent.START, ({ context }) => {
+                    console.log('🚀 Agent started:', context.sessionId);
+                });
+
+                agent.on(window.AgentEvent.TOOL_CALL, ({ toolCall }) => {
+                    console.log('🔧 Tool called:', toolCall.name, toolCall.arguments);
+                });
+
+                agent.on(window.AgentEvent.TOOL_RESULT, ({ result }) => {
+                    console.log('✅ Tool result:', result);
+                });
+
+                // Run agent
+                const result = await agent.generateText(prompt);
+
+                // Display result
+                document.getElementById('response').textContent = result.text;
+
+                console.log('Agent result:', result);
+            } catch (error) {
+                document.getElementById('response').innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+                console.error('Agent error:', error);
+            } finally {
+                document.getElementById('runBtn').disabled = false;
+            }
+        }
+
+        // Make function available globally
+        window.runAgentWithTools = runAgentWithTools;
+    </script>
+</body>
+</html>

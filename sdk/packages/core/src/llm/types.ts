@@ -39,9 +39,10 @@ export interface ToolCall {
 }
 
 /**
- * Tool definition
+ * OpenAI tool definition (wire format for API)
+ * For internal tool definitions, use @browser-operator/core/tools
  */
-export interface Tool {
+export interface OpenAITool {
   type: 'function';
   function: {
     name: string;
@@ -59,7 +60,7 @@ export interface LLMCallOptions {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
-  tools?: Tool[];
+  tools?: OpenAITool[];
   toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
   stream?: boolean;
   abortSignal?: AbortSignal;

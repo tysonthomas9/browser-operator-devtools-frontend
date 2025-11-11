@@ -79,7 +79,26 @@ export {
   type LLMResponse,
   type LLMProviderConfig,
   type ILLMProvider,
-  type Tool,
+  type OpenAITool,
   type MessageContent,
   type ModelInfo,
 } from './llm/index.js';
+
+// Tools
+export {
+  createTool,
+  createSimpleTool,
+  RuntimeContext,
+  zodToOpenAISchema,
+  toolToOpenAIFunction,
+  toolsToOpenAIFunctions,
+  executeTool,
+  executeToolCall,
+  type Tool,
+  type ToolRuntimeContext,
+  type ToolExecutionContext,
+  type ToolResult,
+  type ToolCallResult,
+  type ToolExecutionOptions,
+  type OpenAIFunctionDefinition,
+} from './tools/index.js';

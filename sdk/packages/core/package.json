@@ -23,10 +23,10 @@
       "require": "./dist/agent/index.js",
       "types": "./dist/agent/index.d.ts"
     },
-    "./graph": {
-      "import": "./dist/graph/index.mjs",
-      "require": "./dist/graph/index.js",
-      "types": "./dist/graph/index.d.ts"
+    "./tools": {
+      "import": "./dist/tools/index.mjs",
+      "require": "./dist/tools/index.js",
+      "types": "./dist/tools/index.d.ts"
     },
     "./state": {
       "import": "./dist/state/index.mjs",
@@ -64,15 +64,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "eventemitter3": "^5.0.1",
-    "p-queue": "^8.0.1",
-    "p-retry": "^7.1.0",
     "zod": "^3.25.0"
-  },
-  "peerDependencies": {
-    "ai": "^5.0.0",
-    "@ai-sdk/provider-utils": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

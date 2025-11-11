@@ -5,10 +5,10 @@
  */
 
 import { BaseLLMProvider } from './BaseProvider.js';
-import type { LLMMessage, LLMCallOptions, LLMResponse, Tool } from './types.js';
+import type { LLMMessage, LLMCallOptions, LLMResponse, OpenAITool } from './types.js';
 
 export class OpenAIProvider extends BaseLLMProvider {
-  name = 'openai' as const;
+  override name = 'openai' as const;
 
   private static readonly DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
@@ -44,7 +44,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     return this.parseResponse(data);
   }
 
-  async *stream(
+  override async *stream(
     model: string,
     messages: LLMMessage[],
     options?: LLMCallOptions

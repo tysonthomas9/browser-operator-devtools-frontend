@@ -3,16 +3,16 @@
  * Extracted and adapted from front_end/panels/ai_chat/agent_framework/AgentRunner.ts
  */
 
-import type {
-  AgentConfig,
-  AgentContext,
-  AgentResult,
-  AgentState,
-  ChatMessage,
+import {
   ChatMessageEntity,
-  ExecutionOptions,
-  ToolCall,
-  ToolSet,
+  type AgentConfig,
+  type AgentContext,
+  type AgentResult,
+  type AgentState,
+  type ChatMessage,
+  type ExecutionOptions,
+  type ToolCall,
+  type ToolSet,
 } from '../types/index.js';
 import { AgentEventEmitter } from '../events/index.js';
 import {
@@ -30,7 +30,8 @@ import {
   executeOnFinish,
   executeOnError,
 } from '../hooks/index.js';
-import type { ILLMProvider, LLMMessage, LLMCallOptions } from '../llm/index.js';
+import type { ILLMProvider, LLMMessage, LLMCallOptions, OpenAITool } from '../llm/index.js';
+import { toolsToOpenAIFunctions, executeToolCall as execToolCall, RuntimeContext } from '../tools/index.js';
 
 /**
  * Agent class for executing LLM-based agents with tools
@@ -41,12 +42,14 @@ export class Agent<TTools extends ToolSet = ToolSet> {
   private eventEmitter: AgentEventEmitter;
   private sessionId: string;
   private provider: ILLMProvider;
+  private runtimeContext: RuntimeContext;
 
-  constructor(config: AgentConfig<TTools>, provider: ILLMProvider) {
+  constructor(config: AgentConfig<TTools>, provider: ILLMProvider, runtimeContext?: Record<string, unknown>) {
     this.config = config;
     this.provider = provider;
     this.eventEmitter = new AgentEventEmitter();
     this.sessionId = this.generateSessionId();
+    this.runtimeContext = new RuntimeContext(runtimeContext);
   }
 
   /**
@@ -233,20 +236,66 @@ export class Agent<TTools extends ToolSet = ToolSet> {
   }
 
   /**
-   * Execute a tool (stub - will be implemented with tool system)
+   * Execute a tool using the tool system
    */
   private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    // TODO: Implement tool execution with tool registry
-    console.warn(`Tool execution not yet implemented: ${name}`);
-    return { error: 'Tool execution not implemented' };
+    if (!this.config.tools) {
+      throw new Error('No tools configured for this agent');
+    }
+
+    const tool = this.config.tools[name];
+    if (!tool) {
+      throw new Error(`Tool '${name}' not found in agent configuration`);
+    }
+
+    try {
+      // Use our tool execution system
+      const result = await execToolCall(
+        this.config.tools,
+        'temp-id', // Tool call ID (not used for internal execution)
+        name,
+        JSON.stringify(args),
+        {
+          runtimeContext: Object.fromEntries(this.runtimeContext.keys().map(k => [k, this.runtimeContext.get(k)])),
+        }
+      );
+
+      if (!result.success) {
+        return { error: result.error || 'Tool execution failed' };
+      }
+
+      // Try to parse result as JSON, fallback to string
+      try {
+        return JSON.parse(result.result);
+      } catch {
+        return result.result;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { error: message };
+    }
   }
 
   /**
-   * Convert tools to LLM format
+   * Convert tools to OpenAI function format
    */
-  private convertToolsToLLMFormat(tools: TTools): any[] {
-    // TODO: Implement proper tool conversion
-    return [];
+  private convertToolsToLLMFormat(tools: TTools): OpenAITool[] {
+    if (!tools) {
+      return [];
+    }
+
+    // Convert our Tool objects to OpenAI function definitions
+    const functionDefs = toolsToOpenAIFunctions(tools);
+
+    // Convert to OpenAI tool format
+    return functionDefs.map((fn) => ({
+      type: 'function' as const,
+      function: {
+        name: fn.name,
+        description: fn.description,
+        parameters: fn.parameters,
+      },
+    }));
   }
 
   /**
