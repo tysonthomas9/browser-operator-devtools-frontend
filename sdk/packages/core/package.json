@@ -1,0 +1,91 @@
+{
+  "name": "@browser-operator/core",
+  "version": "0.1.0",
+  "description": "Core agent framework for Browser Operator SDK",
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./agent": {
+      "import": "./dist/agent/index.mjs",
+      "require": "./dist/agent/index.js",
+      "types": "./dist/agent/index.d.ts"
+    },
+    "./graph": {
+      "import": "./dist/graph/index.mjs",
+      "require": "./dist/graph/index.js",
+      "types": "./dist/graph/index.d.ts"
+    },
+    "./state": {
+      "import": "./dist/state/index.mjs",
+      "require": "./dist/state/index.js",
+      "types": "./dist/state/index.d.ts"
+    },
+    "./hooks": {
+      "import": "./dist/hooks/index.mjs",
+      "require": "./dist/hooks/index.js",
+      "types": "./dist/hooks/index.d.ts"
+    },
+    "./events": {
+      "import": "./dist/events/index.mjs",
+      "require": "./dist/events/index.js",
+      "types": "./dist/events/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types/index.mjs",
+      "require": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "eventemitter3": "^5.0.1",
+    "p-queue": "^8.0.1",
+    "p-retry": "^7.1.0",
+    "zod": "^3.25.0"
+  },
+  "peerDependencies": {
+    "ai": "^5.0.0",
+    "@ai-sdk/provider-utils": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.57.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.2"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "llm",
+    "browser-operator",
+    "typescript"
+  ]
+}

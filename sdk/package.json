@@ -1,0 +1,42 @@
+{
+  "name": "@browser-operator/agent-sdk-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser Operator AI Agent SDK - Monorepo Root",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BrowserOperator/browser-operator-core.git",
+    "directory": "sdk"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "build": "turbo run build",
+    "build:watch": "turbo run build --watch",
+    "dev": "turbo run dev --parallel",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.1",
+    "@types/node": "^20.11.0",
+    "prettier": "^3.2.5",
+    "tsup": "^8.0.2",
+    "turbo": "^1.12.4",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.2"
+  }
+}
