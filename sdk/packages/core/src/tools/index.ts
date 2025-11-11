@@ -48,3 +48,4 @@ export * from './utils.js';
 
 // Migrated tools from ai_chat
 export * from './readFile.js';
+export * from './createFile.js';

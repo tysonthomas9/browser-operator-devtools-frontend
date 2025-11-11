@@ -38,8 +38,19 @@ export type ReadFileOutput = z.infer<typeof readFileOutputSchema>;
 
 /**
  * Interface for file storage manager that must be provided via runtime context
+ * Supports all file operations: create, read, update, delete
  */
 export interface FileStorageManager {
+  createFile(fileName: string, content: string, mimeType?: string): Promise<{
+    id: string;
+    fileName: string;
+    content: string;
+    mimeType: string;
+    size: number;
+    createdAt: number;
+    updatedAt: number;
+  }>;
+
   readFile(fileName: string): Promise<{
     fileName: string;
     content: string;
@@ -48,6 +59,26 @@ export interface FileStorageManager {
     createdAt: number;
     updatedAt: number;
   } | null>;
+
+  updateFile(fileName: string, content: string): Promise<{
+    id: string;
+    fileName: string;
+    content: string;
+    mimeType: string;
+    size: number;
+    createdAt: number;
+    updatedAt: number;
+  }>;
+
+  deleteFile(fileName: string): Promise<boolean>;
+
+  listFiles(): Promise<Array<{
+    fileName: string;
+    mimeType: string;
+    size: number;
+    createdAt: number;
+    updatedAt: number;
+  }>>;
 }
 
 /**
