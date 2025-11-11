@@ -6,7 +6,7 @@
 /**
  * LLM Provider types
  */
-export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'custom';
+export type LLMProvider = 'openai' | 'anthropic' | 'groq' | 'openrouter' | 'litellm' | 'custom';
 
 /**
  * Message content types

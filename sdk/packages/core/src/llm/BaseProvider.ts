@@ -22,13 +22,15 @@ export abstract class BaseLLMProvider implements ILLMProvider {
   protected async makeRequest(
     url: string,
     body: any,
-    options?: LLMCallOptions
+    options?: LLMCallOptions,
+    additionalHeaders?: Record<string, string>
   ): Promise<Response> {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
+        ...additionalHeaders,
       },
       body: JSON.stringify(body),
       signal: options?.abortSignal,
