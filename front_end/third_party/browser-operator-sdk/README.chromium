@@ -1,0 +1,16 @@
+Name: Browser Operator AI Agent SDK
+Short Name: browser-operator-sdk
+URL: https://github.com/BrowserOperator/browser-operator-core/tree/main/sdk
+Version: 0.1.0
+License: BSD-3-Clause
+License File: ../../../sdk/LICENSE
+Security Critical: no
+Shipped: yes
+
+Description:
+AI Agent SDK extracted from Browser Operator DevTools for use in AI Chat panel.
+Provides LLM provider abstractions, tool system, workflows, and agent framework.
+
+Local Modifications:
+- Built from local sdk/ directory
+- Vendored dist/ output for GN build system compatibility

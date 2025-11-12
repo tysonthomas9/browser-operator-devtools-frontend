@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "outDir": ".",
+    "rootDir": ".",
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "files": [
+    "index.d.ts",
+    "agent/index.d.ts",
+    "tools/index.d.ts",
+    "workflows/index.d.ts",
+    "state/index.d.ts",
+    "hooks/index.d.ts",
+    "events/index.d.ts",
+    "types/index.d.ts",
+    "llm/index.d.ts",
+    "memory/index.d.ts"
+  ]
+}
