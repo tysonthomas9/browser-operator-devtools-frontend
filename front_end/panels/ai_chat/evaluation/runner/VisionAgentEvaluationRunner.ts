@@ -9,10 +9,8 @@ import { ToolRegistry } from '../../agent_framework/ConfigurableAgentTool.js';
 import { TakeScreenshotTool } from '../../tools/Tools.js';
 import type { EvaluationConfig, TestResult, TestCase, ValidationConfig } from '../framework/types.js';
 import type { ScreenshotData } from '../utils/EvaluationTypes.js';
-import { createLogger } from '../../core/Logger.js';
+import { createLogger, createTracingProvider, isTracingEnabled, type TracingProvider, type TracingContext } from '../../../../packages/ai-agent-sdk/src/index.js';
 import { TIMING_CONSTANTS } from '../../core/Constants.js';
-import { createTracingProvider, isTracingEnabled } from '../../tracing/TracingConfig.js';
-import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
 
 const logger = createLogger('VisionAgentEvaluationRunner');
 

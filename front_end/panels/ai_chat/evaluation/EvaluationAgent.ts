@@ -8,8 +8,8 @@ import { BUILD_CONFIG } from '../core/BuildConfig.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
-import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../tracing/TracingConfig.js';
-import type { TracingProvider, TracingContext } from '../tracing/TracingProvider.js';
+import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../../../packages/ai-agent-sdk/src/index.js';
+import type { TracingProvider, TracingContext } from '../../../../packages/ai-agent-sdk/src/index.js';
 import {
   RegisterMessage,
   ReadyMessage,

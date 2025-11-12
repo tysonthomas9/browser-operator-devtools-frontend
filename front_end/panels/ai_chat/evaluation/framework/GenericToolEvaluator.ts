@@ -11,8 +11,7 @@ import { createLogger } from '../../core/Logger.js';
 import { SanitizationUtils } from '../utils/SanitizationUtils.js';
 import { ErrorHandlingUtils } from '../utils/ErrorHandlingUtils.js';
 import type { ToolExecutionResult } from '../utils/EvaluationTypes.js';
-import { createTracingProvider } from '../../tracing/TracingConfig.js';
-import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
+import { createTracingProvider, type TracingProvider, type TracingContext } from '../../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('GenericToolEvaluator');
 

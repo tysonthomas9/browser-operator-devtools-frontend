@@ -4,7 +4,7 @@
 
 import * as i18n from '../../../core/i18n/i18n.js';
 import {type ChatMessage, ChatMessageEntity, type ImageInputData} from '../models/ChatTypes.js';
-import type {TracingContext} from '../tracing/TracingProvider.js';
+import type {TracingContext} from '../../../packages/ai-agent-sdk/src/index.js';
 import type { AgentDescriptor } from './AgentDescriptorRegistry.js';
 
 const UIStrings = {

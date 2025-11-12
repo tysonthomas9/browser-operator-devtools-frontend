@@ -16,8 +16,8 @@ import {type AgentState, createInitialState, createUserMessage} from './State.js
 import type {CompiledGraph} from './Types.js';
 import { LLMClient, type LLMProvider, AgentRunnerEventBus, AgentRunner } from '../../../packages/ai-agent-sdk/src/index.js';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';
-import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
-import type { TracingProvider, TracingContext } from '../tracing/TracingProvider.js';
+import { createTracingProvider, getCurrentTracingContext } from '../../../packages/ai-agent-sdk/src/index.js';
+import type { TracingProvider, TracingContext } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
 import { BUILD_CONFIG } from './BuildConfig.js';
 import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';

@@ -15,9 +15,9 @@ import type { AgentState } from './State.js';
 import type { Runnable } from './Types.js';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';
 import { AgentErrorHandler } from './AgentErrorHandler.js';
-import { createTracingProvider, withTracingContext } from '../tracing/TracingConfig.js';
+import { createTracingProvider, withTracingContext } from '../../../packages/ai-agent-sdk/src/index.js';
 import * as ToolNameMap from './ToolNameMap.js';
-import type { TracingProvider } from '../tracing/TracingProvider.js';
+import type { TracingProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 
 const logger = createLogger('AgentNodes');

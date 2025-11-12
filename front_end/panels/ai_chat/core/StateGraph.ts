@@ -4,8 +4,8 @@
 
 import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { Runnable } from './Types.js';
-import { createTracingProvider } from '../tracing/TracingConfig.js';
-import type { TracingProvider } from '../tracing/TracingProvider.js';
+import { createTracingProvider } from '../../../packages/ai-agent-sdk/src/index.js';
+import type { TracingProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 import { ChatMessageEntity, type ModelChatMessage } from '../models/ChatTypes.js';
 
 const logger = createLogger('StateGraph');

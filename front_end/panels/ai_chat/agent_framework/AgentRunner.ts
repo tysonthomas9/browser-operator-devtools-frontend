@@ -8,7 +8,7 @@ import { LLMClient, type LLMResponse, type LLMMessage, type LLMProvider, sanitiz
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage, type ModelChatMessage, type ToolResultMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
-import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
+import { createTracingProvider, getCurrentTracingContext } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { AgentSession, AgentMessage } from './AgentSessionTypes.js';
 import { AgentErrorHandler } from '../core/AgentErrorHandler.js';
 import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';

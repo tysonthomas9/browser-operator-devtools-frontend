@@ -10,11 +10,9 @@ import { getEvaluationConfig, getEvaluationClientId } from '../../common/Evaluat
 import { ToolRegistry, ConfigurableAgentTool } from '../../agent_framework/ConfigurableAgentTool.js';
 import { AgentService } from '../../core/AgentService.js';
 import { AIChatPanel } from '../../ui/AIChatPanel.js';
-import { createLogger } from '../../core/Logger.js';
-import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
+import { createLogger, createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig, type TracingProvider, type TracingContext } from '../../../../packages/ai-agent-sdk/src/index.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
 import '../../core/BaseOrchestratorAgent.js';
-import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
 import type { ChatMessage } from '../../models/ChatTypes.js';
 import {
   RegisterMessage,

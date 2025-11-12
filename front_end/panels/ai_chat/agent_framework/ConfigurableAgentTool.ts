@@ -6,7 +6,7 @@ import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
 import { createLogger, ToolRegistry as SDKToolRegistry, type LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
-import { getCurrentTracingContext } from '../tracing/TracingConfig.js';
+import { getCurrentTracingContext } from '../../../packages/ai-agent-sdk/src/index.js';
 import { MODEL_SENTINELS } from '../core/Constants.js';
 import type { AgentSession } from './AgentSessionTypes.js';
 
