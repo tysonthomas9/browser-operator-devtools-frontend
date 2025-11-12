@@ -2,44 +2,50 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Shared chat types extracted from ChatView. Keep UI-agnostic.
+/**
+ * Browser Operator Chat Types
+ *
+ * This file extends the AI Agent SDK's base messaging types with
+ * UI-specific properties and state management for the Browser Operator frontend.
+ */
 
-// Define possible entities for chat messages
-export enum ChatMessageEntity {
-  USER = 'user',
-  MODEL = 'model',
-  TOOL_RESULT = 'tool_result',
-  AGENT_SESSION = 'agent_session',
-}
+import {
+  ChatMessageEntity as SDKChatMessageEntity,
+  type BaseChatMessage as SDKBaseChatMessage,
+  type UserChatMessage as SDKUserChatMessage,
+  type ModelChatMessage as SDKModelChatMessage,
+  type ToolResultMessage as SDKToolResultMessage,
+  type AgentSessionMessage as SDKAgentSessionMessage,
+  type ChatMessage as SDKChatMessage,
+  type ImageInputData as SDKImageInputData,
+} from '../../../packages/ai-agent-sdk/src/index.js';
 
-// Base structure for all chat messages
+// Re-export ChatMessageEntity from SDK
+export const ChatMessageEntity = SDKChatMessageEntity;
+export type { ChatMessageEntity };
+
+// UI-specific types
 export type UILane = 'chat' | 'agent';
 
-export interface BaseChatMessage {
-  entity: ChatMessageEntity;
-  error?: string;
+// Base structure for Browser Operator chat messages (extends SDK with UI properties)
+export interface BaseChatMessage extends SDKBaseChatMessage {
   // UI routing hint: which lane should render this message
   uiLane?: UILane;
-  // If managed by an AgentSession, provide the session id for traceability
-  managedByAgentSessionId?: string;
 }
 
-// Image input used by user messages
-export interface ImageInputData {
-  url: string;
-  bytesBase64: string;
-}
+// Re-export ImageInputData from SDK
+export type ImageInputData = SDKImageInputData;
 
-// User message
+// User message (extends SDK type with UI properties)
 export interface UserChatMessage extends BaseChatMessage {
-  entity: ChatMessageEntity.USER;
+  entity: typeof ChatMessageEntity.USER;
   text: string;
   imageInput?: ImageInputData;
 }
 
-// Model message
+// Model message (extends SDK type with UI properties)
 export interface ModelChatMessage extends BaseChatMessage {
-  entity: ChatMessageEntity.MODEL;
+  entity: typeof ChatMessageEntity.MODEL;
   action: 'tool' | 'final';
   toolName?: string;
   toolArgs?: Record<string, unknown>;
@@ -49,9 +55,9 @@ export interface ModelChatMessage extends BaseChatMessage {
   toolCallId?: string;
 }
 
-// Tool result message
+// Tool result message (extends SDK type with UI properties)
 export interface ToolResultMessage extends BaseChatMessage {
-  entity: ChatMessageEntity.TOOL_RESULT;
+  entity: typeof ChatMessageEntity.TOOL_RESULT;
   toolName: string;
   resultText: string;
   isError: boolean;
@@ -62,19 +68,20 @@ export interface ToolResultMessage extends BaseChatMessage {
   summary?: string;
 }
 
-// Agent session message (lightweight reference; AgentSession type lives in agent_framework)
+// Agent session message (extends SDK type with UI properties)
 export interface AgentSessionMessage extends BaseChatMessage {
-  entity: ChatMessageEntity.AGENT_SESSION;
+  entity: typeof ChatMessageEntity.AGENT_SESSION;
   // Use `any` to avoid tight coupling here; UI components import the precise type.
   agentSession: any;
   triggerMessageId?: string;
   summary?: string;
 }
 
+// Union type for all chat messages in Browser Operator
 export type ChatMessage =
     UserChatMessage|ModelChatMessage|ToolResultMessage|AgentSessionMessage;
 
-// View state for the chat container
+// View state for the chat container (UI-specific, not in SDK)
 export enum State {
   IDLE = 'idle',
   LOADING = 'loading',
