@@ -4,12 +4,11 @@
 
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
-import { createLogger } from '../core/Logger.js';
+import { createLogger, ToolRegistry as SDKToolRegistry, type LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import { getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import { MODEL_SENTINELS } from '../core/Constants.js';
 import type { AgentSession } from './AgentSessionTypes.js';
-import type { LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('ConfigurableAgentTool');
 const DEFAULT_AGENT_TOOL_VERSION = '2025-09-17';
@@ -216,54 +215,11 @@ export interface AgentToolConfig {
 /**
  * Registry of tool factory functions
  */
-export class ToolRegistry {
-  private static toolFactories = new Map<string, () => Tool<any, any>>();
-  private static registeredTools = new Map<string, Tool<any, any>>(); // Store instances
-
-  /**
-   * Register a tool factory and create/store an instance
-   */
-  static registerToolFactory(name: string, factory: () => Tool<any, any>): void {
-    if (this.toolFactories.has(name)) {
-        logger.warn(`Tool factory already registered for: ${name}. Overwriting.`);
-    }
-    if (this.registeredTools.has(name)) {
-        logger.warn(`Tool instance already registered for: ${name}. Overwriting.`);
-    }
-    this.toolFactories.set(name, factory);
-    // Create and store the instance immediately upon registration
-    try {
-        const instance = factory();
-        this.registeredTools.set(name, instance);
-        logger.info(`Registered and instantiated tool: ${name}`);
-    } catch (error) {
-        logger.error(`Failed to instantiate tool '${name}' during registration:`, error);
-        // Remove the factory entry if instantiation fails
-        this.toolFactories.delete(name);
-    }
-  }
-
-  /**
-   * Get a tool instance by name
-   */
-  static getToolInstance(name: string): Tool<any, any> | null {
-    const factory = this.toolFactories.get(name);
-    return factory ? factory() : null;
-  }
-
-  /**
-   * Get a pre-registered tool instance by name
-   */
-  static getRegisteredTool(name: string): Tool<any, any> | null {
-    const instance = this.registeredTools.get(name);
-    if (!instance) {
-        // Don't fallback, require pre-registration for handoffs
-        // logger.warn(`No registered instance found for tool: ${name}.`);
-        return null;
-    }
-    return instance;
-  }
-}
+/**
+ * Re-export ToolRegistry from AI Agent SDK
+ * The SDK provides a complete implementation with the same API
+ */
+export { SDKToolRegistry as ToolRegistry };
 
 /**
  * Arguments for the ConfigurableAgentTool

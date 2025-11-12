@@ -6,7 +6,7 @@ import * as Common from '../../../core/common/common.js'; // Import Common for E
 import * as SDK from '../../../core/sdk/sdk.js';
 import type * as Protocol from '../../../generated/protocol.js';
 import * as Logs from '../../../models/logs/logs.js';
-import { createLogger } from '../core/Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('Tools');
 
@@ -19,7 +19,7 @@ import * as Utils from '../common/utils.js';
 import { getXPathByBackendNodeId } from '../common/utils.js';
 import { AgentService } from '../core/AgentService.js';
 import type { DevToolsContext } from '../core/State.js';
-import { LLMClient, type LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
+import { LLMClient, type LLMProvider, type Tool as SDKTool, type ToolContext } from '../../../packages/ai-agent-sdk/src/index.js';
 import { ChatMessageEntity } from '../models/ChatTypes.js';
 
 // Type imports
@@ -37,31 +37,14 @@ import { GetWebAppDataTool, type GetWebAppDataArgs, type GetWebAppDataResult } f
 import { RemoveWebAppTool, type RemoveWebAppArgs, type RemoveWebAppResult } from './RemoveWebAppTool.js';
 
 /**
- * Base interface for all tools
+ * Re-export Tool interface from AI Agent SDK
  */
-export interface Tool<TArgs = Record<string, unknown>, TResult = unknown> {
-  name: string;
-  description: string;
-  execute: (args: TArgs, ctx?: LLMContext) => Promise<TResult>;
-  schema: {
-    type: string,
-    properties: Record<string, unknown>,
-    required?: string[],
-  };
-}
+export type { SDKTool as Tool };
 
 /**
- * Context passed into tools for LLM-related choices without relying on UI.
+ * LLMContext is an alias for SDK's ToolContext for backward compatibility
  */
-export interface LLMContext {
-  apiKey?: string;
-  provider: LLMProvider;
-  model: string;
-  getVisionCapability?: (model: string) => Promise<boolean> | boolean;
-  miniModel?: string;
-  nanoModel?: string;
-  abortSignal?: AbortSignal;
-}
+export type LLMContext = ToolContext;
 
 /**
  * Type for element inspection result
