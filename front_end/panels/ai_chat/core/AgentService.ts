@@ -14,7 +14,7 @@ import { createLogger } from './Logger.js';
 import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 import {type AgentState, createInitialState, createUserMessage} from './State.js';
 import type {CompiledGraph} from './Types.js';
-import { LLMClient, type LLMProvider } from '@browser-operator/ai-agent-sdk';
+import { LLMClient, type LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';
 import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../tracing/TracingProvider.js';

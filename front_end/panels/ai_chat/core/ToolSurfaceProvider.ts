@@ -9,7 +9,7 @@ import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { getMCPConfig } from '../mcp/MCPConfig.js';
 import { MCPToolAdapter } from '../mcp/MCPToolAdapter.js';
-import { LLMClient } from '@browser-operator/ai-agent-sdk';
+import { LLMClient } from '../../../packages/ai-agent-sdk/src/index.js';
 import { AIChatPanel } from '../ui/AIChatPanel.js';
 
 const logger = createLogger('ToolSurfaceProvider');

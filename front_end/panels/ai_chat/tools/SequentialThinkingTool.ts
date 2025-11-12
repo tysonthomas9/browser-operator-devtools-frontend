@@ -7,7 +7,7 @@ import type { Tool, LLMContext } from './Tools.js';
 import { TakeScreenshotTool } from './Tools.js';
 import { GetAccessibilityTreeTool } from './Tools.js';
 import { createLogger } from '../core/Logger.js';
-import { LLMClient, LLMResponseParser, LLMRetryManager } from '@browser-operator/ai-agent-sdk';
+import { LLMClient, LLMResponseParser, LLMRetryManager } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('SequentialThinkingTool');
 

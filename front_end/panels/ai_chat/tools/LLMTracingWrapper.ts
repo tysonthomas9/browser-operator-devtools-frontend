@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import { getCurrentTracingContext, createTracingProvider } from '../tracing/TracingConfig.js';
-import { LLMClient, type LLMMessage, type LLMResponse, type LLMCallOptions } from '@browser-operator/ai-agent-sdk';
+import { LLMClient, type LLMMessage, type LLMResponse, type LLMCallOptions } from '../../../packages/ai-agent-sdk/src/index.js';
 
 /**
  * Configuration for LLM tracing wrapper

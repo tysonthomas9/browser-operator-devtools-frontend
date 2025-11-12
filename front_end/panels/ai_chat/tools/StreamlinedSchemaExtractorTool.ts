@@ -10,7 +10,7 @@ import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import type { Tool, LLMContext } from './Tools.js';
-import { LLMResponseParser } from '@browser-operator/ai-agent-sdk';
+import { LLMResponseParser } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('Tool:StreamlinedSchemaExtractor');
 

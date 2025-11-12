@@ -19,7 +19,7 @@ import * as Utils from '../common/utils.js';
 import { getXPathByBackendNodeId } from '../common/utils.js';
 import { AgentService } from '../core/AgentService.js';
 import type { DevToolsContext } from '../core/State.js';
-import { LLMClient, type LLMProvider } from '@browser-operator/ai-agent-sdk';
+import { LLMClient, type LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 import { ChatMessageEntity } from '../models/ChatTypes.js';
 
 // Type imports

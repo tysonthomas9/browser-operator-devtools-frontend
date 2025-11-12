@@ -9,7 +9,7 @@ import { AgentDescriptorRegistry, type AgentDescriptor } from '../core/AgentDesc
 import { getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import { MODEL_SENTINELS } from '../core/Constants.js';
 import type { AgentSession } from './AgentSessionTypes.js';
-import type { LLMProvider } from '@browser-operator/ai-agent-sdk';
+import type { LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('ConfigurableAgentTool');
 const DEFAULT_AGENT_TOOL_VERSION = '2025-09-17';

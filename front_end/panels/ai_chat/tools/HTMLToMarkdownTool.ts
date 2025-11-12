@@ -9,7 +9,7 @@ import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { waitForPageLoad, type Tool, type LLMContext } from './Tools.js';
-import type { LLMProvider } from '@browser-operator/ai-agent-sdk';
+import type { LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('Tool:HTMLToMarkdown');
 

@@ -4,7 +4,7 @@
 
 import { enhancePromptWithPageContext } from '../core/PageInfoManager.js';
 import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
-import { LLMClient, type LLMResponse, type LLMMessage, type LLMProvider, sanitizeMessagesForModel } from '@browser-operator/ai-agent-sdk';
+import { LLMClient, type LLMResponse, type LLMMessage, type LLMProvider, sanitizeMessagesForModel } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage, type ModelChatMessage, type ToolResultMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';

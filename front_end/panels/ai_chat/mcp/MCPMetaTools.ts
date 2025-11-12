@@ -6,7 +6,7 @@ import type { Tool } from '../tools/Tools.js';
 import { createLogger } from '../core/Logger.js';
 import { MCPRegistry } from './MCPRegistry.js';
 import { MCPToolAdapter } from './MCPToolAdapter.js';
-import { LLMClient } from '@browser-operator/ai-agent-sdk';
+import { LLMClient } from '../../../packages/ai-agent-sdk/src/index.js';
 import { AIChatPanel } from '../ui/AIChatPanel.js';
 
 const logger = createLogger('MCPMetaTools');
