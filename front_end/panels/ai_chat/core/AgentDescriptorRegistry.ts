@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import * as Platform from '../../../core/platform/platform.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('AgentDescriptorRegistry');
 

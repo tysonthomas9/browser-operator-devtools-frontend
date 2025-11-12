@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import { ChatMessageEntity, type ChatMessage, type ToolResultMessage } from '../models/ChatTypes.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
 

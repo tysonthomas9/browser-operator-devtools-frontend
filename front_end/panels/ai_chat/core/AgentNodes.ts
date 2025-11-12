@@ -10,7 +10,7 @@ import { LLMClient, type LLMMessage, type LLMProvider } from '../../../packages/
 import { createSystemPromptAsync } from './GraphHelpers.js';
 import * as BaseOrchestratorAgent from './BaseOrchestratorAgent.js';
 import { ToolSurfaceProvider } from './ToolSurfaceProvider.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { AgentState } from './State.js';
 import type { Runnable } from './Types.js';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';

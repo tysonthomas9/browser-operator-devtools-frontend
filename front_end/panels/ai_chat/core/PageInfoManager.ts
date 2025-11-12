@@ -6,7 +6,7 @@ import * as SDK from '../../../core/sdk/sdk.js';
 import * as Utils from '../common/utils.js'; // Path relative to core/ assuming utils.ts will be in common/ later, this will be common/utils.js
 import { VisitHistoryManager } from '../tools/VisitHistoryManager.js'; // Path relative to core/ assuming VisitHistoryManager.ts will be in core/
 import { FileStorageManager } from '../tools/FileStorageManager.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('PageInfoManager');
 

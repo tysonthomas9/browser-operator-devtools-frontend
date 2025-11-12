@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { Runnable } from './Types.js';
 import { createTracingProvider } from '../tracing/TracingConfig.js';
 import type { TracingProvider } from '../tracing/TracingProvider.js';

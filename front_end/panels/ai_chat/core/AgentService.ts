@@ -10,7 +10,7 @@ import * as UI from '../../../ui/legacy/legacy.js';
 import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage } from '../models/ChatTypes.js';
 
 import {createAgentGraph} from './Graph.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 import {type AgentState, createInitialState, createUserMessage} from './State.js';
 import type {CompiledGraph} from './Types.js';

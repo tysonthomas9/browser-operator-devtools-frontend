@@ -17,7 +17,7 @@ import { initializeConfiguredAgents } from '../agent_framework/implementation/Co
 import { FinalizeWithCritiqueTool } from '../tools/FinalizeWithCritiqueTool.js';
 import { HTMLToMarkdownTool } from '../tools/HTMLToMarkdownTool.js';
 import { SchemaBasedExtractorTool } from '../tools/SchemaBasedExtractorTool.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import {
   NavigateURLTool,
   NavigateBackTool,

@@ -6,7 +6,7 @@ import type { getTools } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
 
 import * as BaseOrchestratorAgent from './BaseOrchestratorAgent.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import { enhancePromptWithPageContext } from './PageInfoManager.js';
 import type { AgentState } from './State.js';
 import { NodeType } from './Types.js';

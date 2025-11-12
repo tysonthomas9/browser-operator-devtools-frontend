@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 // Cache break: 2025-09-18T19:00:00Z - Add skipCredentialChecks + preserve credentials + secure logging
 
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import type { LLMProvider } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('LLMConfigurationManager');

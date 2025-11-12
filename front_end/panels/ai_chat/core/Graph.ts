@@ -9,7 +9,7 @@ import {
 } from './AgentNodes.js';
 import { createAgentGraphFromConfig } from './ConfigurableGraph.js';
 import { defaultAgentGraphConfig } from './GraphConfigs.js';
-import { createLogger } from './Logger.js';
+import { createLogger } from '../../../packages/ai-agent-sdk/src/index.js';
 import {
   createSystemPrompt,
   getAgentToolsFromState,
