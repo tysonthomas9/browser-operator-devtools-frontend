@@ -4,8 +4,7 @@
 
 import * as Common from '../../../core/common/common.js';
 import * as SDK from '../../../core/sdk/sdk.js';
-import { createLogger } from '../core/Logger.js';
-import { AgentRunnerEventBus, type AgentRunnerProgressEvent } from '../agent_framework/AgentRunnerEventBus.js';
+import { createLogger, AgentRunnerEventBus, type AgentRunnerProgressEvent } from '../../../packages/ai-agent-sdk/src/index.js';
 
 const logger = createLogger('VisualIndicatorTool');
 
