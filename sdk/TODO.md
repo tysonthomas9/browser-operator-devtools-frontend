@@ -229,6 +229,55 @@ Overall:        ████████████░░░░░░░░  60
 
 ---
 
+## 🔄 DevTools Integration (NEW!)
+
+### ✅ Completed Integration
+
+The SDK has been successfully integrated back into the DevTools ai_chat panel!
+
+**Phase 1: Setup & Preparation**
+- [x] SDK vendored into `front_end/third_party/browser-operator-sdk/`
+- [x] BUILD.gn configuration created
+- [x] DevToolsRuntimeContext adapter created
+- [x] Integration verified with test imports
+
+**Phase 2: LLM Provider Migration**
+- [x] OpenAI, Groq, LiteLLM, OpenRouter → SDK versions
+- [x] AnthropicProvider added (NEW!)
+- [x] LLMClient updated to use SDK providers
+- [x] LLMTypes updated with 'anthropic' type
+- [x] Old provider files removed (~730 lines)
+
+**Phase 3: Tool Migration**
+- [x] Comprehensive tool migration guide created
+- [x] Pattern documented (JSON schema → Zod)
+- [x] Browser API mapping documented
+- [ ] Individual tools to migrate (24 tools - as needed)
+
+**Phase 4: Agent Framework**
+- [x] Migration strategy documented
+- [x] Decision: Keep AgentRunner, use SDK internally
+- [ ] Future: Full migration when tools ready
+
+**Results:**
+- ✅ **730+ lines of duplicate code eliminated**
+- ✅ **5 LLM providers unified under SDK**
+- ✅ **Single source of truth for providers**
+- ✅ **Direct Anthropic/Claude support added**
+
+**Files Modified:**
+- 77 files added (SDK dist + adapters)
+- 4 files removed (old providers)
+- ~24,000 lines added (SDK integration)
+- ~730 lines removed (duplicates)
+
+**Next Steps for DevTools:**
+- Individual tool migration (as needed)
+- Extract reusable workflows from agents
+- Consider full agent migration (future)
+
+---
+
 ## 🎯 Recommended Next Steps
 
 ### Immediate (This Week):

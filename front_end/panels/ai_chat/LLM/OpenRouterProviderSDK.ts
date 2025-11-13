@@ -159,15 +159,20 @@ export class OpenRouterProvider extends LLMBaseProvider {
     }
   }
 
-  async validateCredentials(): Promise<{valid: boolean, message: string}> {
-    try {
-      await this.testConnection('anthropic/claude-3.5-sonnet');
-      return { valid: true, message: 'Credentials valid' };
-    } catch (error) {
+  validateCredentials(): {isValid: boolean, message: string, missingItems?: string[]} {
+    if (!this.sdkProvider) {
       return {
-        valid: false,
-        message: error instanceof Error ? error.message : 'Invalid credentials'
+        isValid: false,
+        message: 'OpenRouter API key not configured',
+        missingItems: ['API Key']
       };
     }
+    return { isValid: true, message: 'OpenRouter credentials configured' };
+  }
+
+  getCredentialStorageKeys(): {apiKey?: string} {
+    return {
+      apiKey: 'ai_chat_openrouter_api_key'
+    };
   }
 }

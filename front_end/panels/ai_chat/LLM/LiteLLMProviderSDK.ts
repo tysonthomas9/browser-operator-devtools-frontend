@@ -149,8 +149,15 @@ export class LiteLLMProvider extends LLMBaseProvider {
     }
   }
 
-  async validateCredentials(): Promise<{valid: boolean, message: string}> {
+  validateCredentials(): {isValid: boolean, message: string, missingItems?: string[]} {
     // LiteLLM often doesn't require credentials for local use
-    return { valid: true, message: 'LiteLLM proxy available' };
+    return { isValid: true, message: 'LiteLLM proxy configured' };
+  }
+
+  getCredentialStorageKeys(): {apiKey?: string, endpoint?: string} {
+    return {
+      apiKey: 'ai_chat_litellm_api_key',
+      endpoint: 'ai_chat_litellm_endpoint'
+    };
   }
 }

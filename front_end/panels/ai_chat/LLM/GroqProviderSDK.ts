@@ -157,15 +157,20 @@ export class GroqProvider extends LLMBaseProvider {
     }
   }
 
-  async validateCredentials(): Promise<{valid: boolean, message: string}> {
-    try {
-      await this.testConnection('llama-3.3-70b-versatile');
-      return { valid: true, message: 'Credentials valid' };
-    } catch (error) {
+  validateCredentials(): {isValid: boolean, message: string, missingItems?: string[]} {
+    if (!this.sdkProvider) {
       return {
-        valid: false,
-        message: error instanceof Error ? error.message : 'Invalid credentials'
+        isValid: false,
+        message: 'Groq API key not configured',
+        missingItems: ['API Key']
       };
     }
+    return { isValid: true, message: 'Groq credentials configured' };
+  }
+
+  getCredentialStorageKeys(): {apiKey?: string} {
+    return {
+      apiKey: 'ai_chat_groq_api_key'
+    };
   }
 }

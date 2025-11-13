@@ -199,19 +199,24 @@ export class OpenAIProvider extends LLMBaseProvider {
   /**
    * Validate credentials
    */
-  async validateCredentials(): Promise<{valid: boolean, message: string}> {
+  validateCredentials(): {isValid: boolean, message: string, missingItems?: string[]} {
     if (!this.sdkProvider) {
-      return { valid: false, message: 'API key not configured' };
-    }
-
-    try {
-      await this.testConnection('gpt-4o-mini');
-      return { valid: true, message: 'Credentials valid' };
-    } catch (error) {
       return {
-        valid: false,
-        message: error instanceof Error ? error.message : 'Invalid credentials'
+        isValid: false,
+        message: 'OpenAI API key not configured',
+        missingItems: ['API Key']
       };
     }
+    return { isValid: true, message: 'OpenAI credentials configured' };
+  }
+
+  /**
+   * Get storage keys for credentials
+   */
+  getCredentialStorageKeys(): {apiKey?: string, endpoint?: string} {
+    return {
+      apiKey: 'ai_chat_openai_api_key',
+      endpoint: 'ai_chat_openai_endpoint'
+    };
   }
 }

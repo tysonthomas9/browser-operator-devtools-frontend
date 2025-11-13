@@ -11,10 +11,11 @@ import {AgentService, Events as AgentEvents} from '../core/AgentService.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { LLMConfigurationManager } from '../core/LLMConfigurationManager.js';
 import { LLMProviderRegistry } from '../LLM/LLMProviderRegistry.js';
-import { OpenAIProvider } from '../LLM/OpenAIProvider.js';
-import { LiteLLMProvider } from '../LLM/LiteLLMProvider.js';
-import { GroqProvider } from '../LLM/GroqProvider.js';
-import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
+import { OpenAIProvider } from '../LLM/OpenAIProviderSDK.js';
+import { LiteLLMProvider } from '../LLM/LiteLLMProviderSDK.js';
+import { GroqProvider } from '../LLM/GroqProviderSDK.js';
+import { OpenRouterProvider } from '../LLM/OpenRouterProviderSDK.js';
+import { AnthropicProvider } from '../LLM/AnthropicProviderSDK.js';
 import { BrowserOperatorProvider } from '../LLM/BrowserOperatorProvider.js';
 import { createLogger } from '../core/Logger.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
@@ -1519,6 +1520,9 @@ export class AIChatPanel extends UI.Panel.Panel {
             break;
           case 'openrouter':
             tempProvider = new OpenRouterProvider('');
+            break;
+          case 'anthropic':
+            tempProvider = new AnthropicProvider('');
             break;
           case 'browseroperator':
             tempProvider = new BrowserOperatorProvider(null, '');

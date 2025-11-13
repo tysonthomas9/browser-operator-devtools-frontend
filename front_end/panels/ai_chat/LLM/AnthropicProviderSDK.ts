@@ -149,15 +149,20 @@ export class AnthropicProvider extends LLMBaseProvider {
     }
   }
 
-  async validateCredentials(): Promise<{valid: boolean, message: string}> {
-    try {
-      await this.testConnection('claude-3-5-haiku-20241022');
-      return { valid: true, message: 'Credentials valid' };
-    } catch (error) {
+  validateCredentials(): {isValid: boolean, message: string, missingItems?: string[]} {
+    if (!this.sdkProvider) {
       return {
-        valid: false,
-        message: error instanceof Error ? error.message : 'Invalid credentials'
+        isValid: false,
+        message: 'Anthropic API key not configured',
+        missingItems: ['API Key']
       };
     }
+    return { isValid: true, message: 'Anthropic credentials configured' };
+  }
+
+  getCredentialStorageKeys(): {apiKey?: string} {
+    return {
+      apiKey: 'ai_chat_anthropic_api_key'
+    };
   }
 }
