@@ -4,10 +4,11 @@
 
 import type { LLMMessage, LLMResponse, LLMCallOptions, LLMProvider, ModelInfo, RetryConfig } from './LLMTypes.js';
 import { LLMProviderRegistry } from './LLMProviderRegistry.js';
-import { OpenAIProvider } from './OpenAIProvider.js';
-import { LiteLLMProvider } from './LiteLLMProvider.js';
-import { GroqProvider } from './GroqProvider.js';
-import { OpenRouterProvider } from './OpenRouterProvider.js';
+import { OpenAIProvider } from './OpenAIProviderSDK.js';
+import { LiteLLMProvider } from './LiteLLMProviderSDK.js';
+import { GroqProvider } from './GroqProviderSDK.js';
+import { OpenRouterProvider } from './OpenRouterProviderSDK.js';
+import { AnthropicProvider } from './AnthropicProviderSDK.js';
 import { BrowserOperatorProvider } from './BrowserOperatorProvider.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
@@ -84,8 +85,8 @@ export class LLMClient {
             break;
           case 'litellm':
             providerInstance = new LiteLLMProvider(
-              providerConfig.apiKey,
-              providerConfig.providerURL
+              providerConfig.providerURL,
+              providerConfig.apiKey
             );
             break;
           case 'groq':
@@ -93,6 +94,9 @@ export class LLMClient {
             break;
           case 'openrouter':
             providerInstance = new OpenRouterProvider(providerConfig.apiKey);
+            break;
+          case 'anthropic':
+            providerInstance = new AnthropicProvider(providerConfig.apiKey);
             break;
           case 'browseroperator':
             providerInstance = new BrowserOperatorProvider(
@@ -308,8 +312,8 @@ export class LLMClient {
    * Static method to fetch models from LiteLLM endpoint (for UI use without initialization)
    */
   static async fetchLiteLLMModels(apiKey: string | null, baseUrl?: string): Promise<any[]> {
-    const provider = new LiteLLMProvider(apiKey, baseUrl);
-    const models = await provider.fetchModels();
+    const provider = new LiteLLMProvider(baseUrl, apiKey);
+    const models = await provider.getModels();
     return models;
   }
 
@@ -317,7 +321,7 @@ export class LLMClient {
    * Static method to test LiteLLM connection (for UI use without initialization)
    */
   static async testLiteLLMConnection(apiKey: string | null, modelName: string, baseUrl?: string): Promise<{success: boolean, message: string}> {
-    const provider = new LiteLLMProvider(apiKey, baseUrl);
+    const provider = new LiteLLMProvider(baseUrl, apiKey);
     return provider.testConnection(modelName);
   }
 
@@ -326,7 +330,7 @@ export class LLMClient {
    */
   static async fetchGroqModels(apiKey: string): Promise<any[]> {
     const provider = new GroqProvider(apiKey);
-    const models = await provider.fetchModels();
+    const models = await provider.getModels();
     return models;
   }
 
@@ -343,7 +347,7 @@ export class LLMClient {
    */
   static async fetchOpenRouterModels(apiKey: string): Promise<any[]> {
     const provider = new OpenRouterProvider(apiKey);
-    const models = await provider.fetchModels();
+    const models = await provider.getModels();
     return models;
   }
 
@@ -352,6 +356,23 @@ export class LLMClient {
    */
   static async testOpenRouterConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
     const provider = new OpenRouterProvider(apiKey);
+    return provider.testConnection(modelName);
+  }
+
+  /**
+   * Static method to fetch models from Anthropic API (for UI use without initialization)
+   */
+  static async fetchAnthropicModels(apiKey: string): Promise<any[]> {
+    const provider = new AnthropicProvider(apiKey);
+    const models = await provider.getModels();
+    return models;
+  }
+
+  /**
+   * Static method to test Anthropic connection (for UI use without initialization)
+   */
+  static async testAnthropicConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    const provider = new AnthropicProvider(apiKey);
     return provider.testConnection(modelName);
   }
 
@@ -403,6 +424,9 @@ export class LLMClient {
           break;
         case 'openrouter':
           provider = new OpenRouterProvider('');
+          break;
+        case 'anthropic':
+          provider = new AnthropicProvider('');
           break;
         case 'browseroperator':
           provider = new BrowserOperatorProvider(null, '');

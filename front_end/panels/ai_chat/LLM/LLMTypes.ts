@@ -142,7 +142,7 @@ export interface ExtendedRetryConfig extends ErrorRetryConfig {
 /**
  * LLM Provider types
  */
-export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'anthropic' | 'browseroperator';
 
 /**
  * Content types for multimodal messages (text + images + files)
