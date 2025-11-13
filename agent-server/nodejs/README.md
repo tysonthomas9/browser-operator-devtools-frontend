@@ -365,15 +365,104 @@ The `/v1/responses` endpoint provides an OpenAI-compatible interface for chat re
 ```json
 {
   "input": "Your question or prompt here",
+  "url": "about:blank",
+  "wait_timeout": 5000,
   "model": {
     "main_model": {
       "provider": "openai",
       "model": "gpt-4",
       "api_key": "sk-..."
+    },
+    "mini_model": {
+      "provider": "openai",
+      "model": "gpt-4-mini",
+      "api_key": "sk-..."
+    },
+    "nano_model": {
+      "provider": "openai",
+      "model": "gpt-3.5-turbo",
+      "api_key": "sk-..."
     }
   }
 }
 ```
+
+**LiteLLM Provider with Endpoint:**
+```json
+{
+  "input": "Your question or prompt here",
+  "url": "about:blank",
+  "model": {
+    "main_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    },
+    "mini_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    },
+    "nano_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    }
+  }
+}
+```
+
+**Endpoint Configuration Priority:**
+1. Per-tier endpoint (e.g., `main_model.endpoint`) - highest priority
+2. Top-level endpoint (e.g., `model.endpoint`) - applies to all tiers
+3. Environment variable `LITELLM_ENDPOINT` - fallback
+4. Default: `http://localhost:4000` (LiteLLMProvider built-in default)
+
+**Conversation State Format (OpenAI Responses API):**
+
+You can also provide conversation history using an array of messages:
+
+```json
+{
+  "input": [
+    {
+      "role": "system",
+      "content": "You are a web automation expert."
+    },
+    {
+      "role": "user",
+      "content": "Navigate to bloomberg.com"
+    },
+    {
+      "role": "assistant",
+      "content": "I've navigated to bloomberg.com. I can see the homepage."
+    },
+    {
+      "role": "user",
+      "content": "Summarize todays news"
+    }
+  ],
+  "url": "https://bloomberg.com",
+  "model": {
+    "main_model": {
+      "provider": "litellm",
+      "model": "gemma3:12b",
+      "endpoint": "http://localhost:4000"
+    }
+  }
+}
+```
+
+**Message Roles:**
+- `system` - System prompt/instructions (extracted and used as system prompt)
+- `user` - User messages
+- `assistant` - Previous assistant responses (for conversation history)
+
+**Requirements:**
+- At least one `user` message must be present
+- Each message must have `role` and `content` fields
+- Maximum 100 messages per conversation
+- Maximum 10,000 characters per message
 
 **Response Format:**
 ```json

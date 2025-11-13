@@ -79,12 +79,17 @@ export interface EvaluationRequest {
   id: string;
 }
 
+export interface EvaluationMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 export interface EvaluationParams {
   evaluationId: string;
   name: string;
   url: string;
   tool: string;
-  input: any;
+  input: string | EvaluationMessage[] | {message?: string; messages?: EvaluationMessage[]};
   model?: {
     main_model?: string;
     mini_model?: string;
