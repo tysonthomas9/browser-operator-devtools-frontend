@@ -80,12 +80,18 @@
    - OpenRouter: Access to 100+ models from multiple providers
    - LiteLLM: Local proxy for Ollama and self-hosted models
 
-### 4. **Agent Runner** 🟡 HIGH
-   - [ ] Extract AgentRunner from `agent_framework/AgentRunner.ts`
-   - [ ] Multi-iteration execution loop
-   - [ ] Tool call/result handling
-   - [ ] Error recovery
-   - [ ] Progress tracking
+### 4. **Agent Runner** ✅ COMPLETE (100%)
+   - [x] Extract AgentRunner from `agent_framework/AgentRunner.ts`
+   - [x] Multi-iteration execution loop
+   - [x] Tool call/result handling
+   - [x] Error recovery
+   - [x] Progress tracking
+   - [x] Session tracking with detailed history
+   - [x] Cancellation support (AbortSignal)
+   - [x] Comprehensive example and documentation
+
+   **Status:** AgentRunner implemented with all core features!
+   **See:** `packages/core/src/agent/AgentRunner.ts`, `examples/agent-runner-example.ts`
 
 ---
 
@@ -213,18 +219,19 @@
 
 ```
 Foundation:     ████████████████████ 100% (Complete!)
-Core Features:  ████░░░░░░░░░░░░░░░░  20% (Agent + Events done)
+Core Features:  ████████░░░░░░░░░░░░  40% (Agent + Events + AgentRunner done!)
 Tools System:   ████████████████████ 100% (ALL 24 tools migrated!)
 Workflows:      █████████████████░░░  85% (Persistence + Examples done!)
 Providers:      ████████████████████ 100% (5 providers: OpenAI, Anthropic, Groq, OpenRouter, LiteLLM!)
 Memory:         ████████████████░░░░  80% (Core system complete!)
+Agent Runner:   ████████████████████ 100% (Multi-iteration execution + error recovery + progress tracking!)
 Observability:  ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
 Guardrails:     ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
-Examples:       ████████░░░░░░░░░░░░  40% (5 examples: browser, workflows x3, tools)
+Examples:       ██████████░░░░░░░░░░  50% (6 examples: browser, workflows x3, tools, agent-runner)
 Tests:          ░░░░░░░░░░░░░░░░░░░░   0% (Not started)
-Documentation:  ██████████░░░░░░░░░░  50% (Core + Tools + Workflows + Memory + Providers)
+Documentation:  ████████████░░░░░░░░  60% (Core + Tools + Workflows + Memory + Providers + AgentRunner)
 
-Overall:        ████████████░░░░░░░░  60%
+Overall:        █████████████░░░░░░░  65%
 ```
 
 ---
