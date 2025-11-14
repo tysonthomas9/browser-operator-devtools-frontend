@@ -47,25 +47,88 @@ RUN git remote add upstream https://github.com/BrowserOperator/browser-operator-
 RUN git fetch upstream
 RUN git checkout upstream/main
 
-# Allow configurable automated mode
-ARG AUTOMATED_MODE=false
-
-# Set build-time flags based on Docker arg
-RUN if [ "$AUTOMATED_MODE" = "true" ]; then \
-      sed -i 's/AUTOMATED_MODE: false/AUTOMATED_MODE: true/' \
-        front_end/panels/ai_chat/core/BuildConfig.ts; \
-    fi
+# Force automated mode (matches parent Dockerfile.devtools approach - rock-solid)
+RUN sed -i 's/AUTOMATED_MODE: false/AUTOMATED_MODE: true/' \
+    front_end/panels/ai_chat/core/BuildConfig.ts || true
 
 # Build Browser Operator version with current changes
 RUN npm run build
 
-# Production stage
+# ==============================================================================
+# Agent Server build stage
+# ==============================================================================
+FROM --platform=linux/amd64 node:18-alpine AS agent-server-builder
+
+WORKDIR /workspace
+
+# Copy agent-server from local directory
+COPY agent-server/nodejs /workspace/agent-server
+
+WORKDIR /workspace/agent-server
+
+# Install dependencies
+RUN npm install
+
+# ==============================================================================
+# Production stage - DevTools + Agent Server
+# ==============================================================================
 FROM --platform=linux/amd64 nginx:alpine
+
+# Install Node.js (required for agent-server)
+RUN apk add --no-cache nodejs npm bash
 
 # Copy the built DevTools frontend
 COPY --from=builder /workspace/devtools/devtools-frontend/out/Default/gen/front_end /usr/share/nginx/html
 
+# Copy agent-server from builder stage
+COPY --from=agent-server-builder /workspace/agent-server /opt/agent-server
+
 # Copy nginx config
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 8000
+# Create startup script to run both nginx and agent-server
+RUN cat > /usr/local/bin/start-services.sh <<'EOFSCRIPT'
+#!/bin/bash
+set -e
+
+# Start nginx in background
+echo "Starting nginx..."
+nginx -g "daemon off;" &
+NGINX_PID=$!
+
+# Start agent-server in background
+echo "Starting agent-server..."
+cd /opt/agent-server
+node start.js &
+AGENT_PID=$!
+
+# Wait for both processes
+echo "DevTools running on http://localhost:8000"
+echo "Agent Server WebSocket on ws://localhost:8082"
+echo "Agent Server HTTP API on http://localhost:8080"
+echo "Press Ctrl+C to stop..."
+
+# Trap SIGTERM and SIGINT
+trap "kill $NGINX_PID $AGENT_PID 2>/dev/null || true; exit 0" SIGTERM SIGINT
+
+# Wait for either process to exit
+wait -n $NGINX_PID $AGENT_PID
+
+# If one exits, kill the other
+kill $NGINX_PID $AGENT_PID 2>/dev/null || true
+EOFSCRIPT
+
+RUN chmod +x /usr/local/bin/start-services.sh
+
+# Environment variables for agent-server
+ENV PORT=8082
+ENV API_PORT=8080
+ENV HOST=0.0.0.0
+ENV CDP_HOST=host.docker.internal
+ENV CDP_PORT=9222
+
+EXPOSE 8000 8080 8082
+
+# Override the nginx entrypoint
+ENTRYPOINT []
+CMD ["/bin/bash", "/usr/local/bin/start-services.sh"]

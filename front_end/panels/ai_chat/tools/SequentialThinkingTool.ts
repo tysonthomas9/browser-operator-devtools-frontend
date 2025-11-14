@@ -276,12 +276,22 @@ Based on the screenshot and current state, create a grounded sequential plan for
           throw new Error('No response from LLM');
         }
 
+        // Store raw response for error reporting
+        const rawResponseText = response.text;
+
         // This will throw if JSON parsing fails, triggering a retry
-        const parsedResult = LLMResponseParser.parseStrictJSON(response.text) as SequentialThinkingResult;
-        
+        let parsedResult: SequentialThinkingResult;
+        try {
+          parsedResult = LLMResponseParser.parseStrictJSON(rawResponseText) as SequentialThinkingResult;
+        } catch (parseError) {
+          // Include full raw response in error for debugging
+          const errorMsg = parseError instanceof Error ? parseError.message : String(parseError);
+          throw new Error(`Failed to parse response: ${errorMsg}. LLM returned: ${rawResponseText}`);
+        }
+
         // Validate result structure
         if (!parsedResult.currentState || !parsedResult.nextSteps || !Array.isArray(parsedResult.nextSteps)) {
-          throw new Error('Invalid response structure from LLM - missing required fields');
+          throw new Error(`Invalid response structure from LLM - missing required fields. LLM returned: ${rawResponseText}`);
         }
 
         return parsedResult;

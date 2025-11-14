@@ -123,6 +123,12 @@ export class SettingsDialog {
     openrouterOption.selected = currentProvider === 'openrouter';
     providerSelect.appendChild(openrouterOption);
 
+    const browseroperatorOption = document.createElement('option');
+    browseroperatorOption.value = 'browseroperator';
+    browseroperatorOption.textContent = i18nString(UIStrings.browseroperatorProvider);
+    browseroperatorOption.selected = currentProvider === 'browseroperator';
+    providerSelect.appendChild(browseroperatorOption);
+
     // Ensure the select's value reflects the computed currentProvider
     providerSelect.value = currentProvider;
 
@@ -146,6 +152,11 @@ export class SettingsDialog {
     openrouterContent.className = 'provider-content openrouter-content';
     openrouterContent.style.display = currentProvider === 'openrouter' ? 'block' : 'none';
     contentDiv.appendChild(openrouterContent);
+
+    const browseroperatorContent = document.createElement('div');
+    browseroperatorContent.className = 'provider-content browseroperator-content';
+    browseroperatorContent.style.display = currentProvider === 'browseroperator' ? 'block' : 'none';
+    contentDiv.appendChild(browseroperatorContent);
 
     // Instantiate provider settings classes
     const openaiSettings = new OpenAISettings(
@@ -205,6 +216,7 @@ export class SettingsDialog {
       litellmContent.style.display = selectedProvider === 'litellm' ? 'block' : 'none';
       groqContent.style.display = selectedProvider === 'groq' ? 'block' : 'none';
       openrouterContent.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
+      browseroperatorContent.style.display = selectedProvider === 'browseroperator' ? 'block' : 'none';
 
       // If switching to LiteLLM, fetch the latest models if endpoint is configured
       if (selectedProvider === 'litellm') {

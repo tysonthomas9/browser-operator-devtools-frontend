@@ -23,6 +23,7 @@ import { AgentRunner } from '../agent_framework/AgentRunner.js';
 import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { BUILD_CONFIG } from './BuildConfig.js';
+import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -36,6 +37,7 @@ export enum Events {
   AGENT_TOOL_STARTED = 'agent-tool-started',
   AGENT_TOOL_COMPLETED = 'agent-tool-completed',
   AGENT_SESSION_UPDATED = 'agent-session-updated',
+  AGENT_SESSION_COMPLETED = 'agent-session-completed',
   CHILD_AGENT_STARTED = 'child-agent-started',
 }
 
@@ -48,6 +50,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   [Events.AGENT_TOOL_STARTED]: { session: AgentSession, toolCall: AgentMessage },
   [Events.AGENT_TOOL_COMPLETED]: { session: AgentSession, toolResult: AgentMessage },
   [Events.AGENT_SESSION_UPDATED]: AgentSession,
+  [Events.AGENT_SESSION_COMPLETED]: AgentSession,
   [Events.CHILD_AGENT_STARTED]: { parentSession: AgentSession, childAgentName: string, childSessionId: string },
 }> {
   static instance: AgentService;
@@ -56,6 +59,10 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   #graph?: CompiledGraph;
   #apiKey: string|null = null;
   #isInitialized = false;
+  /**
+   * Active async generator for current execution. Set when execution starts,
+   * cleared only after the final message is dispatched to listeners.
+   */
   #runningGraphStatePromise?: AsyncGenerator<AgentState, AgentState, void>;
   #abortController?: AbortController;
   #executionId?: string;
@@ -99,6 +106,19 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     return AgentService.activeExecutions.get(executionId);
   }
 
+  /**
+   * Check if the agent is currently executing.
+   * Returns true from when execution starts until after the final message has been
+   * sent to listeners. This ensures UI can show "running" state while the response
+   * is being streamed to the user, and only transitions to "stopped" after completion.
+   *
+   * @returns true if agent execution is in progress (including final message delivery),
+   *          false if agent is idle and ready for new input
+   */
+  isRunning(): boolean {
+    return this.#runningGraphStatePromise !== undefined;
+  }
+
   constructor() {
     super();
 
@@ -120,9 +140,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     
     // Initialize AgentRunner event system
     AgentRunner.initializeEventBus();
-    
+
     // Subscribe to AgentRunner events
     AgentRunnerEventBus.getInstance().addEventListener('agent-progress', this.#handleAgentProgress.bind(this));
+
+    // Initialize visual indicator system with reference to AgentService
+    VisualIndicatorManager.getInstance().initialize(this);
 
     // Subscribe to configuration changes
     this.#configManager.addChangeListener(this.#handleConfigurationChange.bind(this));
@@ -201,6 +224,14 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           });
         }
         break;
+      case 'browseroperator':
+        // BrowserOperator doesn't require apiKey
+        // But we pass it if available for optional authentication
+        providers.push({
+          provider: 'browseroperator' as const,
+          apiKey: apiKey || ''
+        });
+        break;
     }
 
     if (providers.length === 0) {
@@ -238,6 +269,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           providerName = 'Groq';
         } else if (provider === 'openrouter') {
           providerName = 'OpenRouter';
+        } else if (provider === 'browseroperator') {
+          providerName = 'BrowserOperator';
         }
         throw new Error(`${providerName} API key is required for this configuration`);
       }
@@ -272,6 +305,17 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    */
   isInitialized(): boolean {
     return this.#isInitialized;
+  }
+
+  /**
+   * Resets the initialization state to allow re-initialization with new configuration.
+   * This is useful when configuration overrides are set (e.g., API keys from request payload).
+   */
+  resetInitialization(): void {
+    this.#isInitialized = false;
+    this.#graph = undefined;
+    this.#apiKey = null;
+    logger.info('AgentService initialization state reset');
   }
 
   /**
@@ -380,11 +424,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       throw new Error('Empty message. Please enter some text.');
     }
 
-    // In AUTOMATED_MODE, ensure the graph is initialized even without API key
-    if (BUILD_CONFIG.AUTOMATED_MODE && !this.#graph) {
+    // Auto-initialize graph if it's not ready (handles race conditions automatically)
+    if (!this.#graph) {
+      logger.info('Graph not initialized, initializing now...');
       const config = this.#configManager.getConfiguration();
-      // Initialize with empty API key in AUTOMATED_MODE - will be overridden by request
-      await this.initialize('', config.mainModel, config.miniModel || '', config.nanoModel || '');
+      // Initialize with API key from config (includes overrides set by EvaluationAgent)
+      await this.initialize(config.apiKey || '', config.mainModel, config.miniModel || '', config.nanoModel || '');
     }
 
     // In normal mode, check if graph needs reinitialization (e.g., after config change)
@@ -608,6 +653,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         this.#executionId = undefined;
       }
       this.#abortController = undefined;
+      // Clear running state - final message has already been sent to listeners at line 583
       this.#runningGraphStatePromise = undefined;
 
       // Return the most recent message (could be final answer, tool call, or error)
@@ -793,14 +839,19 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       if (selectedProvider === 'openrouter') {
         return true;
       }
-      
+
+      // BrowserOperator provider doesn't require an API key (endpoint is hardcoded)
+      if (selectedProvider === 'browseroperator') {
+        return false;
+      }
+
       // For LiteLLM, only require API key if no endpoint is configured
       if (selectedProvider === 'litellm') {
         const hasLiteLLMEndpoint = Boolean(localStorage.getItem('ai_chat_litellm_endpoint'));
         // If we have an endpoint, API key is optional
         return !hasLiteLLMEndpoint;
       }
-      
+
       // Default to requiring API key for any unknown provider
       return true;
     } catch (error) {
@@ -846,6 +897,39 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           if (parent) {
             this.#upsertAgentSessionInMessages(parent);
           }
+        }
+        break;
+      case 'session_completed':
+        // Get the completed session from the event data or active sessions
+        const completedSession = progressEvent.data?.session ||
+                                this.#activeAgentSessions.get(progressEvent.sessionId);
+
+        if (completedSession) {
+          logger.info('[AgentService] Session completed:', {
+            sessionId: progressEvent.sessionId,
+            status: completedSession.status,
+            terminationReason: completedSession.terminationReason
+          });
+
+          // Update the session in our tracking with the completed state
+          this.#activeAgentSessions.set(progressEvent.sessionId, completedSession);
+
+          // Upsert the completed session to messages (shows final_answer in transcript)
+          this.#upsertAgentSessionInMessages(completedSession);
+
+          // Dispatch completion event for UI components
+          this.dispatchEventToListeners(Events.AGENT_SESSION_COMPLETED, completedSession);
+
+          // Also dispatch session updated for components listening to that
+          this.dispatchEventToListeners(Events.AGENT_SESSION_UPDATED, completedSession);
+
+          // Trigger messages changed to update the chat transcript
+          this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+
+          // Clean up after a short delay (5 seconds) to allow UI to finish rendering
+          this.#cleanupCompletedSession(progressEvent.sessionId);
+        } else {
+          logger.warn('[AgentService] Session completed but session not found:', progressEvent.sessionId);
         }
         break;
     }

@@ -1,0 +1,10 @@
+.env
+node_modules
+*.log
+
+# Exclude all client configuration files
+nodejs/clients/*.yaml
+nodejs/clients/*.yml
+
+# But keep the example file
+!nodejs/clients/example-client.yaml

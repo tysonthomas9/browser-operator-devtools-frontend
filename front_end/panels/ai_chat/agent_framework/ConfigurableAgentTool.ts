@@ -181,6 +181,36 @@ export interface AgentToolConfig {
    * (both success and error results). Defaults to false (steps are omitted).
    */
   includeIntermediateStepsOnReturn?: boolean;
+
+  /**
+   * If true, generate a summary of the agent's execution and append it to the final answer.
+   * Summary includes: user request, agent decisions, and final outcome.
+   * Defaults to false (no summary generated).
+   * Use this for agents where understanding the execution process is valuable (e.g., web automation agents).
+   */
+  includeSummaryInAnswer?: boolean;
+
+  /**
+   * Optional lifecycle hook that runs before the agent starts executing.
+   * Use this for agent-specific pre-execution logic such as environment setup,
+   * page navigation, or prerequisite checks.
+   *
+   * @param callCtx - The call context containing API keys, models, and other execution context
+   * @returns Promise that resolves when pre-execution is complete
+   */
+  beforeExecute?: (callCtx: CallCtx) => Promise<void>;
+
+  /**
+   * Optional lifecycle hook that runs after the agent completes execution.
+   * Use this for agent-specific post-execution logic such as saving results,
+   * cleanup operations, or data aggregation.
+   *
+   * @param result - The final agent execution result (success or error)
+   * @param agentSession - The complete agent session with all messages and tool calls
+   * @param callCtx - The call context containing API keys, models, and other execution context
+   * @returns Promise that resolves when post-execution is complete
+   */
+  afterExecute?: (result: ConfigurableAgentResult, agentSession: AgentSession, callCtx: CallCtx) => Promise<void>;
 }
 
 /**
@@ -428,8 +458,14 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     const tracingContext = getCurrentTracingContext();
     const callCtx = (_ctx || {}) as CallCtx;
     const apiKey = callCtx.apiKey;
+    const provider = callCtx.provider;
 
-    if (!apiKey) {
+    // Check if API key is required based on provider
+    // LiteLLM and BrowserOperator have optional API keys
+    // Other providers (OpenAI, Groq, OpenRouter) require API keys
+    const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
       const errorResult = this.createErrorResult(`API key not configured for ${this.name}`, [], 'error');
       // Create minimal error session
       const errorSession: AgentSession = {
@@ -448,21 +484,33 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       return { ...errorResult, agentSession: errorSession };
     }
 
+    // Execute beforeExecute lifecycle hook if defined
+    if (this.config.beforeExecute) {
+      try {
+        await this.config.beforeExecute(callCtx);
+      } catch (error) {
+        logger.warn(`beforeExecute hook failed for ${this.name}:`, error);
+        // Continue with agent execution even if beforeExecute fails
+      }
+    }
+
     // Initialize
     const maxIterations = this.config.maxIterations || 10;
     
     // Resolve model name from context or configuration
     let modelName: string;
     if (this.config.modelName === MODEL_SENTINELS.USE_MINI) {
-      if (!callCtx.miniModel) {
-        throw new Error(`Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel.`);
+      // Fall back to main model if mini model is not configured
+      modelName = callCtx.miniModel || callCtx.mainModel || callCtx.model || '';
+      if (!modelName) {
+        throw new Error(`Mini model not provided in context for agent '${this.name}'. Ensure context includes miniModel or mainModel.`);
       }
-      modelName = callCtx.miniModel;
     } else if (this.config.modelName === MODEL_SENTINELS.USE_NANO) {
-      if (!callCtx.nanoModel) {
-        throw new Error(`Nano model not provided in context for agent '${this.name}'. Ensure context includes nanoModel.`);
+      // Fall back through nano -> mini -> main model chain
+      modelName = callCtx.nanoModel || callCtx.miniModel || callCtx.mainModel || callCtx.model || '';
+      if (!modelName) {
+        throw new Error(`Nano model not provided in context for agent '${this.name}'. Ensure context includes nanoModel, miniModel, or mainModel.`);
       }
-      modelName = callCtx.nanoModel;
     } else if (typeof this.config.modelName === 'function') {
       modelName = this.config.modelName();
     } else if (this.config.modelName) {
@@ -480,20 +528,29 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
     if (callCtx.model && !this.config.modelName) {
       modelName = callCtx.model;
     }
-    
+
+    // Update context with resolved fallback models for tools to use
+    // This ensures tools that check ctx.miniModel or ctx.nanoModel get the fallback
+    if (this.config.modelName === MODEL_SENTINELS.USE_MINI && !callCtx.miniModel) {
+      callCtx.miniModel = modelName;  // Use the resolved fallback
+    }
+    if (this.config.modelName === MODEL_SENTINELS.USE_NANO && !callCtx.nanoModel) {
+      callCtx.nanoModel = modelName;  // Use the resolved fallback
+    }
+
     // Validate required context
     if (!callCtx.provider) {
       throw new Error(`Provider not provided in context for agent '${this.name}'. Ensure context includes provider.`);
     }
-    
+
     const temperature = this.config.temperature ?? 0;
     const systemPrompt = this.config.systemPrompt;
     const tools = this.getToolInstances();
-    
+
     // Prepare initial messages
     const internalMessages = this.prepareInitialMessages(args);
     const runnerConfig: AgentRunnerConfig = {
-      apiKey,
+      apiKey: apiKey || '',  // Use empty string if undefined for BrowserOperator
       modelName,
       systemPrompt,
       tools,
@@ -519,6 +576,10 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       createErrorResult: this.config.createErrorResult
         ? (err, steps, reason) => this.config.createErrorResult!(err, steps, reason, this.config)
         : (err, steps, reason) => this.createErrorResult(err, steps, reason),
+      // Wrap afterExecute to pass callCtx (AgentRunner doesn't have access to callCtx)
+      afterExecute: this.config.afterExecute
+        ? async (result, agentSession) => this.config.afterExecute!(result, agentSession, callCtx)
+        : undefined,
     };
 
     // Run the agent
@@ -537,6 +598,9 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       },
       callCtx.abortSignal
     );
+
+    // Note: afterExecute hook is handled by AgentRunner via runnerHooks
+    // No need to call it here as it's already been executed
 
     // Return the direct result from the runner (including agentSession)
     return result;

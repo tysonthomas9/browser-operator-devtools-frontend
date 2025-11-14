@@ -1,0 +1,37 @@
+{
+  "name": "bo-eval-server",
+  "version": "1.0.0",
+  "description": "HTTP API wrapper for Browser Operator - WebSocket server with CDP integration",
+  "main": "src/lib/BrowserAgentServer.js",
+  "type": "module",
+  "exports": {
+    ".": "./src/lib/BrowserAgentServer.js",
+    "./BrowserAgentServer": "./src/lib/BrowserAgentServer.js",
+    "./HTTPWrapper": "./src/lib/HTTPWrapper.js"
+  },
+  "scripts": {
+    "start": "node start.js"
+  },
+  "keywords": [
+    "websocket",
+    "browser-automation",
+    "cdp",
+    "http-api",
+    "rpc"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "js-yaml": "^4.1.0",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

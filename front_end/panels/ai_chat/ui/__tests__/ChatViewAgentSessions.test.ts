@@ -344,6 +344,26 @@ describe('ChatView visibility rules: agent-managed tool calls/results are hidden
     document.body.removeChild(view);
   });
 
+  it('shows configurable agent tool error in chat when execution fails', async () => {
+    const view = document.createElement('devtools-chat-view') as any;
+    document.body.appendChild(view);
+    const toolCallId = 'id-err';
+
+    // Simulate: agent-lane tool call (filtered from chat) + error tool result routed to chat lane
+    view.data = {messages: [
+      makeUser('start'),
+      { entity: ChatMessageEntity.MODEL, action: 'tool', toolName: 'search_agent', toolCallId, isFinalAnswer: false, uiLane: 'agent' } as any,
+      { entity: ChatMessageEntity.TOOL_RESULT, toolName: 'search_agent', toolCallId, resultText: 'url.trim is not a function', isError: true, uiLane: 'chat' } as any,
+    ], state: 'idle', isTextInputEmpty: true, onSendMessage: () => {}, onPromptSelected: () => {}} as any;
+    await raf();
+
+    const shadow = view.shadowRoot!;
+    const errors = shadow.querySelectorAll('.tool-result-message.error');
+    assert.isAtLeast(errors.length, 1);
+    assert.include((errors[0].textContent || ''), 'url.trim is not a function');
+    document.body.removeChild(view);
+  });
+
   it('mixed: agent-managed tool hidden; regular tool visible', async () => {
     const view = document.createElement('devtools-chat-view') as any;
     document.body.appendChild(view);

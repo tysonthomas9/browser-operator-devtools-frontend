@@ -15,6 +15,7 @@ import { AgentErrorHandler } from '../core/AgentErrorHandler.js';
 import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';
 import { callLLMWithTracing } from '../tools/LLMTracingWrapper.js';
 import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
+import { FileStorageManager } from '../tools/FileStorageManager.js';
 
 const logger = createLogger('AgentRunner');
 
@@ -53,6 +54,8 @@ export interface AgentRunnerHooks {
   createSuccessResult: (output: string, intermediateSteps: ChatMessage[], reason: AgentRunTerminationReason) => ConfigurableAgentResult;
   /** Function to create an error result */
   createErrorResult: (error: string, intermediateSteps: ChatMessage[], reason: AgentRunTerminationReason) => ConfigurableAgentResult;
+  /** Function to run after agent execution completes (optional) */
+  afterExecute?: (result: ConfigurableAgentResult, agentSession: AgentSession) => Promise<void>;
 }
 
 
@@ -70,6 +73,33 @@ export class AgentRunner {
       AgentRunner.eventBus = AgentRunnerEventBus.getInstance();
     }
   }
+
+  /**
+   * Clears the todo list file if it exists and has content
+   * Called when an agent completes or fails to clean up state
+   * Only clears if the agent has access to the update_todo tool
+   */
+  private static async clearTodoList(agentName: string, tools: Array<Tool<any, any>>): Promise<void> {
+    // Only clear todos if the agent has the update_todo tool
+    const hasUpdateTodoTool = tools.some(tool => tool.name === 'update_todo');
+    if (!hasUpdateTodoTool) {
+      logger.debug(`Agent ${agentName} does not have update_todo tool, skipping todo list cleanup`);
+      return;
+    }
+
+    try {
+      const fileManager = FileStorageManager.getInstance();
+      const todosFile = await fileManager.readFile('todos.md');
+
+      if (todosFile?.content && todosFile.content.trim().length > 0) {
+        await fileManager.deleteFile('todos.md');
+        logger.info(`Cleared non-empty todo list for ${agentName}`);
+      }
+    } catch (error) {
+      logger.debug(`Failed to clear todo list for ${agentName}:`, error);
+    }
+  }
+
   /**
    * Helper function to convert ChatMessage[] to LLMMessage[]
    */
@@ -406,7 +436,7 @@ export class AgentRunner {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
     const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
-    const { prepareInitialMessages, createSuccessResult, createErrorResult } = hooks;
+    const { prepareInitialMessages, createSuccessResult, createErrorResult, afterExecute } = hooks;
 
 
     // Create session when agent starts (natural timing)
@@ -555,7 +585,38 @@ export class AgentRunner {
       // Check if execution has been aborted
       if (abortSignal?.aborted) {
         logger.info(`${agentName} execution aborted at iteration ${iteration + 1}/${maxIterations}`);
+
+        // Complete session with abort
+        currentSession.status = 'error';
+        currentSession.endTime = new Date();
+        currentSession.terminationReason = 'error';
+
+        // Emit session completed event
+        if (AgentRunner.eventBus) {
+          AgentRunner.eventBus.emitProgress({
+            type: 'session_completed',
+            sessionId: currentSession.sessionId,
+            parentSessionId: currentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: currentSession, reason: 'aborted' }
+          });
+        }
+
+        // Clear todo list on abort
+        await AgentRunner.clearTodoList(agentName, tools);
+
         const abortResult = createErrorResult('Execution was cancelled', messages, 'error');
+
+        // Execute afterExecute hook if defined
+        if (afterExecute) {
+          try {
+            await afterExecute(abortResult, currentSession);
+          } catch (error) {
+            logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+
         return { ...abortResult, agentSession: currentSession };
       }
 
@@ -568,12 +629,34 @@ export class AgentRunner {
       // Prepare prompt and call LLM
       const iterationInfo = `
 ## Current Progress
-- You are currently on step ${iteration + 1} of ${maxIterations} maximum steps.
+- You are currently on step ${iteration + 1} of ${maxIterations - 1} maximum steps.
 - Focus on making meaningful progress with each step.`;
 
-      // Enhance system prompt with iteration info and page context
+      // Inject todos into system prompt ONLY if agent has update_todo tool
+      let todosContext = '';
+      const hasUpdateTodoTool = config.tools.some(tool => tool.name === 'update_todo');
+
+      if (hasUpdateTodoTool) {
+        try {
+          const fileManager = FileStorageManager.getInstance();
+          const todosFile = await fileManager.readFile('todos.md');
+
+          if (todosFile?.content) {
+            todosContext = `\n\n## CURRENT TODO LIST\n${todosFile.content}\n\nUpdate the todo list using the 'update_todo' tool as you complete tasks. Mark completed items with [x].`;
+          } else {
+            todosContext = `\n\n## TODO LIST\nNo todo list exists yet. If this is a multi-step task, create a todo list using the 'update_todo' tool to track your progress.`;
+          }
+        } catch (error) {
+          logger.debug('Failed to read todos, skipping injection:', error);
+          // Continue without todos if reading fails
+        }
+      } else {
+        logger.debug(`Skipping todo injection for ${agentName} - update_todo tool not available`);
+      }
+
+      // Enhance system prompt with iteration info, todos, and page context
       // This includes updating the accessibility tree inside enhancePromptWithPageContext
-      const currentSystemPrompt = await enhancePromptWithPageContext(systemPrompt + iterationInfo);
+      const currentSystemPrompt = await enhancePromptWithPageContext(systemPrompt + iterationInfo + todosContext);
 
       let llmResponse: LLMResponse;
       let generationId: string | undefined; // Declare in iteration scope for tool call access
@@ -666,6 +749,7 @@ export class AgentRunner {
           systemPrompt: currentSystemPrompt,
           tools: toolSchemas,
           temperature: temperature ?? 0,
+          agentName: agentName,  // Pass agent identity for provider-specific routing
         });
 
         // Complete the generation observation
@@ -752,12 +836,37 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
+        // Emit session completed event
+        if (AgentRunner.eventBus) {
+          AgentRunner.eventBus.emitProgress({
+            type: 'session_completed',
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: agentSession, reason: 'error' }
+          });
+        }
+
+        // Clear todo list on error
+        await AgentRunner.clearTodoList(agentName, tools);
+
         // Use error hook with structured summary
         const result = createErrorResult(errorMsg, messages, 'error');
         result.summary = {
           type: 'error',
           content: errorSummary
         };
+
+        // Execute afterExecute hook if defined
+        if (afterExecute) {
+          try {
+            await afterExecute(result, agentSession);
+          } catch (error) {
+            logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+
         return { ...result, agentSession };
       }
 
@@ -907,6 +1016,18 @@ export class AgentRunner {
               agentSession.status = 'completed';
               agentSession.endTime = new Date();
               agentSession.terminationReason = 'handed_off';
+
+              // Emit session completed event
+              if (AgentRunner.eventBus) {
+                AgentRunner.eventBus.emitProgress({
+                  type: 'session_completed',
+                  sessionId: agentSession.sessionId,
+                  parentSessionId: agentSession.parentSessionId,
+                  agentName,
+                  timestamp: new Date(),
+                  data: { session: agentSession, reason: 'handed_off' }
+                });
+              }
 
               return { ...handoffResult, agentSession };
 
@@ -1186,20 +1307,50 @@ export class AgentRunner {
 
           logger.info(`${agentName} LLM provided final answer.`);
 
-          // Generate summary of successful completion
-          const completionSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'final_answer', config.provider, config.getVisionCapability);
+          // Clear non-empty todo list when sending final message
+          await AgentRunner.clearTodoList(agentName, tools);
+
+          // Conditionally generate and append summary based on agent configuration
+          let finalAnswer = answer;
+          if (executingAgent?.config?.includeSummaryInAnswer === true) {
+            logger.info(`Generating summary for ${agentName} (includeSummaryInAnswer=true)`);
+            const completionSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'final_answer', config.provider, config.getVisionCapability);
+            // Append summary to the answer with clear separator
+            finalAnswer = `${answer}\n\n---\n\n### Analysis of Agentic Conversation\n\n${completionSummary}`;
+          } else {
+            logger.info(`Skipping summary for ${agentName} (includeSummaryInAnswer not enabled)`);
+          }
 
           // Complete session naturally
           agentSession.status = 'completed';
           agentSession.endTime = new Date();
           agentSession.terminationReason = 'final_answer';
 
-          // Exit loop and return success with structured summary
-          const result = createSuccessResult(answer, messages, 'final_answer');
-          result.summary = {
-            type: 'completion',
-            content: completionSummary
-          };
+          // Emit session completed event
+          if (AgentRunner.eventBus) {
+            AgentRunner.eventBus.emitProgress({
+              type: 'session_completed',
+              sessionId: agentSession.sessionId,
+              parentSessionId: agentSession.parentSessionId,
+              agentName,
+              timestamp: new Date(),
+              data: { session: agentSession, reason: 'final_answer' }
+            });
+          }
+
+          // Exit loop and return success with final answer (summary appended if configured)
+          const result = createSuccessResult(finalAnswer, messages, 'final_answer');
+
+          // Execute afterExecute hook if defined
+          if (afterExecute) {
+            try {
+              await afterExecute(result, agentSession);
+            } catch (error) {
+              logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+              // Continue and return result even if afterExecute fails
+            }
+          }
+
           return { ...result, agentSession };
 
         } else if (parsedAction.type === 'error') {
@@ -1237,12 +1388,37 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
+        // Emit session completed event
+        if (AgentRunner.eventBus) {
+          AgentRunner.eventBus.emitProgress({
+            type: 'session_completed',
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: agentSession, reason: 'error' }
+          });
+        }
+
+        // Clear todo list on error
+        await AgentRunner.clearTodoList(agentName, tools);
+
         // Use error hook with structured summary
         const result = createErrorResult(errorMsg, messages, 'error');
         result.summary = {
           type: 'error',
           content: errorSummary
         };
+
+        // Execute afterExecute hook if defined
+        if (afterExecute) {
+          try {
+            await afterExecute(result, agentSession);
+          } catch (error) {
+            logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+          }
+        }
+
         return { ...result, agentSession };
       }
     }
@@ -1285,6 +1461,18 @@ export class AgentRunner {
             agentSession.endTime = new Date();
             agentSession.terminationReason = 'handed_off';
 
+            // Emit session completed event
+            if (AgentRunner.eventBus) {
+              AgentRunner.eventBus.emitProgress({
+                type: 'session_completed',
+                sessionId: agentSession.sessionId,
+                parentSessionId: agentSession.parentSessionId,
+                agentName,
+                timestamp: new Date(),
+                data: { session: agentSession, reason: 'handed_off' }
+              });
+            }
+
             return { ...actualResult, agentSession }; // Return the result from the handoff target
         }
     }
@@ -1297,13 +1485,39 @@ export class AgentRunner {
     agentSession.endTime = new Date();
     agentSession.terminationReason = 'max_iterations';
 
+    // Emit session completed event
+    if (AgentRunner.eventBus) {
+      AgentRunner.eventBus.emitProgress({
+        type: 'session_completed',
+        sessionId: agentSession.sessionId,
+        parentSessionId: agentSession.parentSessionId,
+        agentName,
+        timestamp: new Date(),
+        data: { session: agentSession, reason: 'max_iterations' }
+      });
+    }
+
     // Generate summary of agent progress instead of generic error message
     const progressSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'max_iterations', config.provider, config.getVisionCapability);
+
+    // Clear todo list on max iterations
+    await AgentRunner.clearTodoList(agentName, tools);
+
     const result = createErrorResult('Agent reached maximum iterations', messages, 'max_iterations');
     result.summary = {
       type: 'timeout',
       content: progressSummary
     };
+
+    // Execute afterExecute hook if defined
+    if (afterExecute) {
+      try {
+        await afterExecute(result, agentSession);
+      } catch (error) {
+        logger.warn(`afterExecute hook failed for ${agentName}:`, error);
+      }
+    }
+
     return { ...result, agentSession };
   }
 
@@ -1361,14 +1575,41 @@ Key guidelines:
         default:
           summaryPrompt = `The agent "${agentName}" has reached its maximum iteration limit of ${maxIterations}.
 
-Please analyze the entire conversation above and provide a concise summary that includes:
+Please analyze the entire conversation above and provide a COMPREHENSIVE and DETAILED summary (minimum 400-600 words) that includes:
 
-1. **User Request**: What the user originally asked for
-2. **Agent Decisions**: Key decisions and actions the agent took
-3. **Final State**: What the agent was doing when it timed out
-4. **Progress Assessment**: Whether the agent was making progress or stuck
+1. **User Request** (1-2 paragraphs)
+   - What the user originally asked for
+   - Key requirements and scope mentioned
+   - Expected deliverables or outcomes
 
-Format your response as a clear, informative summary that would help a calling agent understand what happened and decide next steps.`;
+2. **Agent Decisions** (2-3 paragraphs)
+   - List each tool call made with specific details (tool name, key arguments, purpose)
+   - Explain the reasoning behind each decision
+   - Describe the strategy or approach the agent took
+   - What data or information was extracted at each step
+   - Any patterns in the agent's behavior (e.g., broad searches, specific targeting)
+
+3. **Final State** (1-2 paragraphs)
+   - Exactly what the agent was doing when it timed out
+   - What task was in progress
+   - What data had been gathered so far (URLs, content, structured data)
+   - State of any ongoing operations
+
+4. **Progress Assessment** (2-3 paragraphs)
+   - Whether the agent was making meaningful progress toward the goal
+   - If stuck, identify loops, errors, or blocking issues
+   - Assess if the iteration limit (${maxIterations}) was appropriate for this task
+   - What percentage of the goal was accomplished
+   - Quality of work completed so far
+
+5. **Recommendations for Next Steps** (2-3 paragraphs with bullet points)
+   - Specific, actionable steps a calling agent should take to continue this work
+   - Which tools to use next and with what arguments
+   - What data to prioritize or process
+   - Suggested iteration limit if re-running
+   - Alternative approaches if current path seems blocked
+
+IMPORTANT: Even if the agent only completed a few iterations, provide DETAILED analysis of what it did accomplish. Describe each action comprehensively, analyze the decision-making, and provide concrete recommendations. Do not give brief answers - expand each section thoroughly with specific examples and data from the conversation.`;
           break;
       }
 

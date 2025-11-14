@@ -215,7 +215,7 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
           if (tool === 'extract_data') {
             const arr = (data?.data?.results || data?.results || []) as any[];
             for (const r of arr) {
-              const url = r?.url || '';
+              const url = typeof r?.url === 'string' ? r.url : '';
               if (!url) continue;
               const title = r?.title || '';
               const source = r?.source || '';
@@ -241,7 +241,7 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
           if (tool === 'fetcher_tool') {
             const sources = (data?.sources || []) as any[];
             for (const s of sources) {
-              const url = s?.url || '';
+              const url = typeof s?.url === 'string' ? s.url : '';
               if (!url) continue;
               const title = s?.title || '';
               if (s?.success) {

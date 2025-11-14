@@ -30,6 +30,8 @@ import './input/InputBar.js';
 import './model_selector/ModelSelector.js';
 import { combineMessages } from './message/MessageCombiner.js';
 import { StructuredResponseController } from './message/StructuredResponseController.js';
+import './TodoListDisplay.js';
+import './FileListDisplay.js';
 
 // Shared chat types
 import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData } from '../models/ChatTypes.js';
@@ -43,6 +45,105 @@ const {html, Decorators} = Lit;
 const {customElement} = Decorators;
 
 // Markdown rendering moved to ui/markdown/MarkdownRenderers.ts
+
+// Example prompt configuration with optional model preferences
+export interface ExamplePromptConfig {
+  displayText: string;        // Text shown in UI button
+  promptText?: string;        // Actual prompt sent to agent (if omitted, uses displayText)
+  agentType?: string;
+  modelPreferences?: {
+    [provider: string]: {
+      main?: string;
+      mini?: string;
+      nano?: string;
+    };
+  };
+}
+
+// Centralized example prompts configuration
+export const EXAMPLE_PROMPTS = {
+  DEEP_RESEARCH_AI_AGENTS: {
+    displayText: '🔬 Deep research AI agents',
+    promptText: 'Deep research latest breakthroughs in AI agents and provide a comprehensive analysis with citations',
+    agentType: BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH,
+    modelPreferences: {
+      openrouter: {
+        main: 'z-ai/glm-4.6:exacto',
+        mini: 'x-ai/grok-4-fast',
+        nano: 'google/gemini-2.5-flash-lite'
+      }
+    }
+  },
+  STAR_BROWSER_OPERATOR_REPO: {
+    displayText: '⭐ Star on GitHub',
+    promptText: 'Go to github.com/BrowserOperator/browser-operator-core to star the repo. If user is not logged in, ask them to log in first.',
+    // No agentType - uses default behavior
+    modelPreferences: {
+      openrouter: {
+        main: 'anthropic/claude-sonnet-4.5',
+        mini: 'google/gemini-2.5-flash',
+        nano: 'google/gemini-2.5-flash-lite'
+      }
+    }
+  },
+  FIND_CONTENT_WRITERS: {
+    displayText: 'Find content writers',
+    promptText: 'Find content writers in Seattle, WA with their contact information and portfolio links',
+    agentType: BaseOrchestratorAgent.BaseOrchestratorAgentType.SEARCH,
+    modelPreferences: {
+      openrouter: {
+        main: 'z-ai/glm-4.6:exacto',
+        mini: 'x-ai/grok-4-fast',
+        nano: 'google/gemini-2.5-flash-lite'
+      }
+    }
+  },
+  APPLE_STOCKS_ANALYSIS: {
+    displayText: '📊 Apple stocks analysis',
+    promptText: 'Provide me detailed analysis of Apple stocks with current price, trends, and expert opinions',
+    agentType: BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH,
+    modelPreferences: {
+      openrouter: {
+        main: 'z-ai/glm-4.6:exacto',
+        mini: 'x-ai/grok-4-fast',
+        nano: 'google/gemini-2.5-flash-lite'
+      }
+    }
+  },
+  IPHONE_REVIEWS: {
+    displayText: '📱 iPhone 17 reviews',
+    promptText: 'What are the reviews of iPhone 17? Include specs, pricing, and expert opinions',
+    agentType: BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH,
+    modelPreferences: {
+      openrouter: {
+        main: 'z-ai/glm-4.6:exacto',
+        mini: 'google/gemini-2.5-flash',
+        nano: 'google/gemini-2.5-flash-lite'
+      }
+    }
+  },
+  SUMMARIZE_NEWS: {
+    displayText: '📰 Summarize today\'s news',
+    promptText: 'Summarize today\'s top news stories across different categories',
+    agentType: BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH,
+    modelPreferences: {
+      openrouter: {
+        main: 'z-ai/glm-4.6:exacto',
+        mini: 'google/gemini-2.5-flash',
+        nano: 'google/gemini-2.5-flash-lite'
+      }
+    }
+  },
+  SUMMARIZE_PAGE: {
+    displayText: 'Summarize this page'
+    // No agentType - uses default, no model preferences
+  },
+  EXTRACT_LINKS: {
+    displayText: 'Extract all links',
+    promptText: 'Extract all links and titles from this page in a structured format'
+    // No agentType - uses default, no model preferences
+  }
+} as const;
 
 export interface Props {
   messages: ChatMessage[];
@@ -67,6 +168,10 @@ export interface Props {
   // Add OAuth login related properties
   showOAuthLogin?: boolean;
   onOAuthLogin?: () => void;
+  // Add current provider for model selector behavior
+  currentProvider?: string;
+  // Callback for switching models when specific example prompts are selected
+  onExamplePromptModelSwitch?: (modelPreferences: { main?: string; mini?: string; nano?: string }) => void;
 }
 
 @customElement('devtools-chat-view')
@@ -83,6 +188,7 @@ export class ChatView extends HTMLElement {
   #onSendMessage?: (text: string, imageInput?: ImageInputData) => void;
   #onImageInputClear?: () => void;
   #onPromptSelected?: (promptType: string | null) => void;
+  #onExamplePromptModelSwitch?: (modelPreferences: { main?: string; mini?: string; nano?: string }) => void;
   // input is handled by <ai-chat-input>
   #markdownRenderer = new MarkdownRenderer();
   #isFirstMessageView = true; // Track if we're in the centered first-message view
@@ -97,6 +203,7 @@ export class ChatView extends HTMLElement {
   #onModelSelectorFocus?: () => void;
   #selectedAgentType?: string | null;
   #isModelSelectorDisabled = false;
+  #currentProvider?: string;
   // URL change listener
   #onInspectedURLChangedBound?: (event: Event) => void;
   #lastSuggestionHost: string | null = null;
@@ -278,6 +385,7 @@ export class ChatView extends HTMLElement {
     this.#onSendMessage = data.onSendMessage;
     this.#onImageInputClear = data.onImageInputClear;
     this.#onPromptSelected = data.onPromptSelected;
+    this.#onExamplePromptModelSwitch = data.onExamplePromptModelSwitch;
     // Add model selection properties
     this.#modelOptions = data.modelOptions;
     this.#selectedModel = data.selectedModel;
@@ -285,6 +393,7 @@ export class ChatView extends HTMLElement {
     this.#onModelSelectorFocus = data.onModelSelectorFocus;
     this.#selectedAgentType = data.selectedAgentType;
     this.#isModelSelectorDisabled = data.isModelSelectorDisabled || false;
+    this.#currentProvider = data.currentProvider;
 
     // Store input disabled state and placeholder
     this.#isInputDisabled = data.isInputDisabled || false;
@@ -805,8 +914,10 @@ export class ChatView extends HTMLElement {
               onRetry: () => this.dispatchEvent(new CustomEvent('retry', { bubbles: true }))
             }) : Lit.nothing}
           </ai-message-list>
+          <ai-todo-list></ai-todo-list>
+          <ai-file-list-display></ai-file-list-display>
           ${this.#renderInputBar(false)}
-          
+
         </div>
       `, this.#shadow, {host: this});
     }
@@ -829,35 +940,71 @@ export class ChatView extends HTMLElement {
       <div class="examples-container">
         <div class="examples-title">Try one of these</div>
         <div class="examples-list">
-          ${examples.map(ex => html`
-            <button class="example-chip" @click=${() => this.#handleExampleClick(ex.text, ex.agentType)} title=${ex.text}>${ex.text}</button>
-          `)}
+          ${examples.map(ex => {
+            const tooltipText = ex.promptText || ex.displayText;
+            return html`
+              <button class="example-chip" @click=${() => this.#handleExampleClick(ex)} title=${tooltipText}>${ex.displayText}</button>
+            `;
+          })}
         </div>
       </div>
     `;
   }
 
   // On suggestion click, fill input field and focus it
-  #handleExampleClick(text: string, agentType?: string): void {
+  #handleExampleClick(promptConfig: ExamplePromptConfig): void {
+    // Get the actual prompt text to send (falls back to displayText if promptText not provided)
+    const promptText = promptConfig.promptText || promptConfig.displayText;
+
+    logger.info('=== EXAMPLE PROMPT CLICKED ===');
+    logger.info('Display text:', promptConfig.displayText);
+    logger.info('Prompt text:', promptText);
+    logger.info('Agent type:', promptConfig.agentType || 'default (none)');
+
     const bar = this.#shadow.querySelector('ai-input-bar') as (HTMLElement & { setInputValue?: (t: string) => void }) | null;
     if (bar && typeof (bar as any).setInputValue === 'function') {
-      (bar as any).setInputValue(text);
+      (bar as any).setInputValue(promptText);
     } else {
       // Fallback: try to set directly on ai-chat-input if present
       const input = bar?.querySelector('ai-chat-input') as (HTMLElement & { value?: string, focusInput?: () => void }) | null;
       if (input) {
-        (input as any).value = text;
+        (input as any).value = promptText;
         if (typeof (input as any).focusInput === 'function') {
           (input as any).focusInput();
         }
         // Bubble change up so parent state updates
-        bar?.dispatchEvent(new CustomEvent('inputchange', { bubbles: true, detail: { value: text }}));
+        bar?.dispatchEvent(new CustomEvent('inputchange', { bubbles: true, detail: { value: promptText }}));
       }
     }
 
     // Auto-select agent type if provided
-    if (agentType) {
-      this.#autoSelectAgent(agentType);
+    if (promptConfig.agentType) {
+      this.#autoSelectAgent(promptConfig.agentType);
+    }
+
+    // Trigger model switch if this prompt has model preferences for the current provider
+    logger.info('=== MODEL SWITCH CHECK ===');
+    logger.info('Has modelPreferences?', !!promptConfig.modelPreferences);
+    logger.info('Current provider:', this.#currentProvider);
+    logger.info('Has callback?', !!this.#onExamplePromptModelSwitch);
+
+    if (promptConfig.modelPreferences && this.#currentProvider && this.#onExamplePromptModelSwitch) {
+      const providerPreferences = promptConfig.modelPreferences[this.#currentProvider];
+      logger.info(`Provider preferences for "${this.#currentProvider}":`, providerPreferences);
+
+      if (providerPreferences) {
+        logger.info('✅ Calling onExamplePromptModelSwitch with:', providerPreferences);
+        this.#onExamplePromptModelSwitch(providerPreferences);
+      } else {
+        logger.warn(`❌ No model preferences found for provider: ${this.#currentProvider}`);
+        logger.info('Available providers in config:', Object.keys(promptConfig.modelPreferences));
+      }
+    } else {
+      logger.warn('❌ Model switch conditions not met:', {
+        hasModelPreferences: !!promptConfig.modelPreferences,
+        currentProvider: this.#currentProvider,
+        hasCallback: !!this.#onExamplePromptModelSwitch
+      });
     }
   }
 
@@ -887,10 +1034,10 @@ export class ChatView extends HTMLElement {
   }
 
   // Build example suggestions (generic + page-specific if URL is present)
-  #getExampleSuggestions(): Array<{ text: string; agentType?: string }> {
-    const generic: Array<{ text: string; agentType?: string }> = [
-      { text: 'Summarize this page' },
-      { text: 'Extract all links and titles from this page' },
+  #getExampleSuggestions(): ExamplePromptConfig[] {
+    const generic: ExamplePromptConfig[] = [
+      EXAMPLE_PROMPTS.SUMMARIZE_PAGE,
+      EXAMPLE_PROMPTS.EXTRACT_LINKS,
     ];
 
     const url = this.#getCurrentPageURL();
@@ -907,15 +1054,13 @@ export class ChatView extends HTMLElement {
 
     if (isChromeInternalPage) {
       // Provide mixed examples for all Chrome internal pages
-      const researchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH;
-      const searchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.SEARCH;
-      const searchExamples: Array<{ text: string; agentType?: string }> = [
-        { text: 'Deep research latest breakthroughs in AI agents', agentType: researchAgent },
-        { text: 'Find content writers in Seattle, WA', agentType: searchAgent },
-        { text: 'Provide me analysis of Apple stocks?', agentType: researchAgent },
-        { text: 'Summarize today\'s news', agentType: researchAgent },
+      return [
+        EXAMPLE_PROMPTS.DEEP_RESEARCH_AI_AGENTS,
+        EXAMPLE_PROMPTS.FIND_CONTENT_WRITERS,
+        EXAMPLE_PROMPTS.APPLE_STOCKS_ANALYSIS,
+        EXAMPLE_PROMPTS.SUMMARIZE_NEWS,
+        EXAMPLE_PROMPTS.STAR_BROWSER_OPERATOR_REPO,
       ];
-      return searchExamples;
     }
 
     // Detect common search engines
@@ -923,23 +1068,21 @@ export class ChatView extends HTMLElement {
 
     if (isSearchSite) {
       // Provide deep-research oriented examples and pre-select the deep research agent on click
-      const researchAgent = BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH;
-      const searchExamples: Array<{ text: string; agentType?: string }> = [
-        { text: 'Deep research latest breakthroughs in AI agents', agentType: researchAgent },
-        { text: 'What are the reviews of iPhone 17?', agentType: researchAgent },
-        { text: 'Provide me analysis of Apple stocks?', agentType: researchAgent },
-        { text: 'Summarize today\'s news', agentType: researchAgent },
+      return [
+        EXAMPLE_PROMPTS.DEEP_RESEARCH_AI_AGENTS,
+        EXAMPLE_PROMPTS.IPHONE_REVIEWS,
+        EXAMPLE_PROMPTS.APPLE_STOCKS_ANALYSIS,
+        EXAMPLE_PROMPTS.SUMMARIZE_NEWS,
       ];
-      return searchExamples;
     }
 
-    const specific: Array<{ text: string; agentType?: string }> = [
-      { text: `What do you think about ${hostname ? hostname + ' ' : ''}page?` },
+    const specific: ExamplePromptConfig[] = [
+      { displayText: `What do you think about ${hostname ? hostname + ' ' : ''}page?` },
     ];
 
-    // Merge, de-duplicate by text, cap to concise set
-    const map = new Map<string, { text: string; agentType?: string }>();
-    [...specific, ...generic].forEach(item => { if (!map.has(item.text)) map.set(item.text, item); });
+    // Merge, de-duplicate by displayText, cap to concise set
+    const map = new Map<string, ExamplePromptConfig>();
+    [...specific, ...generic].forEach(item => { if (!map.has(item.displayText)) map.set(item.displayText, item); });
     return Array.from(map.values()).slice(0, 6);
   }
 
@@ -975,7 +1118,13 @@ export class ChatView extends HTMLElement {
 
   // Render model selector via dedicated component
   #renderModelSelectorInline() {
-    if (!this.#modelOptions || !this.#modelOptions.length || !this.#selectedModel || !this.#onModelChanged) {
+    if (
+      this.#currentProvider === 'browseroperator' ||
+      !this.#modelOptions ||
+      !this.#modelOptions.length ||
+      !this.#selectedModel ||
+      !this.#onModelChanged
+    ) {
       return '';
     }
     return html`
@@ -1010,6 +1159,7 @@ export class ChatView extends HTMLElement {
         .modelOptions=${this.#modelOptions}
         .selectedModel=${this.#selectedModel}
         .modelSelectorDisabled=${this.#isModelSelectorDisabled}
+        .currentProvider=${this.#currentProvider}
         .selectedPromptType=${this.#selectedPromptType}
         .agentButtonsHandler=${this.#handlePromptButtonClickBound}
         .centered=${centered}

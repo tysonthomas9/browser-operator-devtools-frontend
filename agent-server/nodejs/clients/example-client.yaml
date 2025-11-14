@@ -1,0 +1,15 @@
+# Example Client Configuration
+#
+# To create a new client:
+# 1. Copy this file and rename it to: {client-uuid}.yaml
+#    Example: 9907fd8d-92a8-4a6a-bce9-458ec8c57306.yaml
+# 2. Update the client ID to match the filename
+# 3. Set a secret key for authentication
+#
+# The filename MUST match the client ID for proper client discovery.
+
+client:
+  id: YOUR-CLIENT-UUID-HERE
+  name: My DevTools Client
+  secret_key: your-secret-key-here
+  description: Browser Operator DevTools client

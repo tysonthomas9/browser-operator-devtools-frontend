@@ -54,13 +54,16 @@ export interface UnifiedLLMOptions {
   // Tool usage (for function calling)
   tools?: any[];
   tool_choice?: any;
-  
+
+  // Agent context
+  agentName?: string; // Name of the calling agent for provider-specific routing
+
   // Feature flags
   strictJsonMode?: boolean; // Enables strict JSON parsing with retries
-  
+
   // Retry configuration override
   customRetryConfig?: Partial<RetryConfig>;
-  
+
   // Legacy compatibility (deprecated - use customRetryConfig instead)
   maxRetries?: number;
 }
@@ -139,7 +142,7 @@ export interface ExtendedRetryConfig extends ErrorRetryConfig {
 /**
  * LLM Provider types
  */
-export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter';
+export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
 
 /**
  * Content types for multimodal messages (text + images + files)
@@ -197,6 +200,7 @@ export interface LLMCallOptions {
   temperature?: number;
   reasoningLevel?: 'low' | 'medium' | 'high'; // For O-series models
   retryConfig?: Partial<RetryConfig>;
+  agentName?: string; // Name of the calling agent for provider-specific routing
 }
 
 /**

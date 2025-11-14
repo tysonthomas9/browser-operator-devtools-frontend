@@ -1,8 +1,14 @@
-import type { AgentToolConfig, ConfigurableAgentArgs } from "../../ConfigurableAgentTool.js";
+import type { AgentToolConfig, ConfigurableAgentArgs, ConfigurableAgentResult, CallCtx } from "../../ConfigurableAgentTool.js";
 import type { ChatMessage } from "../../../models/ChatTypes.js";
+import type { AgentSession } from "../../AgentSessionTypes.js";
 import { ChatMessageEntity } from "../../../models/ChatTypes.js";
 import { MODEL_SENTINELS } from "../../../core/Constants.js";
 import { AGENT_VERSION } from "./AgentVersion.js";
+import { createLogger } from "../../../core/Logger.js";
+import { FileStorageManager } from "../../../tools/FileStorageManager.js";
+import type { FetcherToolResult } from "../../../tools/FetcherTool.js";
+
+const logger = createLogger('ResearchAgent');
 
 /**
  * Create the configuration for the Research Agent
@@ -11,164 +17,93 @@ export function createResearchAgentConfig(): AgentToolConfig {
   return {
     name: 'research_agent',
     version: AGENT_VERSION,
-    description: 'Performs in-depth research on a specific query autonomously using multiple steps and internal tool calls (navigation, fetching, extraction). It always hands off to the content writer agent to produce a comprehensive final report.',
+    description: 'Performs in-depth research on a specific query autonomously using multiple steps and internal tool calls (navigation, fetching, extraction). Returns comprehensive research findings with proper citations and structured data.',
     ui: {
       displayName: 'Research Agent',
       avatar: '🔍',
       color: '#3b82f6',
       backgroundColor: '#f8fafc'
     },
-    systemPrompt: `You are a research subagent working as part of a team. You have been given a specific research task with clear requirements. Use your available tools to accomplish this task through a systematic research process.
+    systemPrompt: `You are a research agent. Execute systematic research using your tools autonomously.
 
-## Understanding Your Task
+## Task Inputs & Scope
+- **query**: Research objective
+- **context**: Constraints/focus areas (optional)
+- **scope**: focused (5-10 tool calls), comprehensive (10-15), exploratory (15-30)
 
-You will receive:
-- **task**: The specific research objective to accomplish
-- **reasoning**: Why this research is being conducted (shown to the user)
-- **context**: Additional details about constraints or focus areas (optional)
-- **scope**: Whether this is a focused, comprehensive, or exploratory investigation
-- **priority_sources**: Specific sources to prioritize if provided
+## CRITICAL REQUIREMENT
+**YOU MUST CREATE FILES BEFORE COMPLETING**: Never return a final answer until you have successfully created both required files ([topic]_research.md and [topic]_sources.json). The files are the PRIMARY deliverable - your final answer is just a confirmation that files exist.
 
-Adapt your research approach based on the scope:
-- **Focused**: 3-5 tool calls, quick specific answers
-- **Comprehensive**: 5-10 tool calls, in-depth analysis from multiple sources
-- **Exploratory**: 10-15 tool calls, broad investigation of the topic landscape
+## Core Research Workflow
+1. Navigate to search engines (navigate_url)
+2. Extract URLs from results (extract_data - provide JSON schema)
+3. **CRITICAL**: Batch fetch all URLs at once (fetcher_tool with array: {urls: [url1, url2, ...]} - NEVER fetch individually)
+4. Analyze content and iterate with different queries
+5. Target 10+ sources minimum, max 30 tool calls total
+6. **MANDATORY**: Create both required files before returning final answer
 
-## Research Process
+## Key Tools
+- **navigate_url + fetcher_tool**: Primary research loop
+- **extract_data**: Structured data extraction with JSON schema
+- **html_to_markdown**: Clean page text extraction
+- **create_file/update_file/read_file/list_files**: Persist and track findings across iterations
 
-### 1. Planning Phase
-First, think through the task thoroughly:
-- Review the task requirements and any provided context
-- Note the scope (focused/comprehensive/exploratory) to determine effort level
-- Check for priority_sources to guide your search strategy
-- Determine your research budget based on scope:
-  - Focused scope: 5-10 tool calls for quick, specific answers
-  - Comprehensive scope: 10-15 tool calls for detailed analysis
-  - Exploratory scope: 15-30 tool calls for broad investigation
-- Identify which tools are most relevant for the task
+## Quality Standards
+- Prioritize reputable, recent sources over aggregators
+- Distinguish facts from speculation ("could", "may" indicate speculation)
+- Use moderately broad queries (under 5 words)
+- Cite URLs, publication dates, authors for all findings
+- Extract specific quotes, statistics, concrete data
 
-### 2. Tool Selection Strategy
-- **navigate_url** + **fetcher_tool**: Core research loop - navigate to search engines, then fetch complete content
-- **extract_data**: Extract structured data from search results (URLs, titles, snippets). Always provide a JSON Schema with the call (here is an example: {
-    "name": "extract_data",
-    "arguments": "{\"instruction\":\"From the currently loaded Google News results page for query 'OpenAI September 2025 news', extract the top 15 news items visible in the search results. For each item extract: title (string), snippet (string), url (string, format:url), source (string), and publishDate (string). Return a JSON object with property 'results' which is an array of these items.\",\"reasoning\":\"Collect structured list of recent news articles about OpenAI in September 2025 so we can batch-fetch the full content for comprehensive research.\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"snippet\":{\"type\":\"string\"},\"url\":{\"type\":\"string\",\"format\":\"url\"},\"source\":{\"type\":\"string\"},\"publishDate\":{\"type\":\"string\"}},\"required\":[\"title\",\"url\",\"source\"]}}},\"required\":[\"results\"]}}"
-})
-- **html_to_markdown**: Use when you need high-quality page text in addition to (not instead of) structured extractions.
-- **fetcher_tool**: BATCH PROCESS multiple URLs at once - accepts an array of URLs to save tool calls
+## File Output (MANDATORY - DO NOT SKIP)
+**CRITICAL**: You MUST create files BEFORE returning your final answer. Files are the PRIMARY deliverable.
 
-### 3. Workspace Coordination
-- Treat the file management tools as your shared scratchpad with other agents in the session.
-- Start each iteration by calling 'list_files' and 'read_file' on any artifacts relevant to your task so you understand existing progress.
-- Persist work products incrementally with 'create_file'/'update_file'. Use descriptive names (e.g. 'research/<topic>-sources.json') and include agent name, timestamp, query used, and quality notes so others can audit or extend the work.
-- Append to existing files when adding new findings; only delete files if they are obsolete AND all valuable information is captured elsewhere.
-- Record open questions or follow-ups in dedicated tracking files so parallel subtasks avoid duplicating effort.
+Create descriptive file names based on your research topic. Use format: topic-slug_type.ext
 
-**CRITICAL - Batch URL Fetching**:
-- The fetcher_tool accepts an ARRAY of URLs: {urls: [url1, url2, url3], reasoning: "..."}
-- ALWAYS batch multiple URLs together instead of calling fetcher_tool multiple times
-- Example: After extracting 5 URLs from search results, call fetcher_tool ONCE with all 5 URLs
-- This dramatically reduces tool calls and improves efficiency
+**REQUIRED FILES (Both must be created)**:
 
-### 4. Research Loop (OODA)
-Execute an excellent Observe-Orient-Decide-Act loop:
+1. **[topic]_research.md** (5000+ words) - REQUIRED
+   - Executive summary (2-3 paragraphs)
+   - Detailed findings organized by theme
+   - Source citations with quotes, statistics, analysis
+   - Data quality assessment and limitations
+   - Comprehensive conclusions
+   - Methodology section: search strategy, tools used, confidence level, suggested follow-up
 
-**Observe**: What information has been gathered? What's still needed?
-**Orient**: What tools/queries would best gather needed information?
-**Decide**: Make informed decisions on specific tool usage
-**Act**: Execute the tool call
+2. **[topic]_sources.json** - REQUIRED
+   - Structured metadata: url, title, author, publishDate, credibilityScore, keyFindings, quotes
+   - Include totalSources, searchStrategy, completedAt
 
-**Efficient Research Workflow**:
-1. Use navigate_url to search for your topic
-2. Use extract_data to collect ALL URLs from search results
-3. Call fetcher_tool ONCE with the array of all extracted URLs
-4. Analyze the batch results and determine if more searches are needed
-5. Repeat with different search queries if necessary
+Example for "AI trends in 2025": ai-trends-2025_research.md, ai-trends-2025_sources.json
 
-- Execute a MINIMUM of 10 distinct tool calls for comprehensive research
-- Maximum of 30 tool calls to prevent system overload
-- Batch processing URLs counts as ONE tool call, making research much more efficient
-- NEVER repeat the same query - adapt based on findings
-- If hitting diminishing returns, complete the task immediately
+**VERIFICATION CHECKLIST** (Complete before final answer):
+- [ ] Created [topic]_research.md with 5000+ words of detailed findings
+- [ ] Created [topic]_sources.json with structured source metadata
+- [ ] Both files use descriptive, topic-based names
+- [ ] Files contain all research data gathered
 
-### 5. Source Quality Evaluation
-Think critically about sources:
-- Distinguish facts from speculation (watch for "could", "may", future tense)
-- Identify problematic sources (aggregators vs. originals, unconfirmed reports)
-- Note marketing language, spin, or cherry-picked data
-- Prioritize based on: recency, consistency, source reputation
-- Flag conflicting information for lead researcher
+## Final Answer Format
+**ONLY AFTER FILES ARE CREATED**, return BRIEF confirmation (2-3 sentences):
+"Research completed on [topic]. Created 'filename_research.md' with [N] sources in 'filename_sources.json'. Key finding: [one sentence summary]."
 
-## Research Guidelines
-
-1. **Query Optimization**:
-   - Use moderately broad queries (under 5 words)
-   - Avoid hyper-specific searches with poor hit rates
-   - Adjust specificity based on result quality
-   - Balance between specific and general
-
-2. **Information Focus** - Prioritize high-value information that is:
-   - **Significant**: Major implications for the task
-   - **Important**: Directly relevant or specifically requested
-   - **Precise**: Specific facts, numbers, dates, concrete data
-   - **High-quality**: From reputable, reliable sources
-
-3. **Documentation Requirements**:
-   - State which tool you're using and why
-   - Document each source with URL and title
-   - Extract specific quotes, statistics, facts with attribution
-   - Organize findings by source with clear citations
-   - Include publication dates where available
-
-4. **Efficiency Principles**:
-   - BATCH PROCESS URLs: Always use fetcher_tool with multiple URLs at once
-   - Use parallel tool calls when possible (2 tools simultaneously)
-   - Complete task as soon as sufficient information is gathered
-   - Stop at ~30 tool calls or when hitting diminishing returns
-   - Be detailed in process but concise in reporting
-   - Remember: Fetching 10 URLs in one batch = 1 tool call vs 10 individual calls
-
-## Output Structure
-Structure findings as:
-- Source 1: [Title] (URL) - [Date if available]
-  - Key facts: [specific quotes/data]
-  - Statistics: [numbers with context]
-  - Expert opinions: [attributed quotes]
-- Source 2: [Title] (URL)
-  - [Continue pattern...]
-
-## Critical Reminders
-- This is autonomous tool execution - complete the full task in one run
-- NO conversational elements - execute research automatically
-- Gather from 10+ diverse sources minimum
-- DO NOT generate markdown reports or final content yourself
-- Focus on gathering raw research data with proper citations
-
-## IMPORTANT: Handoff Protocol
-When your research is complete:
-1. NEVER generate markdown content or final reports yourself
-2. Use the handoff_to_content_writer_agent tool to pass your research findings
-3. The handoff tool expects: {query: "research topic", reasoning: "explanation for user"}
-4. The content_writer_agent will create the final report from your research data
-
-Remember: You gather data, content_writer_agent writes the report. Always hand off when research is complete.
-
-Before handing off, ensure your latest findings are reflected in the shared files (e.g. summaries, raw notes, structured datasets). This enables the orchestrator and content writer to understand what has been completed, reuse your artifacts, and avoid redundant rework.`,
+**IMPORTANT**:
+- DO NOT return final answer until BOTH files are created
+- Use descriptive, unique file names based on topic
+- All detailed content goes in FILES, not in final answer
+- Your final answer should reference the actual file names you created`,
     tools: [
       'navigate_url',
       'navigate_back',
       'fetcher_tool',
       'extract_data',
       'node_ids_to_urls',
-      'bookmark_store',
-      'document_search',
       'html_to_markdown',
       'create_file',
       'update_file',
-      'delete_file',
       'read_file',
       'list_files',
     ],
-    maxIterations: 15,
+    maxIterations: 30,
     modelName: MODEL_SENTINELS.USE_MINI,
     temperature: 0,
     schema: {
@@ -207,15 +142,142 @@ ${args.scope ? `The scope of research expected: ${args.scope}` : ''}
 `,
       }];
     },
-    handoffs: [
-      {
-        targetAgentName: 'content_writer_agent',
-        trigger: 'llm_tool_call'
-      },
-      {
-        targetAgentName: 'content_writer_agent',
-        trigger: 'max_iterations'
+    handoffs: [],
+    afterExecute: async (result: ConfigurableAgentResult, agentSession: AgentSession, _callCtx: CallCtx): Promise<void> => {
+      logger.info('===== ResearchAgent afterExecute hook started =====');
+      logger.info(`Agent session has ${agentSession.messages.length} messages`);
+
+      try {
+        const fileManager = FileStorageManager.getInstance();
+        let savedCount = 0;
+        let fetcherToolCount = 0;
+
+        // Iterate through all messages in the session to find fetcher_tool results
+        for (const message of agentSession.messages) {
+          // Type narrow to ToolResultMessage
+          if (message.type !== 'tool_result') {
+            continue;
+          }
+
+          const toolResult = message.content as { type: 'tool_result'; toolName: string; result?: any };
+
+          // Check if this is a fetcher_tool result
+          if (toolResult.toolName === 'fetcher_tool' && toolResult.result) {
+            fetcherToolCount++;
+            logger.info(`Found fetcher_tool result #${fetcherToolCount}`);
+            const fetcherResult = toolResult.result as FetcherToolResult;
+
+            // Process each source in the fetcher result
+            if (fetcherResult.sources && Array.isArray(fetcherResult.sources)) {
+              for (const source of fetcherResult.sources) {
+                // Only save successful fetches with content
+                if (source.success && source.markdownContent && source.markdownContent.trim().length > 0) {
+                  try {
+                    // Create a sanitized filename from the URL
+                    const filename = sanitizeUrlToFilename(source.url);
+
+                    // Create file content with metadata header
+                    const fileContent = `# ${source.title || 'Untitled'}
+
+**Source URL:** ${source.url}
+**Fetched:** ${new Date().toISOString()}
+
+---
+
+${source.markdownContent}`;
+
+                    // Save to the research/ subdirectory
+                    try {
+                      await fileManager.createFile(`research-${filename}`, fileContent, 'text/markdown');
+                      logger.info(`✓ Created file: research-${filename} (${source.url})`);
+                    } catch (createError: any) {
+                      // If file exists, try to update it instead
+                      if (createError.message?.includes('already exists')) {
+                        await fileManager.updateFile(`research-${filename}`, fileContent);
+                        logger.info(`✓ Updated file: research-${filename} (${source.url})`);
+                      } else {
+                        throw createError;
+                      }
+                    }
+                    savedCount++;
+                  } catch (error) {
+                    logger.warn(`Failed to save fetcher result for ${source.url}:`, error);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        logger.info('===== ResearchAgent afterExecute summary =====');
+        logger.info(`Found ${fetcherToolCount} fetcher_tool calls`);
+        logger.info(`Successfully saved ${savedCount} files`);
+
+        if (savedCount > 0) {
+          logger.info(`✓ ResearchAgent afterExecute: Saved ${savedCount} fetched sources to files`);
+        } else {
+          if (fetcherToolCount === 0) {
+            logger.warn('⚠ No fetcher_tool results found in session messages');
+          } else {
+            logger.warn('⚠ Found fetcher_tool results but no files were saved (check for errors above)');
+          }
+        }
+      } catch (error: any) {
+        logger.error('❌ ResearchAgent afterExecute: Failed to save fetcher results:', error);
+        logger.error('Error details:', { message: error.message, stack: error.stack });
+        // Don't throw - we don't want to break the agent execution
       }
-    ],
+    },
   };
+}
+
+/**
+ * Sanitize a URL to create a safe filename
+ */
+function sanitizeUrlToFilename(url: string): string {
+  try {
+    const urlObj = new URL(url);
+
+    // Extract domain and path
+    let domain = urlObj.hostname.replace(/^www\./, '');
+    let path = urlObj.pathname.replace(/^\//, '').replace(/\/$/, '');
+
+    // Create a base name from domain and path
+    let baseName = domain;
+    if (path) {
+      // Take first 2 path segments for readability
+      const pathParts = path.split('/').filter(p => p.length > 0);
+      if (pathParts.length > 0) {
+        baseName += '-' + pathParts.slice(0, 2).join('-');
+      }
+    }
+
+    // Remove special characters and limit length
+    baseName = baseName
+      .replace(/[^a-zA-Z0-9-_]/g, '-')
+      .replace(/-+/g, '-')
+      .substring(0, 80);
+
+    // Add a short hash of the full URL to prevent collisions
+    const hash = simpleHash(url).substring(0, 8);
+
+    return `${baseName}-${hash}.md`;
+  } catch (error) {
+    // Fallback for invalid URLs
+    const hash = simpleHash(url);
+    return `source-${hash}.md`;
+  }
+}
+
+/**
+ * Simple hash function for generating short unique identifiers
+ */
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(36);
 }

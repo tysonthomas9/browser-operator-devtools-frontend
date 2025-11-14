@@ -5,6 +5,7 @@
 import * as SDK from '../../../core/sdk/sdk.js';
 import * as Utils from '../common/utils.js'; // Path relative to core/ assuming utils.ts will be in common/ later, this will be common/utils.js
 import { VisitHistoryManager } from '../tools/VisitHistoryManager.js'; // Path relative to core/ assuming VisitHistoryManager.ts will be in core/
+import { FileStorageManager } from '../tools/FileStorageManager.js';
 import { createLogger } from './Logger.js';
 
 const logger = createLogger('PageInfoManager');
@@ -189,6 +190,15 @@ export async function enhancePromptWithPageContext(basePrompt: string): Promise<
   const accessibilityTree = PageInfoManager.getInstance().getAccessibilityTree();
   const iframeContent = PageInfoManager.getInstance().getIframeContent();
 
+  // Get current session files
+  const fileManager = FileStorageManager.getInstance();
+  let files: any[] = [];
+  try {
+    files = await fileManager.listFiles();
+  } catch (error) {
+    logger.warn('Failed to fetch files for context:', error);
+  }
+
   // If no page info is available, return the original prompt
   if (!pageInfo) {
     return basePrompt;
@@ -220,6 +230,18 @@ ${iframe.contentSimplified}
       ).join('\n      ')}
     </Iframes>` : ''}
   </Page>
+  ${files.length > 0 ?
+    `<Files>
+    <!-- Files created during this session -->
+    ${files.map((file) =>
+      `<File>
+      <Name>${file.fileName}</Name>
+      <Created>${new Date(file.createdAt).toLocaleString()}</Created>
+      <Updated>${new Date(file.updatedAt).toLocaleString()}</Updated>
+      <Size>${file.size} characters</Size>
+    </File>`
+    ).join('\n    ')}
+  </Files>` : ''}
 </Context>
 
 Instructions:
@@ -228,6 +250,7 @@ Instructions:
 - If you need the full page accessibility tree to answer the user's query, you have the ability to request it at any time.
 - Use the page title, URL, and partial accessibility tree to inform your answers.
 ${iframeContent && iframeContent.length > 0 ? '- The page contains embedded iframes with their own content, which is included above.' : ''}
+${files.length > 0 ? `- ${files.length} file${files.length === 1 ? '' : 's'} ${files.length === 1 ? 'has' : 'have'} been created during this session. You can read, update, or reference ${files.length === 1 ? 'this file' : 'these files'} using the file management tools (read_file, update_file, create_file, delete_file, list_files).` : ''}
 - If the user asks about the page, refer to this context.
 - If the partial accessibility tree is present, use it to answer questions about visible page structure, elements, or accessibility.
 - If you need to extract any data from the entire page, you must always use the extract_data tool to do so. Do not attempt to extract data from the full page by any other means.

@@ -84,7 +84,13 @@ export class CombinedExtractionTool implements Tool<CombinedExtractionArgs, Comb
     const agentService = AgentService.getInstance();
     const apiKey = agentService.getApiKey();
 
-    if (!apiKey) {
+    // Get provider from context
+    const provider = ctx?.provider;
+
+    // LiteLLM and BrowserOperator have optional API keys
+    const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
       return {
         success: false,
         url,

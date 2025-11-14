@@ -47,14 +47,20 @@ export class FullPageAccessibilityTreeToMarkdownTool implements Tool<Record<stri
 
     const agentService = AgentService.getInstance();
     const apiKey = agentService.getApiKey();
-    if (!apiKey) {
-      return { error: 'API key not configured.' };
-    }
+
+    // Get provider from context
     if (!ctx?.provider || !ctx.nanoModel) {
       return { error: 'Missing LLM context (provider/miniModel) for AccessibilityTreeToMarkdownTool' };
     }
     const provider = ctx.provider;
     const model = ctx.nanoModel;
+
+    // LiteLLM and BrowserOperator have optional API keys
+    const requiresApiKey = provider !== 'litellm' && provider !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {
+      return { error: 'API key not configured.' };
+    }
 
     const prompt = `Accessibility Tree:\n\n\`\`\`\n${accessibilityTreeString}\n\`\`\``;
 

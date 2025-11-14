@@ -197,6 +197,9 @@ export interface ScrollResult {
     x: number,
     y: number,
   };
+  viewportHeight?: number;  // Height of the viewport in pixels
+  scrollHeight?: number;     // Total scrollable height of the document
+  scrolledPages?: number;    // Number of pages scrolled (if using pages parameter)
 }
 
 /**
@@ -1326,17 +1329,19 @@ export class SearchContentTool implements Tool<{ query: string, limit?: number }
 /**
  * Tool for scrolling the page
  */
-export class ScrollPageTool implements Tool<{ position?: { x: number, y: number }, direction?: string, amount?: number }, ScrollResult | ErrorResult> {
+export class ScrollPageTool implements Tool<{ position?: { x: number, y: number }, direction?: string, amount?: number, pages?: number }, ScrollResult | ErrorResult> {
   name = 'scroll_page';
-  description = 'Scrolls the page to a specific position or in a specific direction';
+  description = 'Scrolls the page to a specific position, in a direction, or by viewport pages. Use pages parameter for predictable scrolling (e.g., pages: 1 scrolls down one full viewport height, pages: -1 scrolls up).';
 
-  async execute(args: { position?: { x: number, y: number }, direction?: string, amount?: number }, _ctx?: LLMContext): Promise<ScrollResult | ErrorResult> {
+  async execute(args: { position?: { x: number, y: number }, direction?: string, amount?: number, pages?: number }, _ctx?: LLMContext): Promise<ScrollResult | ErrorResult> {
     const position = args.position;
+    const pages = args.pages;
     const direction = args.direction;
     const amount = args.amount || 300;  // Default scroll amount
 
-    if (!position && !direction) {
-      return { error: 'Either position or direction must be provided' };
+    // Priority: position > pages > direction
+    if (!position && pages === undefined && !direction) {
+      return { error: 'Either position, pages, or direction must be provided' };
     }
 
     // Get the main target
@@ -1354,6 +1359,14 @@ export class ScrollPageTool implements Tool<{ position?: { x: number, y: number 
             window.scrollTo({
               left: ${position.x || 0},
               top: ${position.y || 0},
+              behavior: 'smooth'
+            });` :
+          pages !== undefined ?
+            `// Scroll by viewport heights
+            const viewportHeight = window.innerHeight;
+            const scrollAmount = viewportHeight * ${pages};
+            window.scrollBy({
+              top: scrollAmount,
               behavior: 'smooth'
             });` :
             `// Scroll in direction
@@ -1375,14 +1388,17 @@ export class ScrollPageTool implements Tool<{ position?: { x: number, y: number 
             }`
           }
 
-          // Return current scroll position
+          // Return current scroll position with viewport info
           return {
             success: true,
             message: "Scroll operation completed",
             position: {
               x: window.pageXOffset,
               y: window.pageYOffset
-            }
+            },
+            viewportHeight: window.innerHeight,
+            scrollHeight: document.documentElement.scrollHeight,
+            scrolledPages: ${pages !== undefined ? pages : 0}
           };
         })()`,
         returnByValue: true,
@@ -1411,14 +1427,18 @@ export class ScrollPageTool implements Tool<{ position?: { x: number, y: number 
           },
         },
       },
+      pages: {
+        type: 'number',
+        description: 'Number of viewport heights to scroll. Positive scrolls down, negative scrolls up. Examples: 1 (one page down), 0.5 (half page down), -1 (one page up), 2 (two pages down). This is the recommended way to scroll for content extraction workflows.',
+      },
       direction: {
         type: 'string',
-        description: 'Direction to scroll (up, down, left, right, top, bottom)',
+        description: 'Direction to scroll (up, down, left, right, top, bottom). Use pages parameter instead for more predictable scrolling.',
         enum: ['up', 'down', 'left', 'right', 'top', 'bottom'],
       },
       amount: {
         type: 'number',
-        description: 'Amount to scroll in pixels (default: 300)',
+        description: 'Amount to scroll in pixels when using direction (default: 300). Use pages parameter instead for viewport-relative scrolling.',
       },
     },
   };
@@ -2123,7 +2143,7 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
           const response = await llmClient.call({
             provider,
             model,
-            systemPrompt: 'You are a DOM verification assistant. Analyze page content to determine if actions succeeded.',
+            systemPrompt: 'You are a DOM verification assistant. Analyze page content and tree diff data to determine if actions succeeded.',
             messages: [
               {
                 role: 'user',
@@ -2137,16 +2157,29 @@ ACTION DETAILS:
 - Reasoning: ${reasoning}
 ${verificationMessage ? `- Verification status: ${verificationMessage}` : ''}
 
+OBJECTIVE PAGE CHANGE EVIDENCE:
+${treeDiff ? `- Tree Changes Detected: ${treeDiff.hasChanges ? 'YES' : 'NO'}
+- Change Summary: ${treeDiff.summary}
+- Added Elements: ${treeDiff.added.length} (first few: ${JSON.stringify(treeDiff.added.slice(0, 25))})
+- Removed Elements: ${treeDiff.removed.length} (first few: ${JSON.stringify(treeDiff.removed.slice(0, 25))})
+- Modified Elements: ${treeDiff.modified.length} (first few: ${JSON.stringify(treeDiff.modified.slice(0, 25))})` : 'Tree diff not available'}
+
 CURRENT PAGE CONTENT (after action):
 ${afterContent}
 
-Based on the page content and action details, please describe:
-- What changes occurred in the page content
-- Whether the action appears to have succeeded
-- Any error messages or unexpected behavior
-- Your overall assessment of the action's success
+IMPORTANT VERIFICATION RULES:
+1. If Tree Changes Detected = YES with significant modifications (e.g., 100+ modified elements, root node changed), the action was SUCCESSFUL
+2. Trust the objective pageChange data over subjective DOM analysis
+3. For navigation actions: Changed root node IDs indicate successful page navigation
+4. For click actions: Many DOM modifications suggest the action triggered UI changes
 
-Provide a clear, concise response about what happened.`
+Based on the objective evidence and page content, please describe:
+- What changes occurred according to the tree diff
+- Whether the OBJECTIVE evidence shows the action succeeded
+- Any error messages or unexpected behavior in the page content
+- Your assessment based primarily on the tree change metrics
+
+Provide a clear, concise response that prioritizes objective metrics.`
               }
             ],
             temperature: 0
@@ -2191,7 +2224,7 @@ Provide a clear, concise response about what happened.`
           const response = await llmClient.call({
             provider,
             model,
-            systemPrompt: 'You are a visual verification assistant. Compare before/after screenshots and page context to determine if actions succeeded.',
+            systemPrompt: 'You are a visual verification assistant. Compare before/after screenshots and tree diff data to determine if actions succeeded. Always prioritize objective tree change metrics over subjective visual analysis.',
             messages: [
               {
                 role: 'user',
@@ -2207,19 +2240,31 @@ ACTION DETAILS:
 - Arguments: ${JSON.stringify(actionArgsArray)}
 - Reasoning: ${reasoning}
 
+OBJECTIVE PAGE CHANGE EVIDENCE:
+${treeDiff ? `- Tree Changes Detected: ${treeDiff.hasChanges ? 'YES' : 'NO'}
+- Change Summary: ${treeDiff.summary}
+- Added Elements: ${treeDiff.added.length} (first few: ${JSON.stringify(treeDiff.added.slice(0, 3))})
+- Removed Elements: ${treeDiff.removed.length} (first few: ${JSON.stringify(treeDiff.removed.slice(0, 3))})
+- Modified Elements: ${treeDiff.modified.length} (first few: ${JSON.stringify(treeDiff.modified.slice(0, 3))})` : 'Tree diff not available'}
+
 CURRENT PAGE CONTENT (visible elements):
 ${currentPageContent}
 
-Please compare the before and after screenshots and describe:
-- What visual changes occurred between the two images
-- Whether these changes indicate the action was successful
-- Any error messages, validation warnings, or unexpected behavior you notice
-- Loading states, navigation changes, or form submissions that occurred
-- Your overall assessment of whether the action achieved its intended result
+IMPORTANT VERIFICATION RULES:
+1. If Tree Changes Detected = YES with significant modifications (e.g., 100+ modified elements), the action was SUCCESSFUL
+2. Trust the objective tree change metrics over subjective visual interpretation
+3. For navigation: Changed root node IDs indicate successful page navigation even if screenshots look similar
+4. Visual similarities don't mean failure - focus on the objective tree diff data
+
+Please analyze and describe:
+- What the objective tree diff shows (this is the PRIMARY evidence)
+- What visual changes you observe in the screenshots (secondary evidence)
+- Your assessment based PRIMARILY on the tree change metrics
+- Whether the action succeeded based on objective evidence
 
 The first image shows the page BEFORE the action, the second image shows the page AFTER the action.
 
-Provide a clear, descriptive response about what happened and whether the action appears to have succeeded.`
+Provide a clear response that prioritizes objective tree metrics over visual interpretation.`
                   },
                   {
                     type: 'image_url',
@@ -2265,7 +2310,7 @@ Provide a clear, descriptive response about what happened and whether the action
             const response = await llmClient.call({
               provider,
               model,
-              systemPrompt: 'You are a visual verification assistant. Analyze screenshots and page context to determine if actions succeeded.',
+              systemPrompt: 'You are a visual verification assistant. Analyze screenshots and tree diff data to determine if actions succeeded. Always prioritize objective tree change metrics over subjective visual analysis.',
               messages: [
                 {
                   role: 'user',
@@ -2281,19 +2326,31 @@ ACTION DETAILS:
 - Arguments: ${JSON.stringify(actionArgsArray)}
 - Reasoning: ${reasoning}
 
+OBJECTIVE PAGE CHANGE EVIDENCE:
+${treeDiff ? `- Tree Changes Detected: ${treeDiff.hasChanges ? 'YES' : 'NO'}
+- Change Summary: ${treeDiff.summary}
+- Added Elements: ${treeDiff.added.length} (first few: ${JSON.stringify(treeDiff.added.slice(0, 3))})
+- Removed Elements: ${treeDiff.removed.length} (first few: ${JSON.stringify(treeDiff.removed.slice(0, 3))})
+- Modified Elements: ${treeDiff.modified.length} (first few: ${JSON.stringify(treeDiff.modified.slice(0, 3))})` : 'Tree diff not available'}
+
 CURRENT PAGE CONTENT (visible elements):
 ${currentPageContent}
 
-Please examine the screenshot and page content to describe:
-- What the current state of the page shows
-- Any visible indicators that suggest the action succeeded or failed
-- Error messages, validation warnings, or unexpected behavior you notice
-- Loading states, navigation changes, or form submissions that may have occurred
-- Your assessment of whether the action achieved its intended result
+IMPORTANT VERIFICATION RULES:
+1. If Tree Changes Detected = YES with significant modifications, the action was SUCCESSFUL
+2. Trust the objective tree change metrics as the PRIMARY indicator
+3. The screenshot provides additional context but is SECONDARY to tree diff data
+4. For navigation: Changed root node IDs indicate successful page navigation
 
-Note: Only the after-action screenshot is available for analysis.
+Please examine and describe:
+- What the objective tree diff shows (PRIMARY evidence)
+- What the screenshot reveals (secondary context)
+- Your assessment based PRIMARILY on the tree change metrics
+- Whether the action succeeded according to objective evidence
 
-Provide a clear, descriptive response about what you observe and whether the action appears to have succeeded.`
+Note: Only the after-action screenshot is available for visual analysis.
+
+Provide a clear response that prioritizes objective tree metrics.`
                   },
                   {
                     type: 'image_url',
@@ -2910,7 +2967,10 @@ Important guidelines:
       return { error: 'Missing LLM context (provider/model) for ObjectiveDrivenActionTool' };
     }
 
-    if (!apiKey) {return { error: 'API key not configured.' };}
+    // LiteLLM and BrowserOperator have optional API keys
+    const requiresApiKey = providerForAction !== 'litellm' && providerForAction !== 'browseroperator';
+
+    if (requiresApiKey && !apiKey) {return { error: 'API key not configured.' };}
     if (typeof objective !== 'string' || objective.trim() === '') {
       return { error: 'Objective must be a non-empty string' };
     }
@@ -3511,6 +3571,9 @@ export { GetWebAppDataTool } from './GetWebAppDataTool.js';
 export type { GetWebAppDataArgs, GetWebAppDataResult } from './GetWebAppDataTool.js';
 export { RemoveWebAppTool } from './RemoveWebAppTool.js';
 export type { RemoveWebAppArgs, RemoveWebAppResult } from './RemoveWebAppTool.js';
+
+// Export visual indicator manager
+export { VisualIndicatorManager } from './VisualIndicatorTool.js';
 export { CreateFileTool } from './CreateFileTool.js';
 export type { CreateFileArgs, CreateFileResult } from './CreateFileTool.js';
 export { UpdateFileTool } from './UpdateFileTool.js';
@@ -3521,6 +3584,8 @@ export { ReadFileTool } from './ReadFileTool.js';
 export type { ReadFileArgs, ReadFileResult } from './ReadFileTool.js';
 export { ListFilesTool } from './ListFilesTool.js';
 export type { ListFilesArgs, ListFilesResult } from './ListFilesTool.js';
+export { ExecuteCodeTool } from './ExecuteCodeTool.js';
+export type { ExecuteCodeArgs } from './ExecuteCodeTool.js';
 // Abortable sleep utility for tools that need delays/polling
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {

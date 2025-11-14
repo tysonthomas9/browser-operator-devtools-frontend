@@ -212,8 +212,9 @@ Remember: **Plan adaptively, execute systematically, validate continuously, and 
       'delete_file',
       'read_file',
       'list_files',
+      'update_todo',
     ],
-    maxIterations: 15,
+    maxIterations: 30,
     temperature: 0.3,
     schema: {
       type: 'object',
@@ -245,5 +246,6 @@ Execute this web task autonomously`,
       }];
     },
     handoffs: [],
+    includeSummaryInAnswer: true,  // Enable summary for web automation tasks to provide execution insights
   };
 }
