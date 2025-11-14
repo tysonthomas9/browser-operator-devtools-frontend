@@ -147,6 +147,14 @@ class APIServer {
             result = await this.getScreenshot(JSON.parse(body));
             break;
 
+          case '/page/execute':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.executeJavaScript(JSON.parse(body));
+            break;
+
           default:
             this.sendError(res, 404, 'Not found');
             return;
@@ -332,6 +340,36 @@ class APIServer {
       imageData: result.imageData,
       format: result.format,
       fullPage: result.fullPage,
+      timestamp: Date.now()
+    };
+  }
+
+  async executeJavaScript(payload) {
+    const { clientId, tabId, expression, returnByValue = true, awaitPromise = false } = payload;
+
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    if (!expression) {
+      throw new Error('JavaScript expression is required');
+    }
+
+    const baseClientId = clientId.split(':')[0];
+
+    logger.info('Executing JavaScript', { baseClientId, tabId, expression: expression.substring(0, 100) });
+
+    const result = await this.browserAgentServer.evaluateJavaScript(tabId, expression, { returnByValue, awaitPromise });
+
+    return {
+      clientId: baseClientId,
+      tabId: result.tabId,
+      result: result.result,
+      exceptionDetails: result.exceptionDetails,
       timestamp: Date.now()
     };
   }
