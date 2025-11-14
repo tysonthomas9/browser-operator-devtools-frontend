@@ -21,6 +21,7 @@ import { OpenAISettings } from './settings/providers/OpenAISettings.js';
 import { LiteLLMSettings } from './settings/providers/LiteLLMSettings.js';
 import { GroqSettings } from './settings/providers/GroqSettings.js';
 import { OpenRouterSettings } from './settings/providers/OpenRouterSettings.js';
+import { BrowserOperatorSettings } from './settings/providers/BrowserOperatorSettings.js';
 
 // Import advanced feature settings classes
 import { MCPSettings } from './settings/advanced/MCPSettings.js';
@@ -193,11 +194,19 @@ export class SettingsDialog {
       () => dialog.hide()
     );
 
+    const browseroperatorSettings = new BrowserOperatorSettings(
+      browseroperatorContent,
+      getModelOptions,
+      addCustomModelOption,
+      removeCustomModelOption
+    );
+
     // Render all providers (only visible one will be shown)
     openaiSettings.render();
     litellmSettings.render();
     groqSettings.render();
     openrouterSettings.render();
+    browseroperatorSettings.render();
 
     // Store provider settings for later access
     const providerSettings = new Map<ProviderType, any>([
@@ -205,6 +214,7 @@ export class SettingsDialog {
       ['litellm', litellmSettings],
       ['groq', groqSettings],
       ['openrouter', openrouterSettings],
+      ['browseroperator', browseroperatorSettings],
     ]);
 
     // Event listener for provider change
@@ -296,19 +306,19 @@ export class SettingsDialog {
 
     // Add Advanced Settings Toggle
     const advancedToggleContainer = document.createElement('div');
-    advancedToggleContainer.className = 'advanced-toggle-container';
+    advancedToggleContainer.className = 'advanced-settings-toggle-container';
     contentDiv.appendChild(advancedToggleContainer);
 
     const advancedToggleCheckbox = document.createElement('input');
     advancedToggleCheckbox.type = 'checkbox';
     advancedToggleCheckbox.id = 'advanced-settings-toggle';
-    advancedToggleCheckbox.className = 'advanced-toggle-checkbox';
+    advancedToggleCheckbox.className = 'advanced-settings-checkbox';
     advancedToggleCheckbox.checked = localStorage.getItem(ADVANCED_SETTINGS_ENABLED_KEY) === 'true';
     advancedToggleContainer.appendChild(advancedToggleCheckbox);
 
     const advancedToggleLabel = document.createElement('label');
     advancedToggleLabel.htmlFor = 'advanced-settings-toggle';
-    advancedToggleLabel.className = 'advanced-toggle-label';
+    advancedToggleLabel.className = 'advanced-settings-label';
     advancedToggleLabel.textContent = '⚙️ Advanced Settings';
     advancedToggleContainer.appendChild(advancedToggleLabel);
 
@@ -370,11 +380,33 @@ export class SettingsDialog {
       toggleAdvancedSections(advancedToggleCheckbox.checked);
     });
 
-    // Create disclaimer
-    const disclaimer = document.createElement('div');
-    disclaimer.className = 'settings-disclaimer';
-    disclaimer.textContent = i18nString(UIStrings.disclaimer);
-    contentDiv.appendChild(disclaimer);
+    // Add disclaimer section
+    const disclaimerSection = document.createElement('div');
+    disclaimerSection.classList.add('settings-section', 'disclaimer-section');
+    contentDiv.appendChild(disclaimerSection);
+
+    const disclaimerTitle = document.createElement('h3');
+    disclaimerTitle.textContent = i18nString(UIStrings.importantNotice);
+    disclaimerTitle.classList.add('settings-subtitle');
+    disclaimerSection.appendChild(disclaimerTitle);
+
+    const disclaimerText = document.createElement('div');
+    disclaimerText.classList.add('settings-disclaimer');
+    disclaimerText.innerHTML = `
+      <p class="disclaimer-warning">
+        <strong>Beta Version:</strong> This is a beta version of the Browser Operator - AI Assistant feature.
+      </p>
+      <p class="disclaimer-note">
+        <strong>Data Sharing:</strong> When using this feature, your browser data and conversation content will be sent to the AI model for processing.
+      </p>
+      <p class="disclaimer-note">
+        <strong>Provider Support:</strong> We currently support OpenAI, Groq and OpenRouter providers directly. And we support LiteLLM as a proxy to access 100+ other models.
+      </p>
+      <p class="disclaimer-footer">
+        By using this feature, you acknowledge that your data will be processed according to Model Provider's privacy policy and terms of service.
+      </p>
+    `;
+    disclaimerSection.appendChild(disclaimerText);
 
     // Create footer with buttons
     const footer = document.createElement('div');
@@ -422,6 +454,7 @@ export class SettingsDialog {
       litellmSettings.save();
       groqSettings.save();
       openrouterSettings.save();
+      browseroperatorSettings.save();
 
       // Save mini/nano model selections from current provider
       const currentProviderSettings = providerSettings.get(selectedProvider as ProviderType);

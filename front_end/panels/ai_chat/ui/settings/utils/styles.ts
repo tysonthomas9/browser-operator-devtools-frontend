@@ -447,6 +447,7 @@ export function getSettingsStyles(): string {
       align-items: center;
       gap: 8px;
       margin-bottom: 8px;
+      padding-left: 20px;
     }
 
     .advanced-settings-checkbox {

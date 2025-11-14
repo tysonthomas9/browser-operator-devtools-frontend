@@ -8,7 +8,7 @@
 export interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter';
+  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
 }
 
 /**
@@ -22,7 +22,7 @@ export interface ValidationResult {
 /**
  * Provider type
  */
-export type ProviderType = 'openai' | 'litellm' | 'groq' | 'openrouter';
+export type ProviderType = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
 
 /**
  * Model tier type

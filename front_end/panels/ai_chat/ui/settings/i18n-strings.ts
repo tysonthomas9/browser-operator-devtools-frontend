@@ -37,6 +37,10 @@ export const UIStrings = {
    */
   openrouterProvider: 'OpenRouter',
   /**
+   *@description BrowserOperator provider option
+   */
+  browseroperatorProvider: 'BrowserOperator',
+  /**
    *@description LiteLLM API Key label
    */
   liteLLMApiKey: 'LiteLLM API Key',
@@ -84,6 +88,14 @@ export const UIStrings = {
    *@description OpenAI API Key hint
    */
   apiKeyHint: 'An OpenAI API key is required for OpenAI models (GPT-4.1, O4 Mini, etc.)',
+  /**
+   *@description BrowserOperator API Key label
+   */
+  browseroperatorApiKeyLabel: 'BrowserOperator API Key (Optional)',
+  /**
+   *@description BrowserOperator API Key hint
+   */
+  browseroperatorApiKeyHint: 'Optional API key for BrowserOperator managed service. Authentication is not required.',
   /**
    *@description Test button text
    */
