@@ -16,6 +16,7 @@ import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentD
 import '../../core/BaseOrchestratorAgent.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
 import type { ChatMessage } from '../../models/ChatTypes.js';
+import { ChatMessageEntity } from '../../models/ChatTypes.js';
 import {
   RegisterMessage,
   ReadyMessage,
@@ -341,7 +342,7 @@ export class EvaluationAgent {
       tool: params.tool,
       url: params.url,
       isChat: params.tool === 'chat',
-      modelOverride: params.input?.ai_chat_model,
+      modelOverride: (typeof params.input === 'object' && !Array.isArray(params.input)) ? (params.input as any).ai_chat_model : undefined,
       modelConfig: params.model
     });
 
@@ -554,33 +555,57 @@ export class EvaluationAgent {
         const hasOverride = configManager.hasOverride?.() || false;
         const overrideConfig = hasOverride ? configManager.getConfiguration() : null;
 
-        const mergedInput = {
-          ...params.input,
-          ...(params.model && {
-            // Extract nested model configuration properly
-            main_model: (params.model.main_model as any)?.model || params.model.main_model,
-            mini_model: (params.model.mini_model as any)?.model || params.model.mini_model,
-            nano_model: (params.model.nano_model as any)?.model || params.model.nano_model,
-            provider: (params.model.main_model as any)?.provider || params.model.provider,
-            api_key: (params.model.main_model as any)?.api_key || (params.model as any).api_key
-          }),
-          // Apply early override configuration if available
-          ...(overrideConfig && {
-            provider: overrideConfig.provider || ((params.model?.main_model as any)?.provider || params.model?.provider),
-            api_key: overrideConfig.apiKey || ((params.model?.main_model as any)?.api_key || (params.model as any)?.api_key),
-            main_model: overrideConfig.mainModel || ((params.model?.main_model as any)?.model || params.model?.main_model),
-            mini_model: overrideConfig.miniModel || ((params.model?.mini_model as any)?.model || params.model?.mini_model),
-            nano_model: overrideConfig.nanoModel || ((params.model?.nano_model as any)?.model || params.model?.nano_model),
-            endpoint: overrideConfig.endpoint || ((params.model as any)?.endpoint || (params.model?.main_model as any)?.endpoint)
-          })
-        };
+        // Handle input based on type - preserve arrays for conversation state
+        let mergedInput: any;
+
+        // Extract model configuration first (to be used for all input types)
+        const modelConfig = params.model ? {
+          // Extract nested model configuration properly
+          main_model: (params.model.main_model as any)?.model || params.model.main_model,
+          mini_model: (params.model.mini_model as any)?.model || params.model.mini_model,
+          nano_model: (params.model.nano_model as any)?.model || params.model.nano_model,
+          provider: (params.model.main_model as any)?.provider || params.model.provider,
+          api_key: (params.model.main_model as any)?.api_key || (params.model as any).api_key,
+          endpoint: (params.model.main_model as any)?.endpoint || (params.model as any)?.endpoint
+        } : {};
+
+        // Apply override configuration on top of model config
+        const finalModelConfig = overrideConfig ? {
+          provider: overrideConfig.provider || modelConfig.provider,
+          api_key: overrideConfig.apiKey || modelConfig.api_key,
+          main_model: overrideConfig.mainModel || modelConfig.main_model,
+          mini_model: overrideConfig.miniModel || modelConfig.mini_model,
+          nano_model: overrideConfig.nanoModel || modelConfig.nano_model,
+          endpoint: overrideConfig.endpoint || modelConfig.endpoint
+        } : modelConfig;
+
+        if (Array.isArray(params.input)) {
+          // Input is conversation array (OpenAI Responses API format)
+          // Wrap array with model configuration so executeChatEvaluation can extract both
+          mergedInput = {
+            messages: params.input,  // Conversation array
+            ...finalModelConfig       // Model configuration
+          };
+        } else {
+          // Input is object or string - merge with model configuration
+          mergedInput = {
+            ...(typeof params.input === 'object' ? params.input : {}),
+            ...finalModelConfig
+          };
+        }
 
         logger.info('DEBUG: Created merged input for chat evaluation', {
           evaluationId: params.evaluationId,
           hasOverrideConfig: !!overrideConfig,
-          overrideConfig,
+          overrideConfig: overrideConfig ? {
+            ...overrideConfig,
+            apiKey: overrideConfig.apiKey ? `${overrideConfig.apiKey.substring(0, 10)}...` : undefined
+          } : undefined,
+          inputType: Array.isArray(params.input) ? 'conversation-array' : typeof params.input,
+          messageCount: Array.isArray(params.input) ? params.input.length : mergedInput.messages?.length,
           mergedInput: {
             ...mergedInput,
+            messages: mergedInput.messages ? `[array with ${mergedInput.messages.length} messages]` : undefined,
             api_key: mergedInput.api_key ? `${mergedInput.api_key.substring(0, 10)}...` : undefined
           }
         });
@@ -861,19 +886,91 @@ export class EvaluationAgent {
     return Array.from(this.activeEvaluations.keys());
   }
 
+  /**
+   * Convert OpenAI Responses API message array to internal ChatMessage format
+   */
+  private convertMessagesToChatMessages(messages: Array<{role: string, content: string}>): ChatMessage[] {
+    return messages
+      .filter(msg => msg.role !== 'system')  // System messages handled separately
+      .map(msg => {
+        if (msg.role === 'user') {
+          return {
+            entity: ChatMessageEntity.USER,
+            text: msg.content
+          } as ChatMessage;
+        } else if (msg.role === 'assistant') {
+          return {
+            entity: ChatMessageEntity.MODEL,
+            action: 'final' as const,
+            answer: msg.content,
+            isFinalAnswer: true
+          } as ChatMessage;
+        }
+        return null;
+      })
+      .filter((msg): msg is ChatMessage => msg !== null);
+  }
+
+  /**
+   * Extract system messages from message array
+   */
+  private extractSystemPrompt(messages: Array<{role: string, content: string}>): string | undefined {
+    const systemMessages = messages.filter(msg => msg.role === 'system');
+    return systemMessages.length > 0
+      ? systemMessages.map(m => m.content).join('\n\n')
+      : undefined;
+  }
 
   private async executeChatEvaluation(
     input: any,
     timeout: number,
     tracingContext?: TracingContext
   ): Promise<any> {
-    // Validate input
-    if (!input.message) {
-      throw new Error('Chat evaluation requires input.message');
+    // Determine input format and extract message/messages
+    let userMessage: string | undefined;
+    let conversationHistory: ChatMessage[] | undefined;
+    let systemPrompt: string | undefined;
+
+    if (typeof input === 'string') {
+      // Format 1: Direct string input
+      userMessage = input;
+    } else if (Array.isArray(input)) {
+      // Format 2: Array of messages (OpenAI Responses API format)
+      systemPrompt = this.extractSystemPrompt(input);
+      conversationHistory = this.convertMessagesToChatMessages(input);
+      // Extract the last user message as the current input
+      const lastUserMsg = input.filter(m => m.role === 'user').pop();
+      if (lastUserMsg) {
+        userMessage = lastUserMsg.content;
+      }
+    } else if (input.message) {
+      // Format 3: Object with message field (legacy format)
+      userMessage = input.message;
+    } else if (input.messages && Array.isArray(input.messages)) {
+      // Format 4: Object with messages array field
+      systemPrompt = this.extractSystemPrompt(input.messages);
+      conversationHistory = this.convertMessagesToChatMessages(input.messages);
+      const lastUserMsg = input.messages.filter((m: any) => m.role === 'user').pop();
+      if (lastUserMsg) {
+        userMessage = lastUserMsg.content;
+      }
     }
-    
+
+    // Validate we got a user message and ensure it's a string
+    if (!userMessage) {
+      throw new Error('Chat evaluation requires a user message (either as string, input.message, or in messages array)');
+    }
+
+    if (typeof userMessage !== 'string') {
+      throw new Error(`User message must be a string, got ${typeof userMessage}: ${JSON.stringify(userMessage)}`);
+    }
+
     logger.info('Starting chat evaluation', {
-      message: input.message,
+      message: userMessage,
+      inputType: typeof input === 'string' ? 'string' : Array.isArray(input) ? 'array' : 'object',
+      hasConversationHistory: !!conversationHistory,
+      historyLength: conversationHistory?.length || 0,
+      hasSystemPrompt: !!systemPrompt,
       timeout,
       hasTracingContext: !!tracingContext
     });
@@ -896,38 +993,83 @@ export class EvaluationAgent {
         // Get current configuration as baseline
         const config = configManager.getConfiguration();
 
+        // Extract model configuration from input
+        // Note: input here may be the original string/array, OR the mergedInput object with model config
+        // We need to handle both cases
+        const inputConfig = (typeof input === 'object' && !Array.isArray(input)) ? input : {};
+
         // Consolidate configuration with proper fallbacks
-        // Priority: input values -> existing config -> defaults
-        const provider = input.provider || config.provider || 'openai';
-        const mainModel = input.main_model || config.mainModel || this.judgeModel;
-        const miniModel = input.mini_model ?? config.miniModel ?? this.miniModel;
-        const nanoModel = input.nano_model ?? config.nanoModel ?? this.nanoModel;
-        const apiKey = input.api_key ?? config.apiKey ?? agentService.getApiKey();
-        const endpoint = input.endpoint ?? config.endpoint;
+        // Priority: input values (from mergedInput) -> existing config -> defaults
+        const provider = inputConfig.provider || config.provider || 'openai';
+        const mainModel = inputConfig.main_model || config.mainModel || this.judgeModel;
+        const miniModel = inputConfig.mini_model ?? config.miniModel ?? this.miniModel;
+        const nanoModel = inputConfig.nano_model ?? config.nanoModel ?? this.nanoModel;
+        const apiKey = inputConfig.api_key ?? config.apiKey ?? agentService.getApiKey();
+        const endpoint = inputConfig.endpoint ?? config.endpoint;
 
         logger.info('Setting consolidated configuration override for chat evaluation', {
+          inputType: typeof input,
+          isArray: Array.isArray(input),
+          inputConfig: {
+            ...inputConfig,
+            api_key: inputConfig.api_key ? `${inputConfig.api_key.substring(0, 10)}...` : undefined
+          },
           provider: provider,
           mainModel: mainModel,
+          miniModel: miniModel,
+          nanoModel: nanoModel,
           hasApiKey: !!apiKey,
+          apiKeyPreview: apiKey ? `${apiKey.substring(0, 10)}...` : undefined,
           hasEndpoint: !!endpoint,
           isInitialized: agentService.isInitialized()
         });
 
         // Set single consolidated override with all fallback values
-        configManager.setOverride({
+        const configOverride: any = {
           provider: provider,
           mainModel: mainModel,
           miniModel: miniModel,
           nanoModel: nanoModel,
           apiKey: apiKey || undefined,
           endpoint: endpoint || undefined
-        });
+        };
+
+        // Add system prompt if extracted from messages
+        if (systemPrompt) {
+          configOverride.systemPrompt = systemPrompt;
+        }
+
+        configManager.setOverride(configOverride);
+
+        // Load conversation history if provided
+        if (conversationHistory && conversationHistory.length > 0) {
+          logger.info('Loading conversation history', { historyLength: conversationHistory.length });
+          const state = agentService.getState();
+          // Remove the last user message from history since sendMessage() will add it
+          // This prevents duplication in the UI and LLM calls
+          const historyWithoutLastUser = conversationHistory.filter(msg => {
+            // Keep all model/assistant messages and all user messages except the last one
+            if (msg.entity === ChatMessageEntity.MODEL) {
+              return true;
+            }
+            // For user messages, only keep if it's not the last user message
+            if (msg.entity === ChatMessageEntity.USER) {
+              return msg.text !== userMessage;
+            }
+            return true; // Keep other message types
+          });
+          state.messages = [...historyWithoutLastUser];
+          logger.info('Loaded history without last user message', {
+            originalLength: conversationHistory.length,
+            filteredLength: historyWithoutLastUser.length
+          });
+        }
 
         // Send the message using AgentService directly but with configuration override
         // The configuration override ensures it uses the API key from the request
         const finalMessage: ChatMessage = tracingContext
-          ? await withTracingContext(tracingContext, () => agentService.sendMessage(input.message))
-          : await agentService.sendMessage(input.message);
+          ? await withTracingContext(tracingContext, () => agentService.sendMessage(userMessage!))
+          : await agentService.sendMessage(userMessage!);
         
         // Create a child observation for the chat execution
         if (tracingContext) {
@@ -938,7 +1080,12 @@ export class EvaluationAgent {
               name: 'Chat Execution',
               type: 'span',
               startTime: new Date(),
-              input: { message: input.message, model: mainModel },
+              input: {
+                message: userMessage,
+                model: mainModel,
+                hasConversationHistory: !!conversationHistory,
+                hasSystemPrompt: !!systemPrompt
+              },
               metadata: {
                 evaluationType: 'chat',
                 ...(orchestratorDescriptor ? {

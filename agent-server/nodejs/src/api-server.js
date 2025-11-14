@@ -341,9 +341,58 @@ class APIServer {
    */
   async handleResponsesRequest(requestBody) {
     try {
-      // Validate required input field
-      if (!requestBody.input || typeof requestBody.input !== 'string') {
-        throw new Error('Missing or invalid "input" field. Expected a string.');
+      // Validate required input field - support both string and conversation array formats
+      if (!requestBody.input) {
+        throw new Error('Missing required "input" field.');
+      }
+
+      const inputType = typeof requestBody.input;
+      const isString = inputType === 'string';
+      const isArray = Array.isArray(requestBody.input);
+
+      if (!isString && !isArray) {
+        throw new Error('Invalid "input" field. Expected a string or array of messages.');
+      }
+
+      // If array, validate structure (OpenAI Responses API conversation format)
+      if (isArray) {
+        const MAX_MESSAGES = 100;
+        const MAX_MESSAGE_LENGTH = 10000; // 10KB per message
+
+        if (requestBody.input.length === 0) {
+          throw new Error('Invalid "input" field. Message array cannot be empty.');
+        }
+
+        if (requestBody.input.length > MAX_MESSAGES) {
+          throw new Error(`Conversation too long. Maximum ${MAX_MESSAGES} messages allowed.`);
+        }
+
+        // Validate each message has required fields
+        for (let i = 0; i < requestBody.input.length; i++) {
+          const msg = requestBody.input[i];
+
+          if (!msg.role || !msg.content) {
+            throw new Error(`Invalid message at index ${i}. Each message must have "role" and "content" fields.`);
+          }
+
+          if (!['system', 'user', 'assistant'].includes(msg.role)) {
+            throw new Error(`Invalid message role at index ${i}: "${msg.role}". Must be "system", "user", or "assistant".`);
+          }
+
+          if (typeof msg.content !== 'string') {
+            throw new Error(`Invalid message content at index ${i}. Content must be a string.`);
+          }
+
+          if (msg.content.length > MAX_MESSAGE_LENGTH) {
+            throw new Error(`Message content too long at index ${i}. Maximum ${MAX_MESSAGE_LENGTH} characters per message.`);
+          }
+        }
+
+        // Ensure there's at least one user message
+        const hasUserMessage = requestBody.input.some(msg => msg.role === 'user');
+        if (!hasUserMessage) {
+          throw new Error('Invalid "input" field. Conversation must contain at least one user message.');
+        }
       }
 
       // Handle nested model configuration directly
@@ -355,10 +404,21 @@ class APIServer {
 
       const redact = (mk) => ({
         ...mk,
-        api_key: mk?.api_key ? `${String(mk.api_key).slice(0, 4)}...` : undefined
+        api_key: mk?.api_key ? `${String(mk.api_key).slice(0, 4)}...` : undefined,
+        endpoint: mk?.endpoint ? '[configured]' : undefined
       });
+
+      // Format input for logging
+      const logInput = isArray
+        ? `[conversation with ${requestBody.input.length} messages]`
+        : requestBody.input.length > 100
+          ? requestBody.input.substring(0, 100) + '...'
+          : requestBody.input;
+
       logger.info('Processing responses request:', {
-        input: requestBody.input,
+        input: logInput,
+        inputType: isArray ? 'conversation' : 'string',
+        messageCount: isArray ? requestBody.input.length : undefined,
         url: targetUrl,
         wait_timeout: targetUrl !== 'about:blank' ? waitTimeout : 0,
         modelConfig: {
@@ -428,10 +488,27 @@ class APIServer {
 
     // If nested format is provided, use it directly with fallbacks
     if (requestBody.model) {
+      // Extract endpoint from each model tier, with fallback chain:
+      // 1. Try tier-specific endpoint (e.g., main_model.endpoint)
+      // 2. Fall back to top-level endpoint (e.g., model.endpoint)
+      // 3. Fall back to undefined (will use env var later)
+      const mainEndpoint = requestBody.model.main_model?.endpoint || requestBody.model.endpoint;
+      const miniEndpoint = requestBody.model.mini_model?.endpoint || requestBody.model.endpoint;
+      const nanoEndpoint = requestBody.model.nano_model?.endpoint || requestBody.model.endpoint;
+
       return {
-        main_model: requestBody.model.main_model || this.createDefaultModelConfig('main', defaults),
-        mini_model: requestBody.model.mini_model || this.createDefaultModelConfig('mini', defaults),
-        nano_model: requestBody.model.nano_model || this.createDefaultModelConfig('nano', defaults)
+        main_model: {
+          ...this.extractModelTierConfig('main', requestBody.model.main_model, defaults),
+          endpoint: mainEndpoint
+        },
+        mini_model: {
+          ...this.extractModelTierConfig('mini', requestBody.model.mini_model, defaults),
+          endpoint: miniEndpoint
+        },
+        nano_model: {
+          ...this.extractModelTierConfig('nano', requestBody.model.nano_model, defaults),
+          endpoint: nanoEndpoint
+        }
       };
     }
 
@@ -441,6 +518,44 @@ class APIServer {
       mini_model: this.createDefaultModelConfig('mini', defaults),
       nano_model: this.createDefaultModelConfig('nano', defaults)
     };
+  }
+
+  /**
+   * Extract model tier configuration from request
+   * Handles both nested format { provider: "litellm", model: "qwen3:14b", api_key: "..." }
+   * and flat format "qwen3:14b"
+   * @param {'main' | 'mini' | 'nano'} tier - Model tier
+   * @param {any} tierConfig - Configuration from request (can be object or string)
+   * @param {Object} defaults - Default configuration from config.yaml
+   * @returns {Object} Extracted configuration (without endpoint)
+   */
+  extractModelTierConfig(tier, tierConfig, defaults) {
+    // If not provided, use defaults
+    if (!tierConfig) {
+      return this.createDefaultModelConfig(tier, defaults);
+    }
+
+    // If it's an object with provider/model/api_key, extract those fields
+    if (typeof tierConfig === 'object' && tierConfig.provider) {
+      return {
+        provider: tierConfig.provider,
+        model: tierConfig.model,
+        api_key: tierConfig.api_key
+        // endpoint will be added by caller
+      };
+    }
+
+    // If it's just a string (model name), use default provider
+    if (typeof tierConfig === 'string') {
+      return {
+        provider: defaults.provider || 'openai',
+        model: tierConfig,
+        api_key: process.env.OPENAI_API_KEY
+      };
+    }
+
+    // Fallback to defaults
+    return this.createDefaultModelConfig(tier, defaults);
   }
 
   /**
@@ -456,10 +571,14 @@ class APIServer {
       nano: defaults.nano_model || 'gpt-3.5-turbo'
     };
 
+    const provider = defaults.provider || 'openai';
+
     return {
-      provider: defaults.provider || 'openai',
+      provider: provider,
       model: defaultModels[tier],
-      api_key: process.env.OPENAI_API_KEY
+      api_key: process.env.OPENAI_API_KEY,
+      // Add endpoint for litellm provider with env var fallback
+      endpoint: defaults.endpoint || (provider === 'litellm' ? process.env.LITELLM_ENDPOINT : undefined)
     };
   }
 
@@ -533,12 +652,33 @@ class APIServer {
 
   /**
    * Create a dynamic evaluation object with nested model configuration
-   * @param {string} input - Input message for the evaluation
+   * @param {string|Array<{role: string, content: string}>} input - Input message (string) or conversation array (OpenAI Responses API format)
    * @param {import('./types/model-config').ModelConfig} nestedModelConfig - Model configuration
    * @returns {import('./types/model-config').EvaluationRequest} Evaluation request object
    */
   createDynamicRequestNested(input, nestedModelConfig) {
     const requestId = `api-req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Determine input format and structure accordingly
+    // The browser-side EvaluationAgent.ts already handles both formats:
+    // - String format: { message: "text" }
+    // - Conversation array format: [{ role: "user", content: "text" }, ...]
+    let evaluationInput;
+
+    if (typeof input === 'string') {
+      // Legacy format: simple string input
+      evaluationInput = { message: input };
+    } else if (Array.isArray(input)) {
+      // New format: conversation array (OpenAI Responses API format)
+      // Pass directly - EvaluationAgent.ts already has full support via:
+      // - convertMessagesToChatMessages() method (lines 868-888)
+      // - extractSystemPrompt() method (lines 893-898)
+      // - executeChatEvaluation() method (lines 900-1150)
+      evaluationInput = input;
+    } else {
+      // Fallback for unexpected format (shouldn't reach here due to validation)
+      evaluationInput = { message: String(input) };
+    }
 
     return {
       id: requestId,
@@ -547,9 +687,7 @@ class APIServer {
       enabled: true,
       tool: 'chat',
       timeout: 7200000, // 2 hours (increased for slow custom API)
-      input: {
-        message: input
-      },
+      input: evaluationInput,
       model: nestedModelConfig,
       validation: {
         type: 'none' // No validation needed for API responses

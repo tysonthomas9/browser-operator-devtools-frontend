@@ -18,6 +18,7 @@ export interface LLMConfig {
   mainModel: string;
   miniModel?: string;
   nanoModel?: string;
+  systemPrompt?: string; // For conversation state override
 }
 
 /**
@@ -152,6 +153,7 @@ export class LLMConfigurationManager {
       mainModel: this.getMainModel(),
       miniModel: this.getMiniModel(),
       nanoModel: this.getNanoModel(),
+      systemPrompt: this.overrideConfig?.systemPrompt,
     };
   }
 

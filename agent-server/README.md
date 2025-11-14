@@ -75,7 +75,7 @@ The server will start:
 
 Send a task to a connected browser agent and get response.
 
-**Request:**
+**Request (OpenAI):**
 ```json
 {
   "input": "Click the submit button",
@@ -100,6 +100,39 @@ Send a task to a connected browser agent and get response.
   }
 }
 ```
+
+**Request (LiteLLM):**
+```json
+{
+  "input": "Navigate to google.com",
+  "url": "about:blank",
+  "wait_timeout": 5000,
+  "model": {
+    "main_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000",
+      "api_key": "sk-litellm-key"
+    },
+    "mini_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    },
+    "nano_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    }
+  }
+}
+```
+
+**Endpoint Configuration:**
+- `endpoint` can be specified per model tier (e.g., `main_model.endpoint`)
+- Or at top-level `model.endpoint` to apply to all tiers
+- Falls back to `LITELLM_ENDPOINT` environment variable if not provided
+- Required for LiteLLM provider unless set via environment variable
 
 **Response:**
 ```json

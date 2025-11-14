@@ -70,7 +70,7 @@ The eval-server is a **thin HTTP API wrapper for Browser Operator**. It provides
 
 Primary endpoint for sending tasks to browser agents.
 
-**Request:**
+**Request (OpenAI):**
 ```json
 {
   "input": "Click the submit button",
@@ -83,6 +83,79 @@ Primary endpoint for sending tasks to browser agents.
   }
 }
 ```
+
+**Request (LiteLLM with endpoint):**
+```json
+{
+  "input": "Navigate to google.com",
+  "url": "about:blank",
+  "wait_timeout": 5000,
+  "model": {
+    "main_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    },
+    "mini_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    },
+    "nano_model": {
+      "provider": "litellm",
+      "model": "qwen3:14b",
+      "endpoint": "http://localhost:4000"
+    }
+  }
+}
+```
+
+**Note:** The `endpoint` field can be:
+- Specified per model tier (e.g., `main_model.endpoint`)
+- Specified at top-level (`model.endpoint`) to apply to all tiers
+- Omitted to use `LITELLM_ENDPOINT` environment variable
+
+**Request (Conversation State - OpenAI Responses API format):**
+```json
+{
+  "input": [
+    {
+      "role": "system",
+      "content": "You are a web automation expert."
+    },
+    {
+      "role": "user",
+      "content": "Navigate to bloomberg.com"
+    },
+    {
+      "role": "assistant",
+      "content": "I've navigated to bloomberg.com. I can see the homepage."
+    },
+    {
+      "role": "user",
+      "content": "Summarize todays news"
+    }
+  ],
+  "url": "https://bloomberg.com",
+  "model": {
+    "main_model": {
+      "provider": "litellm",
+      "model": "gemma3:12b",
+      "endpoint": "http://localhost:4000"
+    }
+  }
+}
+```
+
+**Input Format Options:**
+1. **String format**: `"input": "Your message"` (simple, single message)
+2. **Conversation array**: `"input": [{role, content}, ...]` (multi-turn with history)
+
+**Message Requirements:**
+- Each message needs `role` (`system`, `user`, or `assistant`) and `content` (string)
+- At least one `user` message required
+- System messages are extracted as system prompt
+- Maximum 100 messages, 10,000 characters each
 
 **Response (OpenAI-compatible format):**
 ```json
