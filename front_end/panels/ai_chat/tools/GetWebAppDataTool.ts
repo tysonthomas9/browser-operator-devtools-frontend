@@ -15,7 +15,6 @@ export interface GetWebAppDataArgs {
   webappId: string;
   reasoning: string;
   waitForSubmit?: boolean;
-  timeout?: number;
 }
 
 /**
@@ -40,11 +39,10 @@ export class GetWebAppDataTool implements Tool<GetWebAppDataArgs, GetWebAppDataR
     logger.info('Retrieving webapp data', {
       webappId: args.webappId,
       reasoning: args.reasoning,
-      waitForSubmit: args.waitForSubmit,
-      timeout: args.timeout
+      waitForSubmit: args.waitForSubmit
     });
 
-    const { webappId, reasoning, waitForSubmit = false, timeout = 30000 } = args;
+    const { webappId, reasoning, waitForSubmit = false } = args;
 
     // Validate required arguments
     if (!webappId || typeof webappId !== 'string') {
@@ -65,14 +63,13 @@ export class GetWebAppDataTool implements Tool<GetWebAppDataArgs, GetWebAppDataR
     try {
       const runtimeAgent = target.runtimeAgent();
 
-      // Wait for form submission if requested
+      // Wait for form submission if requested (waits indefinitely)
       if (waitForSubmit) {
-        const startTime = Date.now();
         const pollInterval = 500; // Poll every 500ms
 
-        logger.info('Waiting for webapp form submission', { webappId, timeout });
+        logger.info('Waiting for webapp form submission (indefinitely)', { webappId });
 
-        while (Date.now() - startTime < timeout) {
+        while (true) {
           const checkResult = await runtimeAgent.invoke_evaluate({
             expression: `
               (() => {
@@ -107,12 +104,6 @@ export class GetWebAppDataTool implements Tool<GetWebAppDataArgs, GetWebAppDataR
 
           // Wait before next poll
           await new Promise(resolve => setTimeout(resolve, pollInterval));
-        }
-
-        // Check if we timed out
-        if (Date.now() - startTime >= timeout) {
-          logger.warn('Timeout waiting for webapp form submission', { webappId, timeout });
-          return { error: `Timeout waiting for webapp form submission after ${timeout}ms` };
         }
       }
 
@@ -249,11 +240,7 @@ export class GetWebAppDataTool implements Tool<GetWebAppDataArgs, GetWebAppDataR
       },
       waitForSubmit: {
         type: 'boolean',
-        description: 'If true, waits for form submission before retrieving data. The tool will poll until the form is submitted or timeout is reached. Default: false',
-      },
-      timeout: {
-        type: 'number',
-        description: 'Maximum time to wait for form submission in milliseconds. Only used when waitForSubmit is true. Default: 30000 (30 seconds)',
+        description: 'If true, waits indefinitely for form submission before retrieving data. The tool will poll until the form is submitted. Default: false',
       },
     },
     required: ['webappId', 'reasoning'],

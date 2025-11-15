@@ -27,6 +27,8 @@ export class InputBar extends HTMLElement {
   #currentProvider?: string;
   #selectedPromptType?: string|null;
   #agentButtonsHandler: (event: Event) => void = () => {};
+  #onAddAgent?: () => void;
+  #allAgents?: {[key: string]: BaseOrchestratorAgent.AgentConfig};
   #centered = false;
 
   set placeholder(v: string) { this.#placeholder = v || ''; this.#render(); }
@@ -39,6 +41,8 @@ export class InputBar extends HTMLElement {
   set currentProvider(v: string|undefined) { this.#currentProvider = v; this.#render(); }
   set selectedPromptType(v: string|null|undefined) { this.#selectedPromptType = v ?? null; this.#render(); }
   set agentButtonsHandler(fn: (event: Event) => void) { this.#agentButtonsHandler = fn || (() => {}); this.#render(); }
+  set onAddAgent(fn: (() => void) | undefined) { this.#onAddAgent = fn; this.#render(); }
+  set allAgents(v: {[key: string]: BaseOrchestratorAgent.AgentConfig} | undefined) { this.#allAgents = v; this.#render(); }
   set centered(v: boolean) { this.#centered = !!v; this.#render(); }
 
   connectedCallback(): void { this.#render(); }
@@ -106,7 +110,13 @@ export class InputBar extends HTMLElement {
       </div>
     ` : Lit.nothing;
 
-    const agentButtons = BaseOrchestratorAgent.renderAgentTypeButtons(this.#selectedPromptType ?? null, this.#agentButtonsHandler, this.#centered);
+    const agentButtons = BaseOrchestratorAgent.renderAgentTypeButtons(
+      this.#selectedPromptType ?? null,
+      this.#agentButtonsHandler,
+      this.#centered,
+      this.#onAddAgent,
+      this.#allAgents
+    );
 
     const modelSelector = (
       this.#currentProvider !== 'browseroperator' &&

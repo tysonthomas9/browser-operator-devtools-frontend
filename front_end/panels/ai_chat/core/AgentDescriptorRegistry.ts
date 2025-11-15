@@ -118,6 +118,16 @@ export class AgentDescriptorRegistry {
   static hasDescriptor(name: string): boolean {
     return descriptorSources.has(name);
   }
+
+  static removeSource(name: string): void {
+    const removed = descriptorSources.delete(name);
+    if (removed) {
+      invalidateCache(name);
+      logger.debug('Removed agent descriptor source', { name });
+    } else {
+      logger.warn('Attempted to remove non-existent agent descriptor source', { name });
+    }
+  }
 }
 
 // Convenience helpers exposed globally for debugging during development.

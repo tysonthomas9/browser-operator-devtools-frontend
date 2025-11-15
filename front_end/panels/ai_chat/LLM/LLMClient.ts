@@ -3,12 +3,18 @@
 // found in the LICENSE file.
 
 import type { LLMMessage, LLMResponse, LLMCallOptions, LLMProvider, ModelInfo, RetryConfig } from './LLMTypes.js';
+import { isCustomProvider } from './LLMTypes.js';
 import { LLMProviderRegistry } from './LLMProviderRegistry.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
 import { LiteLLMProvider } from './LiteLLMProvider.js';
 import { GroqProvider } from './GroqProvider.js';
 import { OpenRouterProvider } from './OpenRouterProvider.js';
 import { BrowserOperatorProvider } from './BrowserOperatorProvider.js';
+import { CerebrasProvider } from './CerebrasProvider.js';
+import { AnthropicProvider } from './AnthropicProvider.js';
+import { GoogleAIProvider } from './GoogleAIProvider.js';
+import { GenericOpenAIProvider } from './GenericOpenAIProvider.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
 
@@ -100,6 +106,15 @@ export class LLMClient {
               providerConfig.providerURL  // Optional override for testing
             );
             break;
+          case 'cerebras':
+            providerInstance = new CerebrasProvider(providerConfig.apiKey);
+            break;
+          case 'anthropic':
+            providerInstance = new AnthropicProvider(providerConfig.apiKey);
+            break;
+          case 'googleai':
+            providerInstance = new GoogleAIProvider(providerConfig.apiKey);
+            break;
           default:
             logger.warn(`Unknown provider type: ${providerConfig.provider}`);
             continue;
@@ -110,6 +125,37 @@ export class LLMClient {
       } catch (error) {
         logger.error(`Failed to initialize ${providerConfig.provider} provider:`, error);
       }
+    }
+
+    // Load and register custom providers
+    try {
+      const customProviders = CustomProviderManager.listEnabledProviders();
+      logger.info(`Loading ${customProviders.length} custom providers`);
+
+      for (const customProviderConfig of customProviders) {
+        try {
+          // Get API key from localStorage
+          const apiKey = CustomProviderManager.getApiKey(customProviderConfig.id);
+
+          // Create GenericOpenAIProvider instance
+          const providerInstance = new GenericOpenAIProvider(
+            customProviderConfig,
+            apiKey || undefined
+          );
+
+          // Register with the provider ID (e.g., "custom:z-ai")
+          LLMProviderRegistry.registerProvider(
+            customProviderConfig.id as LLMProvider,
+            providerInstance
+          );
+
+          logger.info(`Registered custom provider: ${customProviderConfig.name} (${customProviderConfig.id})`);
+        } catch (error) {
+          logger.error(`Failed to initialize custom provider ${customProviderConfig.name}:`, error);
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to load custom providers:', error);
     }
 
     this.initialized = true;
@@ -384,13 +430,140 @@ export class LLMClient {
   }
 
   /**
+   * Static method to fetch models from Cerebras API (for UI use without initialization)
+   */
+  static async fetchCerebrasModels(apiKey: string): Promise<any[]> {
+    const provider = new CerebrasProvider(apiKey);
+    const models = await provider.fetchModels();
+    return models;
+  }
+
+  /**
+   * Static method to test Cerebras connection (for UI use without initialization)
+   */
+  static async testCerebrasConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    const provider = new CerebrasProvider(apiKey);
+    return provider.testConnection(modelName);
+  }
+
+  /**
+   * Static method to fetch models from Google AI API (for UI use without initialization)
+   */
+  static async fetchGoogleAIModels(apiKey: string): Promise<any[]> {
+    const provider = new GoogleAIProvider(apiKey);
+    const models = await provider.fetchModels();
+    return models;
+  }
+
+  /**
+   * Static method to test Google AI connection (for UI use without initialization)
+   */
+  static async testGoogleAIConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    const provider = new GoogleAIProvider(apiKey);
+    return provider.testConnection(modelName);
+  }
+
+  /**
+   * Static method to get Anthropic models (for UI use without initialization)
+   * Anthropic doesn't have a public models API, so this returns the default list
+   */
+  static async getAnthropicModels(apiKey: string): Promise<any[]> {
+    const provider = new AnthropicProvider(apiKey);
+    const models = await provider.getModels();
+    return models;
+  }
+
+  /**
+   * Static method to test Anthropic connection (for UI use without initialization)
+   */
+  static async testAnthropicConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    const provider = new AnthropicProvider(apiKey);
+    return provider.testConnection(modelName);
+  }
+
+  /**
+   * Static method to test custom provider connection (for UI use without initialization)
+   * Tests connection and fetches models
+   */
+  static async testCustomProviderConnection(
+    name: string,
+    baseURL: string,
+    apiKey?: string
+  ): Promise<{success: boolean, message: string, models?: string[]}> {
+    try {
+      // Create a temporary config for testing
+      const tempConfig = {
+        id: `custom:temp-${Date.now()}`,
+        name,
+        baseURL,
+        models: [],
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const provider = new GenericOpenAIProvider(tempConfig, apiKey);
+      return provider.testConnection();
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
+   * Static method to fetch models from a custom provider (for UI use without initialization)
+   */
+  static async fetchCustomProviderModels(
+    name: string,
+    baseURL: string,
+    apiKey?: string
+  ): Promise<string[]> {
+    try {
+      const tempConfig = {
+        id: `custom:temp-${Date.now()}`,
+        name,
+        baseURL,
+        models: [],
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const provider = new GenericOpenAIProvider(tempConfig, apiKey);
+      const models = await provider.fetchModels();
+      return models.map(m => m.id);
+    } catch (error) {
+      logger.error('Failed to fetch custom provider models:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Static method to validate credentials for a specific provider
    */
   static validateProviderCredentials(providerType: string): {isValid: boolean, message: string, missingItems?: string[]} {
     try {
-      // Create temporary provider instance for validation (no API key needed for validation)
+      // Check if it's a custom provider
+      if (isCustomProvider(providerType)) {
+        const customProviderConfig = CustomProviderManager.getProvider(providerType);
+        if (!customProviderConfig) {
+          return {
+            isValid: false,
+            message: `Custom provider ${providerType} not found`,
+            missingItems: ['Provider configuration']
+          };
+        }
+
+        const apiKey = CustomProviderManager.getApiKey(providerType);
+        const provider = new GenericOpenAIProvider(customProviderConfig, apiKey || undefined);
+        return provider.validateCredentials();
+      }
+
+      // Handle built-in providers
       let provider;
-      
+
       switch (providerType) {
         case 'openai':
           provider = new OpenAIProvider('');
@@ -407,6 +580,15 @@ export class LLMClient {
         case 'browseroperator':
           provider = new BrowserOperatorProvider(null, '');
           break;
+        case 'cerebras':
+          provider = new CerebrasProvider('');
+          break;
+        case 'anthropic':
+          provider = new AnthropicProvider('');
+          break;
+        case 'googleai':
+          provider = new GoogleAIProvider('');
+          break;
         default:
           return {
             isValid: false,
@@ -414,7 +596,7 @@ export class LLMClient {
             missingItems: ['Valid provider selection']
           };
       }
-      
+
       return provider.validateCredentials();
     } catch (error) {
       return {

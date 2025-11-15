@@ -7,10 +7,13 @@ import * as UI from '../../../ui/legacy/legacy.js';
 import { getEvaluationConfig, setEvaluationConfig, isEvaluationEnabled, connectToEvaluationService, disconnectFromEvaluationService, getEvaluationClientId, isEvaluationConnected } from '../common/EvaluationConfig.js';
 import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
+import { isCustomProvider, getProviderDisplayName } from '../LLM/LLMTypes.js';
 import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../tracing/TracingConfig.js';
 import { getMCPConfig, setMCPConfig, isMCPEnabled, hasStoredAuthErrors, getStoredAuthErrors, clearStoredAuthError } from '../mcp/MCPConfig.js';
 import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { MCPConnectionsDialog } from './mcp/MCPConnectionsDialog.js';
+import { CustomProviderDialog } from './CustomProviderDialog.js';
 
 import { DEFAULT_PROVIDER_MODELS } from './AIChatPanel.js';
 import './model_selector/ModelSelector.js';
@@ -21,7 +24,7 @@ const logger = createLogger('SettingsDialog');
 interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+  type: string; // Changed from union to string to support dynamic custom providers
 }
 
 // Local storage keys
@@ -31,6 +34,9 @@ const LITELLM_ENDPOINT_KEY = 'ai_chat_litellm_endpoint';
 const LITELLM_API_KEY_STORAGE_KEY = 'ai_chat_litellm_api_key';
 const GROQ_API_KEY_STORAGE_KEY = 'ai_chat_groq_api_key';
 const OPENROUTER_API_KEY_STORAGE_KEY = 'ai_chat_openrouter_api_key';
+const CEREBRAS_API_KEY_STORAGE_KEY = 'ai_chat_cerebras_api_key';
+const ANTHROPIC_API_KEY_STORAGE_KEY = 'ai_chat_anthropic_api_key';
+const GOOGLEAI_API_KEY_STORAGE_KEY = 'ai_chat_googleai_api_key';
 const PROVIDER_SELECTION_KEY = 'ai_chat_provider';
 
 // Cache constants
@@ -73,6 +79,18 @@ const UIStrings = {
    *@description OpenRouter provider option
    */
   openrouterProvider: 'OpenRouter',
+  /**
+   *@description Cerebras provider option
+   */
+  cerebrasProvider: 'Cerebras',
+  /**
+   *@description Anthropic provider option
+   */
+  anthropicProvider: 'Anthropic',
+  /**
+   *@description Google AI provider option
+   */
+  googleaiProvider: 'Google AI',
   /**
    *@description LiteLLM API Key label
    */
@@ -137,6 +155,38 @@ const UIStrings = {
    *@description Test BrowserOperator connection button
    */
   testBrowseroperatorConnection: 'Test Connection',
+  /**
+   *@description Cerebras API Key label
+   */
+  cerebrasApiKeyLabel: 'Cerebras API Key',
+  /**
+   *@description Cerebras API Key hint
+   */
+  cerebrasApiKeyHint: 'Your Cerebras API key for authentication',
+  /**
+   *@description Fetch Cerebras models button text
+   */
+  fetchCerebrasModelsButton: 'Fetch Cerebras Models',
+  /**
+   *@description Anthropic API Key label
+   */
+  anthropicApiKeyLabel: 'Anthropic API Key',
+  /**
+   *@description Anthropic API Key hint
+   */
+  anthropicApiKeyHint: 'Your Anthropic API key for authentication',
+  /**
+   *@description Google AI API Key label
+   */
+  googleaiApiKeyLabel: 'Google AI API Key',
+  /**
+   *@description Google AI API Key hint
+   */
+  googleaiApiKeyHint: 'Your Google AI Studio API key for authentication',
+  /**
+   *@description Fetch Google AI models button text
+   */
+  fetchGoogleAIModelsButton: 'Fetch Google AI Models',
   /**
    *@description OpenAI API Key label
    */
@@ -528,7 +578,19 @@ export class SettingsDialog {
   static #openrouterNanoModelSelect: any | null = null;
   static #browseroperatorMiniModelSelect: any | null = null;
   static #browseroperatorNanoModelSelect: any | null = null;
-  
+  static #cerebrasMiniModelSelect: any | null = null;
+  static #cerebrasNanoModelSelect: any | null = null;
+  static #anthropicMiniModelSelect: any | null = null;
+  static #anthropicNanoModelSelect: any | null = null;
+  static #googleaiMiniModelSelect: any | null = null;
+  static #googleaiNanoModelSelect: any | null = null;
+
+  // Map for storing custom provider model selectors dynamically
+  static #customProviderModelSelectors: Map<string, {
+    mini: any | null;
+    nano: any | null;
+  }> = new Map();
+
   static async show(
     selectedModel: string,
     miniModel: string,
@@ -536,8 +598,8 @@ export class SettingsDialog {
     onSettingsSaved: () => void,
     fetchLiteLLMModels: (apiKey: string|null, endpoint?: string) => Promise<{models: ModelOption[], hadWildcard: boolean}>,
     updateModelOptions: (litellmModels: ModelOption[], hadWildcard?: boolean) => void,
-    getModelOptions: (provider?: 'openai' | 'litellm' | 'groq' | 'openrouter') => ModelOption[],
-    addCustomModelOption: (modelName: string, modelType?: 'openai' | 'litellm' | 'groq' | 'openrouter') => ModelOption[],
+    getModelOptions: (provider?: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'cerebras' | 'anthropic' | 'googleai') => ModelOption[],
+    addCustomModelOption: (modelName: string, modelType?: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'cerebras' | 'anthropic' | 'googleai') => ModelOption[],
     removeCustomModelOption: (modelName: string) => ModelOption[],
   ): Promise<void> {
     
@@ -598,7 +660,7 @@ export class SettingsDialog {
     providerSection.appendChild(providerHint);
     
     // Use the stored provider from localStorage
-    const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+    const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai';
     
     // Create provider selection dropdown
     const providerSelect = document.createElement('select');
@@ -636,9 +698,61 @@ export class SettingsDialog {
     browseroperatorOption.selected = currentProvider === 'browseroperator';
     providerSelect.appendChild(browseroperatorOption);
 
+    const cerebrasOption = document.createElement('option');
+    cerebrasOption.value = 'cerebras';
+    cerebrasOption.textContent = i18nString(UIStrings.cerebrasProvider);
+    cerebrasOption.selected = currentProvider === 'cerebras';
+    providerSelect.appendChild(cerebrasOption);
+
+    const anthropicOption = document.createElement('option');
+    anthropicOption.value = 'anthropic';
+    anthropicOption.textContent = i18nString(UIStrings.anthropicProvider);
+    anthropicOption.selected = currentProvider === 'anthropic';
+    providerSelect.appendChild(anthropicOption);
+
+    const googleaiOption = document.createElement('option');
+    googleaiOption.value = 'googleai';
+    googleaiOption.textContent = i18nString(UIStrings.googleaiProvider);
+    googleaiOption.selected = currentProvider === 'googleai';
+    providerSelect.appendChild(googleaiOption);
+
+    // Load and add custom providers to dropdown
+    const customProviders = CustomProviderManager.listProviders();
+    const customProviderElements: Map<string, HTMLOptionElement> = new Map();
+
+    if (customProviders.length > 0) {
+      // Add separator (optgroup)
+      const customGroup = document.createElement('optgroup');
+      customGroup.label = '--- Custom Providers ---';
+      providerSelect.appendChild(customGroup);
+
+      customProviders.forEach(provider => {
+        const customOption = document.createElement('option');
+        customOption.value = provider.id;
+        customOption.textContent = `${provider.name} (Custom)`;
+        customOption.selected = currentProvider === provider.id;
+        customGroup.appendChild(customOption);
+        customProviderElements.set(provider.id, customOption);
+      });
+    }
+
     // Ensure the select's value reflects the computed currentProvider
     providerSelect.value = currentProvider;
-    
+
+    // Add "Manage Custom Providers" button
+    const manageProvidersButton = document.createElement('button');
+    manageProvidersButton.textContent = 'Manage Custom Providers';
+    manageProvidersButton.className = 'devtools-button';
+    manageProvidersButton.style.cssText = 'margin-top: 12px; padding: 8px 12px; cursor: pointer;';
+    manageProvidersButton.addEventListener('click', () => {
+      const customProviderDialog = new CustomProviderDialog(() => {
+        // Providers changed - user would need to reopen settings to see updates
+        logger.info('Custom providers updated');
+      });
+      customProviderDialog.show();
+    });
+    providerSection.appendChild(manageProvidersButton);
+
     // Create provider-specific content containers
     const openaiContent = document.createElement('div');
     openaiContent.className = 'provider-content openai-content';
@@ -665,6 +779,101 @@ export class SettingsDialog {
     browseroperatorContent.style.display = currentProvider === 'browseroperator' ? 'block' : 'none';
     contentDiv.appendChild(browseroperatorContent);
 
+    const cerebrasContent = document.createElement('div');
+    cerebrasContent.className = 'provider-content cerebras-content';
+    cerebrasContent.style.display = currentProvider === 'cerebras' ? 'block' : 'none';
+    contentDiv.appendChild(cerebrasContent);
+
+    const anthropicContent = document.createElement('div');
+    anthropicContent.className = 'provider-content anthropic-content';
+    anthropicContent.style.display = currentProvider === 'anthropic' ? 'block' : 'none';
+    contentDiv.appendChild(anthropicContent);
+
+    const googleaiContent = document.createElement('div');
+    googleaiContent.className = 'provider-content googleai-content';
+    googleaiContent.style.display = currentProvider === 'googleai' ? 'block' : 'none';
+    contentDiv.appendChild(googleaiContent);
+
+    // Create content containers for custom providers dynamically
+    const customProviderContents: Map<string, HTMLElement> = new Map();
+    customProviders.forEach(provider => {
+      const content = document.createElement('div');
+      content.className = 'provider-content custom-provider-content';
+      content.style.display = currentProvider === provider.id ? 'block' : 'none';
+      contentDiv.appendChild(content);
+      customProviderContents.set(provider.id, content);
+
+      // Create provider info section
+      const infoSection = document.createElement('div');
+      infoSection.className = 'settings-section';
+      content.appendChild(infoSection);
+
+      const infoLabel = document.createElement('div');
+      infoLabel.className = 'settings-label';
+      infoLabel.textContent = 'Provider Information';
+      infoSection.appendChild(infoLabel);
+
+      const infoText = document.createElement('div');
+      infoText.className = 'settings-hint';
+      infoText.innerHTML = `
+        <strong>Name:</strong> ${provider.name}<br>
+        <strong>Base URL:</strong> ${provider.baseURL}<br>
+        <strong>Models Available:</strong> ${provider.models.length}
+      `;
+      infoText.style.marginBottom = '16px';
+      infoSection.appendChild(infoText);
+
+      // Create model selection section
+      const modelSection = document.createElement('div');
+      modelSection.className = 'settings-section model-selection-section';
+      content.appendChild(modelSection);
+
+      // Convert provider models to ModelOption format
+      const providerModels: ModelOption[] = provider.models.map(modelId => ({
+        value: modelId,
+        label: modelId,
+        type: provider.id
+      }));
+
+      // Add models to global model options
+      updateModelOptions(providerModels, false);
+
+      // Get current model selections or use first model as default
+      const defaultModel = provider.models[0] || '';
+      const validMiniModel = miniModel && provider.models.includes(miniModel) ? miniModel : defaultModel;
+      const validNanoModel = nanoModel && provider.models.includes(nanoModel) ? nanoModel : defaultModel;
+
+      // Create mini model selector
+      const miniModelSelect = createModelSelector(
+        modelSection,
+        i18nString(UIStrings.miniModelLabel),
+        i18nString(UIStrings.miniModelDescription),
+        `${provider.id}-mini-model-select`,
+        providerModels,
+        validMiniModel,
+        i18nString(UIStrings.defaultMiniOption),
+        undefined
+      );
+
+      // Create nano model selector
+      const nanoModelSelect = createModelSelector(
+        modelSection,
+        i18nString(UIStrings.nanoModelLabel),
+        i18nString(UIStrings.nanoModelDescription),
+        `${provider.id}-nano-model-select`,
+        providerModels,
+        validNanoModel,
+        i18nString(UIStrings.defaultNanoOption),
+        undefined
+      );
+
+      // Store selectors in the Map
+      SettingsDialog.#customProviderModelSelectors.set(provider.id, {
+        mini: miniModelSelect,
+        nano: nanoModelSelect
+      });
+    });
+
     // Event listener for provider change
     providerSelect.addEventListener('change', async () => {
       const selectedProvider = providerSelect.value;
@@ -675,6 +884,14 @@ export class SettingsDialog {
       groqContent.style.display = selectedProvider === 'groq' ? 'block' : 'none';
       openrouterContent.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
       browseroperatorContent.style.display = selectedProvider === 'browseroperator' ? 'block' : 'none';
+      cerebrasContent.style.display = selectedProvider === 'cerebras' ? 'block' : 'none';
+      anthropicContent.style.display = selectedProvider === 'anthropic' ? 'block' : 'none';
+      googleaiContent.style.display = selectedProvider === 'googleai' ? 'block' : 'none';
+
+      // Handle custom providers
+      customProviderContents.forEach((content, providerId) => {
+        content.style.display = selectedProvider === providerId ? 'block' : 'none';
+      });
 
       // If switching to LiteLLM, fetch the latest models if endpoint is configured
       if (selectedProvider === 'litellm') {
@@ -713,7 +930,7 @@ export class SettingsDialog {
       } else if (selectedProvider === 'openrouter') {
         // If switching to OpenRouter, fetch models if API key is configured
         const openrouterApiKey = openrouterApiKeyInput.value.trim() || localStorage.getItem('ai_chat_openrouter_api_key') || '';
-        
+
         if (openrouterApiKey) {
           try {
             logger.debug('Fetching OpenRouter models after provider change...');
@@ -732,10 +949,85 @@ export class SettingsDialog {
             logger.error('Failed to fetch OpenRouter models after provider change:', error);
           }
         }
+      } else if (selectedProvider === 'cerebras') {
+        // If switching to Cerebras, fetch models if API key is configured
+        const cerebrasApiKey = cerebrasApiKeyInput.value.trim() || localStorage.getItem(CEREBRAS_API_KEY_STORAGE_KEY) || '';
+
+        if (cerebrasApiKey) {
+          try {
+            logger.debug('Fetching Cerebras models after provider change...');
+            const cerebrasModels = await LLMClient.fetchCerebrasModels(cerebrasApiKey);
+            const modelOptions: ModelOption[] = cerebrasModels.map(model => ({
+              value: model.id,
+              label: model.id,
+              type: 'cerebras' as const
+            }));
+            updateModelOptions(modelOptions, false);
+            logger.debug('Successfully refreshed Cerebras models after provider change');
+          } catch (error) {
+            logger.error('Failed to fetch Cerebras models after provider change:', error);
+          }
+        }
+      } else if (selectedProvider === 'anthropic') {
+        // If switching to Anthropic, load default models (no API fetch needed)
+        const anthropicApiKey = anthropicApiKeyInput.value.trim() || localStorage.getItem(ANTHROPIC_API_KEY_STORAGE_KEY) || '';
+
+        if (anthropicApiKey) {
+          try {
+            logger.debug('Loading Anthropic models after provider change...');
+            const anthropicModels = await LLMClient.getAnthropicModels(anthropicApiKey);
+            const modelOptions: ModelOption[] = anthropicModels.map(model => ({
+              value: model.id,
+              label: model.name || model.id,
+              type: 'anthropic' as const
+            }));
+            updateModelOptions(modelOptions, false);
+            logger.debug('Successfully loaded Anthropic models after provider change');
+          } catch (error) {
+            logger.error('Failed to load Anthropic models after provider change:', error);
+          }
+        }
+      } else if (selectedProvider === 'googleai') {
+        // If switching to Google AI, fetch models if API key is configured
+        const googleaiApiKey = googleaiApiKeyInput.value.trim() || localStorage.getItem(GOOGLEAI_API_KEY_STORAGE_KEY) || '';
+
+        if (googleaiApiKey) {
+          try {
+            logger.debug('Fetching Google AI models after provider change...');
+            const googleaiModels = await LLMClient.fetchGoogleAIModels(googleaiApiKey);
+            const modelOptions: ModelOption[] = googleaiModels.map(model => ({
+              value: model.id,
+              label: model.name || model.id,
+              type: 'googleai' as const
+            }));
+            updateModelOptions(modelOptions, false);
+            logger.debug('Successfully refreshed Google AI models after provider change');
+          } catch (error) {
+            logger.error('Failed to fetch Google AI models after provider change:', error);
+          }
+        }
+      } else if (isCustomProvider(selectedProvider)) {
+        // If switching to a custom provider, load its models
+        const customProviderConfig = CustomProviderManager.getProvider(selectedProvider);
+
+        if (customProviderConfig && customProviderConfig.models.length > 0) {
+          try {
+            logger.debug(`Loading models for custom provider: ${customProviderConfig.name}`);
+            const modelOptions: ModelOption[] = customProviderConfig.models.map(model => ({
+              value: model,
+              label: model,
+              type: selectedProvider
+            }));
+            updateModelOptions(modelOptions, false);
+            logger.debug(`Successfully loaded ${customProviderConfig.models.length} models for ${customProviderConfig.name}`);
+          } catch (error) {
+            logger.error(`Failed to load models for custom provider ${customProviderConfig.name}:`, error);
+          }
+        }
       }
 
       // Get model options filtered by the selected provider
-      const availableModels = getModelOptions(selectedProvider as 'openai' | 'litellm' | 'groq' | 'openrouter');
+      const availableModels = getModelOptions(selectedProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'cerebras' | 'anthropic' | 'googleai');
 
 
       // Refresh model selectors based on new provider
@@ -751,6 +1043,15 @@ export class SettingsDialog {
       } else if (selectedProvider === 'openrouter') {
         // Update OpenRouter selectors
         await updateOpenRouterModelSelectors();
+      } else if (selectedProvider === 'cerebras') {
+        // Update Cerebras selectors
+        updateCerebrasModelSelectors();
+      } else if (selectedProvider === 'anthropic') {
+        // Update Anthropic selectors
+        updateAnthropicModelSelectors();
+      } else if (selectedProvider === 'googleai') {
+        // Update Google AI selectors
+        updateGoogleAIModelSelectors();
       }
     });
     
@@ -2022,7 +2323,7 @@ export class SettingsDialog {
     function getValidModelForProvider(
       currentModel: string,
       providerModels: ModelOption[],
-      provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator',
+      provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai',
       modelType: 'mini' | 'nano'
     ): string {
       // Check if current model is valid for this provider
@@ -2640,6 +2941,396 @@ export class SettingsDialog {
     );
     // Disable the selector since BrowserOperator uses automatic routing
     SettingsDialog.#browseroperatorNanoModelSelect.disabled = true;
+    // Setup Cerebras content
+    const cerebrasSettingsSection = document.createElement('div');
+    cerebrasSettingsSection.className = 'settings-section';
+    cerebrasContent.appendChild(cerebrasSettingsSection);
+
+    // Cerebras API Key
+    const cerebrasApiKeyLabel = document.createElement('div');
+    cerebrasApiKeyLabel.className = 'settings-label';
+    cerebrasApiKeyLabel.textContent = i18nString(UIStrings.cerebrasApiKeyLabel);
+    cerebrasSettingsSection.appendChild(cerebrasApiKeyLabel);
+
+    const cerebrasApiKeyHint = document.createElement('div');
+    cerebrasApiKeyHint.className = 'settings-hint';
+    cerebrasApiKeyHint.textContent = i18nString(UIStrings.cerebrasApiKeyHint);
+    cerebrasSettingsSection.appendChild(cerebrasApiKeyHint);
+
+    const settingsSavedCerebrasApiKey = localStorage.getItem(CEREBRAS_API_KEY_STORAGE_KEY) || '';
+    const cerebrasApiKeyInput = document.createElement('input');
+    cerebrasApiKeyInput.className = 'settings-input cerebras-api-key-input';
+    cerebrasApiKeyInput.type = 'password';
+    cerebrasApiKeyInput.placeholder = 'Enter your Cerebras API key';
+    cerebrasApiKeyInput.value = settingsSavedCerebrasApiKey;
+    cerebrasSettingsSection.appendChild(cerebrasApiKeyInput);
+
+    // Fetch Cerebras models button
+    const cerebrasFetchButtonContainer = document.createElement('div');
+    cerebrasFetchButtonContainer.className = 'fetch-button-container';
+    cerebrasSettingsSection.appendChild(cerebrasFetchButtonContainer);
+
+    const fetchCerebrasModelsButton = document.createElement('button');
+    fetchCerebrasModelsButton.className = 'settings-button';
+    fetchCerebrasModelsButton.setAttribute('type', 'button');
+    fetchCerebrasModelsButton.textContent = i18nString(UIStrings.fetchCerebrasModelsButton);
+    fetchCerebrasModelsButton.disabled = !cerebrasApiKeyInput.value.trim();
+    cerebrasFetchButtonContainer.appendChild(fetchCerebrasModelsButton);
+
+    const fetchCerebrasModelsStatus = document.createElement('div');
+    fetchCerebrasModelsStatus.className = 'settings-status';
+    fetchCerebrasModelsStatus.style.display = 'none';
+    cerebrasFetchButtonContainer.appendChild(fetchCerebrasModelsStatus);
+
+    // Update button state when API key changes
+    cerebrasApiKeyInput.addEventListener('input', () => {
+      fetchCerebrasModelsButton.disabled = !cerebrasApiKeyInput.value.trim();
+    });
+
+    // Function to update Cerebras model selectors
+    function updateCerebrasModelSelectors() {
+      logger.debug('Updating Cerebras model selectors');
+
+      const cerebrasModels = getModelOptions('cerebras');
+      logger.debug('Cerebras models from getModelOptions:', cerebrasModels);
+
+      const validMiniModel = getValidModelForProvider(miniModel, cerebrasModels, 'cerebras', 'mini');
+      const validNanoModel = getValidModelForProvider(nanoModel, cerebrasModels, 'cerebras', 'nano');
+
+      logger.debug('Cerebras model selection:', { originalMini: miniModel, validMini: validMiniModel, originalNano: nanoModel, validNano: validNanoModel });
+
+      const existingSelectors = cerebrasContent.querySelectorAll('.model-selection-section');
+      existingSelectors.forEach(selector => selector.remove());
+
+      const cerebrasModelSection = document.createElement('div');
+      cerebrasModelSection.className = 'settings-section model-selection-section';
+      cerebrasContent.appendChild(cerebrasModelSection);
+
+      const cerebrasModelSectionTitle = document.createElement('h3');
+      cerebrasModelSectionTitle.className = 'settings-subtitle';
+      cerebrasModelSectionTitle.textContent = 'Model Size Selection';
+      cerebrasModelSection.appendChild(cerebrasModelSectionTitle);
+
+      SettingsDialog.#cerebrasMiniModelSelect = createModelSelector(
+        cerebrasModelSection,
+        i18nString(UIStrings.miniModelLabel),
+        i18nString(UIStrings.miniModelDescription),
+        'cerebras-mini-model-select',
+        cerebrasModels,
+        validMiniModel,
+        i18nString(UIStrings.defaultMiniOption),
+        undefined
+      );
+
+      logger.debug('Created Cerebras Mini Model Select:', SettingsDialog.#cerebrasMiniModelSelect);
+
+      SettingsDialog.#cerebrasNanoModelSelect = createModelSelector(
+        cerebrasModelSection,
+        i18nString(UIStrings.nanoModelLabel),
+        i18nString(UIStrings.nanoModelDescription),
+        'cerebras-nano-model-select',
+        cerebrasModels,
+        validNanoModel,
+        i18nString(UIStrings.defaultNanoOption),
+        undefined
+      );
+
+      logger.debug('Created Cerebras Nano Model Select:', SettingsDialog.#cerebrasNanoModelSelect);
+    }
+
+    // Add click handler for fetch Cerebras models button
+    fetchCerebrasModelsButton.addEventListener('click', async () => {
+      fetchCerebrasModelsButton.disabled = true;
+      fetchCerebrasModelsStatus.textContent = i18nString(UIStrings.fetchingModels);
+      fetchCerebrasModelsStatus.style.display = 'block';
+      fetchCerebrasModelsStatus.style.backgroundColor = 'var(--color-accent-blue-background)';
+      fetchCerebrasModelsStatus.style.color = 'var(--color-accent-blue)';
+
+      try {
+        const cerebrasApiKey = cerebrasApiKeyInput.value.trim();
+
+        const cerebrasModels = await LLMClient.fetchCerebrasModels(cerebrasApiKey);
+
+        const modelOptions: ModelOption[] = cerebrasModels.map(model => ({
+          value: model.id,
+          label: model.id,
+          type: 'cerebras' as const
+        }));
+
+        updateModelOptions(modelOptions, false);
+
+        const allCerebrasModels = getModelOptions('cerebras');
+        const actualModelCount = cerebrasModels.length;
+
+        if (SettingsDialog.#cerebrasMiniModelSelect) {
+          refreshModelSelectOptions(SettingsDialog.#cerebrasMiniModelSelect, allCerebrasModels, miniModel, i18nString(UIStrings.defaultMiniOption));
+        }
+        if (SettingsDialog.#cerebrasNanoModelSelect) {
+          refreshModelSelectOptions(SettingsDialog.#cerebrasNanoModelSelect, allCerebrasModels, nanoModel, i18nString(UIStrings.defaultNanoOption));
+        }
+
+        fetchCerebrasModelsStatus.textContent = i18nString(UIStrings.fetchedModels, {PH1: actualModelCount});
+        fetchCerebrasModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
+        fetchCerebrasModelsStatus.style.color = 'var(--color-accent-green)';
+
+        localStorage.setItem(CEREBRAS_API_KEY_STORAGE_KEY, cerebrasApiKey);
+      } catch (error) {
+        fetchCerebrasModelsStatus.textContent = error instanceof Error ? error.message : 'Failed to fetch models';
+        fetchCerebrasModelsStatus.style.backgroundColor = 'var(--color-accent-red-background)';
+        fetchCerebrasModelsStatus.style.color = 'var(--color-accent-red)';
+      } finally {
+        fetchCerebrasModelsButton.disabled = false;
+        setTimeout(() => {
+          fetchCerebrasModelsStatus.style.display = 'none';
+        }, 3000);
+      }
+    });
+
+    updateCerebrasModelSelectors();
+
+    // Setup Anthropic content
+    const anthropicSettingsSection = document.createElement('div');
+    anthropicSettingsSection.className = 'settings-section';
+    anthropicContent.appendChild(anthropicSettingsSection);
+
+    // Anthropic API Key
+    const anthropicApiKeyLabel = document.createElement('div');
+    anthropicApiKeyLabel.className = 'settings-label';
+    anthropicApiKeyLabel.textContent = i18nString(UIStrings.anthropicApiKeyLabel);
+    anthropicSettingsSection.appendChild(anthropicApiKeyLabel);
+
+    const anthropicApiKeyHint = document.createElement('div');
+    anthropicApiKeyHint.className = 'settings-hint';
+    anthropicApiKeyHint.textContent = i18nString(UIStrings.anthropicApiKeyHint);
+    anthropicSettingsSection.appendChild(anthropicApiKeyHint);
+
+    const settingsSavedAnthropicApiKey = localStorage.getItem(ANTHROPIC_API_KEY_STORAGE_KEY) || '';
+    const anthropicApiKeyInput = document.createElement('input');
+    anthropicApiKeyInput.className = 'settings-input anthropic-api-key-input';
+    anthropicApiKeyInput.type = 'password';
+    anthropicApiKeyInput.placeholder = 'Enter your Anthropic API key';
+    anthropicApiKeyInput.value = settingsSavedAnthropicApiKey;
+    anthropicSettingsSection.appendChild(anthropicApiKeyInput);
+
+    // Function to update Anthropic model selectors
+    function updateAnthropicModelSelectors() {
+      logger.debug('Updating Anthropic model selectors');
+
+      const anthropicModels = getModelOptions('anthropic');
+      logger.debug('Anthropic models from getModelOptions:', anthropicModels);
+
+      const validMiniModel = getValidModelForProvider(miniModel, anthropicModels, 'anthropic', 'mini');
+      const validNanoModel = getValidModelForProvider(nanoModel, anthropicModels, 'anthropic', 'nano');
+
+      logger.debug('Anthropic model selection:', { originalMini: miniModel, validMini: validMiniModel, originalNano: nanoModel, validNano: validNanoModel });
+
+      const existingSelectors = anthropicContent.querySelectorAll('.model-selection-section');
+      existingSelectors.forEach(selector => selector.remove());
+
+      const anthropicModelSection = document.createElement('div');
+      anthropicModelSection.className = 'settings-section model-selection-section';
+      anthropicContent.appendChild(anthropicModelSection);
+
+      const anthropicModelSectionTitle = document.createElement('h3');
+      anthropicModelSectionTitle.className = 'settings-subtitle';
+      anthropicModelSectionTitle.textContent = 'Model Size Selection';
+      anthropicModelSection.appendChild(anthropicModelSectionTitle);
+
+      SettingsDialog.#anthropicMiniModelSelect = createModelSelector(
+        anthropicModelSection,
+        i18nString(UIStrings.miniModelLabel),
+        i18nString(UIStrings.miniModelDescription),
+        'anthropic-mini-model-select',
+        anthropicModels,
+        validMiniModel,
+        i18nString(UIStrings.defaultMiniOption),
+        undefined
+      );
+
+      logger.debug('Created Anthropic Mini Model Select:', SettingsDialog.#anthropicMiniModelSelect);
+
+      SettingsDialog.#anthropicNanoModelSelect = createModelSelector(
+        anthropicModelSection,
+        i18nString(UIStrings.nanoModelLabel),
+        i18nString(UIStrings.nanoModelDescription),
+        'anthropic-nano-model-select',
+        anthropicModels,
+        validNanoModel,
+        i18nString(UIStrings.defaultNanoOption),
+        undefined
+      );
+
+      logger.debug('Created Anthropic Nano Model Select:', SettingsDialog.#anthropicNanoModelSelect);
+    }
+
+    // Load default Anthropic models
+    anthropicApiKeyInput.addEventListener('change', async () => {
+      const anthropicApiKey = anthropicApiKeyInput.value.trim();
+      if (anthropicApiKey) {
+        localStorage.setItem(ANTHROPIC_API_KEY_STORAGE_KEY, anthropicApiKey);
+        try {
+          const anthropicModels = await LLMClient.getAnthropicModels(anthropicApiKey);
+          const modelOptions: ModelOption[] = anthropicModels.map(model => ({
+            value: model.id,
+            label: model.name || model.id,
+            type: 'anthropic' as const
+          }));
+          updateModelOptions(modelOptions, false);
+          updateAnthropicModelSelectors();
+        } catch (error) {
+          logger.error('Failed to load Anthropic models:', error);
+        }
+      }
+    });
+
+    updateAnthropicModelSelectors();
+
+    // Setup Google AI content
+    const googleaiSettingsSection = document.createElement('div');
+    googleaiSettingsSection.className = 'settings-section';
+    googleaiContent.appendChild(googleaiSettingsSection);
+
+    // Google AI API Key
+    const googleaiApiKeyLabel = document.createElement('div');
+    googleaiApiKeyLabel.className = 'settings-label';
+    googleaiApiKeyLabel.textContent = i18nString(UIStrings.googleaiApiKeyLabel);
+    googleaiSettingsSection.appendChild(googleaiApiKeyLabel);
+
+    const googleaiApiKeyHint = document.createElement('div');
+    googleaiApiKeyHint.className = 'settings-hint';
+    googleaiApiKeyHint.textContent = i18nString(UIStrings.googleaiApiKeyHint);
+    googleaiSettingsSection.appendChild(googleaiApiKeyHint);
+
+    const settingsSavedGoogleAIApiKey = localStorage.getItem(GOOGLEAI_API_KEY_STORAGE_KEY) || '';
+    const googleaiApiKeyInput = document.createElement('input');
+    googleaiApiKeyInput.className = 'settings-input googleai-api-key-input';
+    googleaiApiKeyInput.type = 'password';
+    googleaiApiKeyInput.placeholder = 'Enter your Google AI Studio API key';
+    googleaiApiKeyInput.value = settingsSavedGoogleAIApiKey;
+    googleaiSettingsSection.appendChild(googleaiApiKeyInput);
+
+    // Fetch Google AI models button
+    const googleaiFetchButtonContainer = document.createElement('div');
+    googleaiFetchButtonContainer.className = 'fetch-button-container';
+    googleaiSettingsSection.appendChild(googleaiFetchButtonContainer);
+
+    const fetchGoogleAIModelsButton = document.createElement('button');
+    fetchGoogleAIModelsButton.className = 'settings-button';
+    fetchGoogleAIModelsButton.setAttribute('type', 'button');
+    fetchGoogleAIModelsButton.textContent = i18nString(UIStrings.fetchGoogleAIModelsButton);
+    fetchGoogleAIModelsButton.disabled = !googleaiApiKeyInput.value.trim();
+    googleaiFetchButtonContainer.appendChild(fetchGoogleAIModelsButton);
+
+    const fetchGoogleAIModelsStatus = document.createElement('div');
+    fetchGoogleAIModelsStatus.className = 'settings-status';
+    fetchGoogleAIModelsStatus.style.display = 'none';
+    googleaiFetchButtonContainer.appendChild(fetchGoogleAIModelsStatus);
+
+    // Update button state when API key changes
+    googleaiApiKeyInput.addEventListener('input', () => {
+      fetchGoogleAIModelsButton.disabled = !googleaiApiKeyInput.value.trim();
+    });
+
+    // Function to update Google AI model selectors
+    function updateGoogleAIModelSelectors() {
+      logger.debug('Updating Google AI model selectors');
+
+      const googleaiModels = getModelOptions('googleai');
+      logger.debug('Google AI models from getModelOptions:', googleaiModels);
+
+      const validMiniModel = getValidModelForProvider(miniModel, googleaiModels, 'googleai', 'mini');
+      const validNanoModel = getValidModelForProvider(nanoModel, googleaiModels, 'googleai', 'nano');
+
+      logger.debug('Google AI model selection:', { originalMini: miniModel, validMini: validMiniModel, originalNano: nanoModel, validNano: validNanoModel });
+
+      const existingSelectors = googleaiContent.querySelectorAll('.model-selection-section');
+      existingSelectors.forEach(selector => selector.remove());
+
+      const googleaiModelSection = document.createElement('div');
+      googleaiModelSection.className = 'settings-section model-selection-section';
+      googleaiContent.appendChild(googleaiModelSection);
+
+      const googleaiModelSectionTitle = document.createElement('h3');
+      googleaiModelSectionTitle.className = 'settings-subtitle';
+      googleaiModelSectionTitle.textContent = 'Model Size Selection';
+      googleaiModelSection.appendChild(googleaiModelSectionTitle);
+
+      SettingsDialog.#googleaiMiniModelSelect = createModelSelector(
+        googleaiModelSection,
+        i18nString(UIStrings.miniModelLabel),
+        i18nString(UIStrings.miniModelDescription),
+        'googleai-mini-model-select',
+        googleaiModels,
+        validMiniModel,
+        i18nString(UIStrings.defaultMiniOption),
+        undefined
+      );
+
+      logger.debug('Created Google AI Mini Model Select:', SettingsDialog.#googleaiMiniModelSelect);
+
+      SettingsDialog.#googleaiNanoModelSelect = createModelSelector(
+        googleaiModelSection,
+        i18nString(UIStrings.nanoModelLabel),
+        i18nString(UIStrings.nanoModelDescription),
+        'googleai-nano-model-select',
+        googleaiModels,
+        validNanoModel,
+        i18nString(UIStrings.defaultNanoOption),
+        undefined
+      );
+
+      logger.debug('Created Google AI Nano Model Select:', SettingsDialog.#googleaiNanoModelSelect);
+    }
+
+    // Add click handler for fetch Google AI models button
+    fetchGoogleAIModelsButton.addEventListener('click', async () => {
+      fetchGoogleAIModelsButton.disabled = true;
+      fetchGoogleAIModelsStatus.textContent = i18nString(UIStrings.fetchingModels);
+      fetchGoogleAIModelsStatus.style.display = 'block';
+      fetchGoogleAIModelsStatus.style.backgroundColor = 'var(--color-accent-blue-background)';
+      fetchGoogleAIModelsStatus.style.color = 'var(--color-accent-blue)';
+
+      try {
+        const googleaiApiKey = googleaiApiKeyInput.value.trim();
+
+        const googleaiModels = await LLMClient.fetchGoogleAIModels(googleaiApiKey);
+
+        const modelOptions: ModelOption[] = googleaiModels.map(model => ({
+          value: model.id,
+          label: model.name || model.id,
+          type: 'googleai' as const
+        }));
+
+        updateModelOptions(modelOptions, false);
+
+        const allGoogleAIModels = getModelOptions('googleai');
+        const actualModelCount = googleaiModels.length;
+
+        if (SettingsDialog.#googleaiMiniModelSelect) {
+          refreshModelSelectOptions(SettingsDialog.#googleaiMiniModelSelect, allGoogleAIModels, miniModel, i18nString(UIStrings.defaultMiniOption));
+        }
+        if (SettingsDialog.#googleaiNanoModelSelect) {
+          refreshModelSelectOptions(SettingsDialog.#googleaiNanoModelSelect, allGoogleAIModels, nanoModel, i18nString(UIStrings.defaultNanoOption));
+        }
+
+        fetchGoogleAIModelsStatus.textContent = i18nString(UIStrings.fetchedModels, {PH1: actualModelCount});
+        fetchGoogleAIModelsStatus.style.backgroundColor = 'var(--color-accent-green-background)';
+        fetchGoogleAIModelsStatus.style.color = 'var(--color-accent-green)';
+
+        localStorage.setItem(GOOGLEAI_API_KEY_STORAGE_KEY, googleaiApiKey);
+      } catch (error) {
+        fetchGoogleAIModelsStatus.textContent = error instanceof Error ? error.message : 'Failed to fetch models';
+        fetchGoogleAIModelsStatus.style.backgroundColor = 'var(--color-accent-red-background)';
+        fetchGoogleAIModelsStatus.style.color = 'var(--color-accent-red)';
+      } finally {
+        fetchGoogleAIModelsButton.disabled = false;
+        setTimeout(() => {
+          fetchGoogleAIModelsStatus.style.display = 'none';
+        }, 3000);
+      }
+    });
+
+    updateGoogleAIModelSelectors();
 
     // Add Vector DB configuration section
     const vectorDBSection = document.createElement('div');
@@ -3396,6 +4087,30 @@ export class SettingsDialog {
 
       // BrowserOperator settings are hardcoded - no need to save endpoint or agent
 
+      // Save or remove Cerebras API key
+      const cerebrasApiKeyValue = cerebrasApiKeyInput.value.trim();
+      if (cerebrasApiKeyValue) {
+        localStorage.setItem(CEREBRAS_API_KEY_STORAGE_KEY, cerebrasApiKeyValue);
+      } else {
+        localStorage.removeItem(CEREBRAS_API_KEY_STORAGE_KEY);
+      }
+
+      // Save or remove Anthropic API key
+      const anthropicApiKeyValue = anthropicApiKeyInput.value.trim();
+      if (anthropicApiKeyValue) {
+        localStorage.setItem(ANTHROPIC_API_KEY_STORAGE_KEY, anthropicApiKeyValue);
+      } else {
+        localStorage.removeItem(ANTHROPIC_API_KEY_STORAGE_KEY);
+      }
+
+      // Save or remove Google AI API key
+      const googleaiApiKeyValue = googleaiApiKeyInput.value.trim();
+      if (googleaiApiKeyValue) {
+        localStorage.setItem(GOOGLEAI_API_KEY_STORAGE_KEY, googleaiApiKeyValue);
+      } else {
+        localStorage.removeItem(GOOGLEAI_API_KEY_STORAGE_KEY);
+      }
+
       // Determine which mini/nano model selectors to use based on current provider
       let miniModelValue = '';
       let nanoModelValue = '';
@@ -3440,8 +4155,43 @@ export class SettingsDialog {
         if (SettingsDialog.#browseroperatorNanoModelSelect) {
           nanoModelValue = SettingsDialog.#browseroperatorNanoModelSelect.value;
         }
+      } else if (selectedProvider === 'cerebras') {
+        // Get values from Cerebras selectors
+        if (SettingsDialog.#cerebrasMiniModelSelect) {
+          miniModelValue = SettingsDialog.#cerebrasMiniModelSelect.value;
+        }
+        if (SettingsDialog.#cerebrasNanoModelSelect) {
+          nanoModelValue = SettingsDialog.#cerebrasNanoModelSelect.value;
+        }
+      } else if (selectedProvider === 'anthropic') {
+        // Get values from Anthropic selectors
+        if (SettingsDialog.#anthropicMiniModelSelect) {
+          miniModelValue = SettingsDialog.#anthropicMiniModelSelect.value;
+        }
+        if (SettingsDialog.#anthropicNanoModelSelect) {
+          nanoModelValue = SettingsDialog.#anthropicNanoModelSelect.value;
+        }
+      } else if (selectedProvider === 'googleai') {
+        // Get values from Google AI selectors
+        if (SettingsDialog.#googleaiMiniModelSelect) {
+          miniModelValue = SettingsDialog.#googleaiMiniModelSelect.value;
+        }
+        if (SettingsDialog.#googleaiNanoModelSelect) {
+          nanoModelValue = SettingsDialog.#googleaiNanoModelSelect.value;
+        }
+      } else if (isCustomProvider(selectedProvider)) {
+        // Get values from custom provider selectors
+        const customSelectors = SettingsDialog.#customProviderModelSelectors.get(selectedProvider);
+        if (customSelectors) {
+          if (customSelectors.mini) {
+            miniModelValue = customSelectors.mini.value;
+          }
+          if (customSelectors.nano) {
+            nanoModelValue = customSelectors.nano.value;
+          }
+        }
       }
-      
+
       // Save mini model if selected
       logger.debug('Mini model value to save:', miniModelValue);
       if (miniModelValue) {

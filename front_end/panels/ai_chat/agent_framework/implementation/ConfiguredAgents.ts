@@ -12,6 +12,10 @@ import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchCon
 import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
 import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
+import { ListAvailableToolsTool } from '../../tools/ListAvailableToolsTool.js';
+import { RenderAgentEditorTool } from '../../tools/RenderAgentEditorTool.js';
+import { GetAgentConfigDataTool } from '../../tools/GetAgentConfigDataTool.js';
+import { SaveAgentConfigTool } from '../../tools/SaveAgentConfigTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
 import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
@@ -28,6 +32,7 @@ import { createScrollActionAgentConfig } from './agents/ScrollActionAgent.js';
 import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
+import { createAgentManagementAgentConfig } from './agents/AgentManagementAgent.js';
 
 /**
  * Initialize all configured agents
@@ -63,6 +68,12 @@ export function initializeConfiguredAgents(): void {
   ToolRegistry.registerToolFactory('render_webapp', () => new RenderWebAppTool());
   ToolRegistry.registerToolFactory('get_webapp_data', () => new GetWebAppDataTool());
   ToolRegistry.registerToolFactory('remove_webapp', () => new RemoveWebAppTool());
+
+  // Register agent management tools
+  ToolRegistry.registerToolFactory('list_available_tools', () => new ListAvailableToolsTool());
+  ToolRegistry.registerToolFactory('render_agent_editor', () => new RenderAgentEditorTool());
+  ToolRegistry.registerToolFactory('get_agent_config_data', () => new GetAgentConfigDataTool());
+  ToolRegistry.registerToolFactory('save_agent_config', () => new SaveAgentConfigTool());
 
   // Register bookmark and document search tools
   ToolRegistry.registerToolFactory('bookmark_store', () => new BookmarkStoreTool());
@@ -128,5 +139,10 @@ export function initializeConfiguredAgents(): void {
   const ecommerceProductInfoAgentConfig = createEcommerceProductInfoAgentConfig();
   const ecommerceProductInfoAgent = new ConfigurableAgentTool(ecommerceProductInfoAgentConfig);
   ToolRegistry.registerToolFactory('ecommerce_product_info_fetcher_tool', () => ecommerceProductInfoAgent);
+
+  // Create and register Agent Management Agent
+  const agentManagementAgentConfig = createAgentManagementAgentConfig();
+  const agentManagementAgent = new ConfigurableAgentTool(agentManagementAgentConfig);
+  ToolRegistry.registerToolFactory('agent_management_agent', () => agentManagementAgent);
 
 }

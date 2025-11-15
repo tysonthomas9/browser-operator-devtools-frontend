@@ -5,6 +5,8 @@
 
 import { createLogger } from './Logger.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
+import { isCustomProvider } from '../LLM/LLMTypes.js';
+import { CustomProviderManager } from './CustomProviderManager.js';
 
 const logger = createLogger('LLMConfigurationManager');
 
@@ -34,6 +36,9 @@ const STORAGE_KEYS = {
   GROQ_API_KEY: 'ai_chat_groq_api_key',
   OPENROUTER_API_KEY: 'ai_chat_openrouter_api_key',
   BROWSEROPERATOR_API_KEY: 'ai_chat_browseroperator_api_key',
+  CEREBRAS_API_KEY: 'ai_chat_cerebras_api_key',
+  ANTHROPIC_API_KEY: 'ai_chat_anthropic_api_key',
+  GOOGLEAI_API_KEY: 'ai_chat_googleai_api_key',
 } as const;
 
 /**
@@ -110,6 +115,13 @@ export class LLMConfigurationManager {
     }
 
     const provider = this.getProvider();
+
+    // Handle custom providers
+    if (isCustomProvider(provider)) {
+      return CustomProviderManager.getApiKey(provider) || '';
+    }
+
+    // Handle built-in providers
     switch (provider) {
       case 'openai':
         return localStorage.getItem(STORAGE_KEYS.OPENAI_API_KEY) || '';
@@ -121,6 +133,12 @@ export class LLMConfigurationManager {
         return localStorage.getItem(STORAGE_KEYS.OPENROUTER_API_KEY) || '';
       case 'browseroperator':
         return localStorage.getItem(STORAGE_KEYS.BROWSEROPERATOR_API_KEY) || '';
+      case 'cerebras':
+        return localStorage.getItem(STORAGE_KEYS.CEREBRAS_API_KEY) || '';
+      case 'anthropic':
+        return localStorage.getItem(STORAGE_KEYS.ANTHROPIC_API_KEY) || '';
+      case 'googleai':
+        return localStorage.getItem(STORAGE_KEYS.GOOGLEAI_API_KEY) || '';
       default:
         return '';
     }
@@ -311,19 +329,32 @@ export class LLMConfigurationManager {
 
     // Provider-specific validation - skip credential checks in AUTOMATED_MODE
     if (!skipCredentialChecks) {
-      switch (config.provider) {
-        case 'openai':
-        case 'groq':
-        case 'openrouter':
-          if (!config.apiKey) {
-            errors.push(`API key is required for ${config.provider}`);
-          }
-          break;
-        case 'litellm':
-          if (!config.endpoint) {
-            errors.push('Endpoint is required for LiteLLM');
-          }
-          break;
+      // Handle custom providers
+      if (isCustomProvider(config.provider)) {
+        const customProvider = CustomProviderManager.getProvider(config.provider);
+        if (!customProvider) {
+          errors.push(`Custom provider ${config.provider} not found`);
+        }
+        // API key is optional for custom providers
+      } else {
+        // Handle built-in providers
+        switch (config.provider) {
+          case 'openai':
+          case 'groq':
+          case 'openrouter':
+          case 'cerebras':
+          case 'anthropic':
+          case 'googleai':
+            if (!config.apiKey) {
+              errors.push(`API key is required for ${config.provider}`);
+            }
+            break;
+          case 'litellm':
+            if (!config.endpoint) {
+              errors.push('Endpoint is required for LiteLLM');
+            }
+            break;
+        }
       }
     }
 
@@ -338,6 +369,14 @@ export class LLMConfigurationManager {
    * Only modifies settings for the active provider, preserving other providers' credentials
    */
   private saveProviderSpecificSettings(config: LLMConfig): void {
+    // Handle custom providers
+    if (isCustomProvider(config.provider)) {
+      if (config.apiKey) {
+        CustomProviderManager.setApiKey(config.provider, config.apiKey);
+      }
+      return;
+    }
+
     // Save current provider's settings only (do not clear others)
     switch (config.provider) {
       case 'openai':
@@ -373,6 +412,27 @@ export class LLMConfigurationManager {
           localStorage.removeItem(STORAGE_KEYS.OPENROUTER_API_KEY);
         }
         break;
+      case 'cerebras':
+        if (config.apiKey) {
+          localStorage.setItem(STORAGE_KEYS.CEREBRAS_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.CEREBRAS_API_KEY);
+        }
+        break;
+      case 'anthropic':
+        if (config.apiKey) {
+          localStorage.setItem(STORAGE_KEYS.ANTHROPIC_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.ANTHROPIC_API_KEY);
+        }
+        break;
+      case 'googleai':
+        if (config.apiKey) {
+          localStorage.setItem(STORAGE_KEYS.GOOGLEAI_API_KEY, config.apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.GOOGLEAI_API_KEY);
+        }
+        break;
     }
   }
 
@@ -386,6 +446,9 @@ export class LLMConfigurationManager {
         STORAGE_KEYS.LITELLM_API_KEY,
         STORAGE_KEYS.GROQ_API_KEY,
         STORAGE_KEYS.OPENROUTER_API_KEY,
+        STORAGE_KEYS.CEREBRAS_API_KEY,
+        STORAGE_KEYS.ANTHROPIC_API_KEY,
+        STORAGE_KEYS.GOOGLEAI_API_KEY,
       ]);
       const redacted =
         sensitiveKeys.has(event.key as any) ? '(redacted)' :

@@ -61,6 +61,25 @@ Always delegate investigative work to the 'search_agent' tool so it can gather v
 - If the user pivots into broad synthesis or long-form reporting, switch to the 'research_agent'.
 - Keep responses concise, cite the strongest sources, and present the structured findings provided by the agent.
 
+## Agent Configuration Management
+
+You have access to an **agent_management_agent** tool that allows you to edit agent configurations through an interactive webapp interface.
+
+**When to use it:**
+- User asks to "edit the Search agent" or "modify this agent"
+- User wants to change agent behavior, tools, or system prompts
+- User requests to customize any agent
+
+**How to use it:**
+\`\`\`
+agent_management_agent({
+  agentType: 'search',  // or 'deep-research', etc.
+  task: 'Edit the Search agent'
+})
+\`\`\`
+
+The agent_management_agent will handle the complete workflow: opening an editor form, waiting for user changes, saving the configuration, and cleaning up the UI.
+
 Clarify ambiguous requests before delegating.`,
 
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: `You are an expert research browser agent focused on high-level research strategy, planning, efficient delegation to sub-research agents, and final report synthesis. Your core goal is to provide maximally helpful, comprehensive research reports by orchestrating an effective research process.
@@ -298,10 +317,15 @@ export interface AgentConfig {
   description?: string;
   systemPrompt: string;
   availableTools: Array<Tool<any, any>>;
+  toolNames?: string[];  // For storage - array of tool name strings
   version?: string;
+  isCustom?: boolean;    // True for custom agents, undefined for built-in
+  createdAt?: string;    // ISO timestamp for custom agents
+  modifiedAt?: string;   // ISO timestamp for custom agents
 }
-// Agent configurations
-export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
+
+// Built-in agent configurations (exported for AgentConfigManager)
+export const BUILT_IN_AGENT_CONFIGS: {[key: string]: AgentConfig} = {
   [BaseOrchestratorAgentType.SEARCH]: {
     type: BaseOrchestratorAgentType.SEARCH,
     icon: '🔎',
@@ -367,8 +391,12 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
   // }
 };
 
+// Legacy export for backward compatibility - points to built-in configs
+// For dynamic loading with custom agents, use AgentConfigManager.getAllAgents()
+export const AGENT_CONFIGS = BUILT_IN_AGENT_CONFIGS;
+
 // Register orchestrator descriptors for version tracking
-for (const config of Object.values(AGENT_CONFIGS)) {
+for (const config of Object.values(BUILT_IN_AGENT_CONFIGS)) {
   AgentDescriptorRegistry.registerSource({
     name: `orchestrator:${config.type}`,
     type: config.type,
@@ -555,11 +583,16 @@ export class AgentTypeSelectionEvent extends Event {
 export function renderAgentTypeButtons(
   selectedAgentType: string | null | undefined,
   handleClick: (event: Event) => void,
-  showLabels = false
+  showLabels = false,
+  onAddAgent?: () => void,
+  allAgents?: {[key: string]: AgentConfig}
 ): Lit.TemplateResult {
+  // Use provided agents or fall back to built-in configs
+  const agentsToRender = allAgents || AGENT_CONFIGS;
+
   return html`
     <div class="prompt-buttons-container">
-      ${Object.values(AGENT_CONFIGS).map(config => {
+      ${Object.values(agentsToRender).map(config => {
         const isCustomized = hasCustomPrompt(config.type);
         const buttonClasses = [
           'prompt-button',
@@ -572,14 +605,14 @@ export function renderAgentTypeButtons(
           selectedAgentType === config.type ? 'selected' : '',
         ].filter(Boolean).join(' ');
 
-        const title = isCustomized ? 
-          `${config.description || config.label} (Custom prompt - double-click to edit)` : 
+        const title = isCustomized ?
+          `${config.description || config.label} (Custom prompt - double-click to edit)` :
           `${config.description || config.label} (Double-click to edit prompt)`;
-        
+
         return html`
-        <button 
+        <button
           class=${buttonClasses}
-          data-agent-type=${config.type} 
+          data-agent-type=${config.type}
           @click=${handleClick}
           title=${title}
         >
@@ -588,6 +621,16 @@ export function renderAgentTypeButtons(
           ${isCustomized ? html`<span class="prompt-custom-indicator">●</span>` : Lit.nothing}
         </button>
       `})}
+      ${onAddAgent ? html`
+        <button
+          class="prompt-button add-agent-button"
+          @click=${() => onAddAgent()}
+          title="Create new custom agent"
+        >
+          <span class="prompt-icon">+</span>
+          ${showLabels ? html`<span class="prompt-label">Add Agent</span>` : Lit.nothing}
+        </button>
+      ` : Lit.nothing}
     </div>
   `;
 }
@@ -658,10 +701,30 @@ export function createAgentTypeSelectionHandler(
 
 /**
  * Get the current prompt for an agent type (custom or default)
+ * Priority: custom agents > old custom prompts > built-in prompts
  */
 export function getAgentPrompt(agentType: string): string {
+  // Check new custom agents system first
+  try {
+    const customAgentsData = localStorage.getItem('ai_chat_custom_agents');
+    if (customAgentsData) {
+      const customAgents = JSON.parse(customAgentsData);
+      if (customAgents[agentType]?.systemPrompt) {
+        return customAgents[agentType].systemPrompt;
+      }
+    }
+  } catch (error) {
+    logger.warn('Error reading custom agents:', error);
+  }
+
+  // Fall back to old custom prompts system
   const customPrompts = getCustomPrompts();
-  return customPrompts[agentType] || SYSTEM_PROMPTS[agentType as keyof typeof SYSTEM_PROMPTS] || '';
+  if (customPrompts[agentType]) {
+    return customPrompts[agentType];
+  }
+
+  // Fall back to built-in prompts
+  return SYSTEM_PROMPTS[agentType as keyof typeof SYSTEM_PROMPTS] || '';
 }
 
 /**

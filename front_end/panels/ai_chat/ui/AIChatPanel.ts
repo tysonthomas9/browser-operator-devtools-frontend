@@ -10,12 +10,18 @@ import * as UI from '../../../ui/legacy/legacy.js';
 import {AgentService, Events as AgentEvents} from '../core/AgentService.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { LLMConfigurationManager } from '../core/LLMConfigurationManager.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
+import { isCustomProvider, getProviderDisplayName } from '../LLM/LLMTypes.js';
 import { LLMProviderRegistry } from '../LLM/LLMProviderRegistry.js';
 import { OpenAIProvider } from '../LLM/OpenAIProvider.js';
 import { LiteLLMProvider } from '../LLM/LiteLLMProvider.js';
 import { GroqProvider } from '../LLM/GroqProvider.js';
 import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
 import { BrowserOperatorProvider } from '../LLM/BrowserOperatorProvider.js';
+import { CerebrasProvider } from '../LLM/CerebrasProvider.js';
+import { AnthropicProvider } from '../LLM/AnthropicProvider.js';
+import { GoogleAIProvider } from '../LLM/GoogleAIProvider.js';
+import { GenericOpenAIProvider } from '../LLM/GenericOpenAIProvider.js';
 import { createLogger } from '../core/Logger.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
@@ -96,7 +102,7 @@ import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js'
 export interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+  type: string; // Changed from union to string to support dynamic custom providers
 }
 
 // Add model options constant - these are the default OpenAI models
@@ -137,6 +143,21 @@ export const DEFAULT_PROVIDER_MODELS: Record<string, {main: string, mini?: strin
     main: 'main',
     mini: 'mini',
     nano: 'nano'
+  },
+  cerebras: {
+    main: 'llama-3.3-70b',
+    mini: 'llama-3.1-8b',
+    nano: 'llama-3.1-8b'
+  },
+  anthropic: {
+    main: 'claude-sonnet-4.5-20250514',
+    mini: 'claude-haiku-4-20250514',
+    nano: 'claude-haiku-4-20250514'
+  },
+  googleai: {
+    main: 'gemini-2.5-pro',
+    mini: 'gemini-2.5-flash',
+    nano: 'gemini-2.5-nano'
   }
 };
 
@@ -252,7 +273,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     return nanoModel || miniModel || mainModel;
   }
 
-  static getNanoModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' } {
+  static getNanoModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai' } {
     const configManager = LLMConfigurationManager.getInstance();
     const modelName = AIChatPanel.getNanoModel();
     const provider = configManager.getProvider();
@@ -263,7 +284,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     };
   }
 
-  static getMiniModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' } {
+  static getMiniModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai' } {
     const configManager = LLMConfigurationManager.getInstance();
     const modelName = AIChatPanel.getMiniModel();
     const provider = configManager.getProvider();
@@ -274,29 +295,29 @@ export class AIChatPanel extends UI.Panel.Panel {
     };
   }
 
-  static getProviderForModel(modelName: string): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' {
+  static getProviderForModel(modelName: string): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai' {
     // Get model options lookup
     const allModelOptions = AIChatPanel.getModelOptions();
     const modelOption = allModelOptions.find(option => option.value === modelName);
-    const originalProvider = (modelOption?.type as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator') || 'openai';
-    
+    const originalProvider = (modelOption?.type as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai') || 'openai';
+
     // Check if the model's original provider is available in the registry
     if (LLMProviderRegistry.hasProvider(originalProvider)) {
       return originalProvider;
     }
-    
+
     // If the original provider isn't available, fall back to the currently selected provider
     const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     logger.debug(`Provider ${originalProvider} not available for model ${modelName}, falling back to current provider: ${currentProvider}`);
-    return currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+    return currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai';
   }
 
   /**
    * Gets the currently selected provider from localStorage
    * @returns The currently selected provider
    */
-  static getCurrentProvider(): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' {
-    return (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+  static getCurrentProvider(): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai' {
+    return (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai';
   }
 
   /**
@@ -369,7 +390,7 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @param provider Optional provider to filter by
    * @returns Array of model options
    */
-  static getModelOptions(provider?: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator'): ModelOption[] {
+  static getModelOptions(provider?: string): ModelOption[] {
     // Try to get from all_model_options first (comprehensive list)
     const allModelOptionsStr = localStorage.getItem('ai_chat_all_model_options');
     if (allModelOptionsStr) {
@@ -441,6 +462,10 @@ export class AIChatPanel extends UI.Panel.Panel {
     const existingGroqModels = existingAllModels.filter((m: ModelOption) => m.type === 'groq');
     const existingOpenRouterModels = existingAllModels.filter((m: ModelOption) => m.type === 'openrouter');
     const existingBrowserOperatorModels = existingAllModels.filter((m: ModelOption) => m.type === 'browseroperator');
+    const existingCerebrasModels = existingAllModels.filter((m: ModelOption) => m.type === 'cerebras');
+    const existingAnthropicModels = existingAllModels.filter((m: ModelOption) => m.type === 'anthropic');
+    const existingGoogleAIModels = existingAllModels.filter((m: ModelOption) => m.type === 'googleai');
+    const existingCustomProviderModels = existingAllModels.filter((m: ModelOption) => m.type.startsWith('custom:'));
 
     // Update models based on what type of models we're adding
     // Always use DEFAULT_OPENAI_MODELS for OpenAI to ensure we have the latest hardcoded list
@@ -449,6 +474,11 @@ export class AIChatPanel extends UI.Panel.Panel {
     let updatedGroqModels = existingGroqModels;
     let updatedOpenRouterModels = existingOpenRouterModels;
     let updatedBrowserOperatorModels = existingBrowserOperatorModels;
+    let updatedCerebrasModels = existingCerebrasModels;
+    let updatedAnthropicModels = existingAnthropicModels;
+    let updatedGoogleAIModels = existingGoogleAIModels;
+    let updatedCustomProviderModels = existingCustomProviderModels;
+
 
     // Replace models for the provider type we're updating
     if (providerModels.length > 0) {
@@ -463,16 +493,32 @@ export class AIChatPanel extends UI.Panel.Panel {
         updatedOpenAIModels = providerModels;
       } else if (firstModelType === 'browseroperator') {
         updatedBrowserOperatorModels = providerModels;
+      } else if (firstModelType === 'cerebras') {
+        updatedCerebrasModels = providerModels;
+      } else if (firstModelType === 'anthropic') {
+        updatedAnthropicModels = providerModels;
+      } else if (firstModelType === 'googleai') {
+        updatedGoogleAIModels = providerModels;
+      } else if (firstModelType.startsWith('custom:')) {
+        // Handle custom provider models - replace models for this specific custom provider
+        updatedCustomProviderModels = [
+          ...existingCustomProviderModels.filter((m: ModelOption) => m.type !== firstModelType),
+          ...providerModels
+        ];
       }
     }
-    
+
     // Create the comprehensive model list with all models from all providers
     const allModels = [
       ...updatedOpenAIModels,
       ...updatedLiteLLMModels,
       ...updatedGroqModels,
       ...updatedOpenRouterModels,
-      ...updatedBrowserOperatorModels
+      ...updatedBrowserOperatorModels,
+      ...updatedCerebrasModels,
+      ...updatedAnthropicModels,
+      ...updatedGoogleAIModels,
+      ...updatedCustomProviderModels
     ];
     
     // Save the comprehensive list to localStorage
@@ -515,6 +561,52 @@ export class AIChatPanel extends UI.Panel.Panel {
           type: 'browseroperator' as const
         });
       }
+    } else if (selectedProvider === 'cerebras') {
+      MODEL_OPTIONS = updatedCerebrasModels;
+
+      // Add placeholder if no Cerebras models available
+      if (MODEL_OPTIONS.length === 0) {
+        MODEL_OPTIONS.push({
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
+          label: 'Cerebras: Please configure API key in settings',
+          type: 'cerebras' as const
+        });
+      }
+    } else if (selectedProvider === 'anthropic') {
+      MODEL_OPTIONS = updatedAnthropicModels;
+
+      // Add placeholder if no Anthropic models available
+      if (MODEL_OPTIONS.length === 0) {
+        MODEL_OPTIONS.push({
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
+          label: 'Anthropic: Please configure API key in settings',
+          type: 'anthropic' as const
+        });
+      }
+    } else if (selectedProvider === 'googleai') {
+      MODEL_OPTIONS = updatedGoogleAIModels;
+
+      // Add placeholder if no Google AI models available
+      if (MODEL_OPTIONS.length === 0) {
+        MODEL_OPTIONS.push({
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
+          label: 'Google AI: Please configure API key in settings',
+          type: 'googleai' as const
+        });
+      }
+    } else if (selectedProvider.startsWith('custom:')) {
+      // For custom providers, use their specific models
+      MODEL_OPTIONS = updatedCustomProviderModels;
+
+      // Add placeholder if no models available
+      if (MODEL_OPTIONS.length === 0) {
+        const displayName = getProviderDisplayName(selectedProvider);
+        MODEL_OPTIONS.push({
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
+          label: `${displayName}: No models configured`,
+          type: selectedProvider
+        });
+      }
     } else {
       // For LiteLLM provider, include custom models and fetched models
       MODEL_OPTIONS = updatedLiteLLMModels;
@@ -551,7 +643,7 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @param modelType Type of the model ('openai' or 'litellm')
    * @returns Updated model options
    */
-  static addCustomModelOption(modelName: string, modelType: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' = 'litellm'): ModelOption[] {
+  static addCustomModelOption(modelName: string, modelType: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai' = 'litellm'): ModelOption[] {
     // Get existing custom models
     const savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
     
@@ -1463,7 +1555,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
 
     // Check all providers except LiteLLM (unless LiteLLM is selected)
-    const providers = ['openai', 'groq', 'openrouter', 'browseroperator'];
+    const providers = ['openai', 'groq', 'openrouter', 'browseroperator', 'cerebras', 'anthropic', 'googleai'];
 
     // Only include LiteLLM if it's the selected provider
     if (selectedProvider === 'litellm') {
@@ -1472,6 +1564,15 @@ export class AIChatPanel extends UI.Panel.Panel {
 
     for (const provider of providers) {
       const validation = LLMClient.validateProviderCredentials(provider);
+      if (validation.isValid) {
+        return true;
+      }
+    }
+
+    // Check custom providers
+    const customProviders = CustomProviderManager.listProviders();
+    for (const customProvider of customProviders) {
+      const validation = LLMClient.validateProviderCredentials(customProvider.id);
       if (validation.isValid) {
         return true;
       }
@@ -1507,32 +1608,59 @@ export class AIChatPanel extends UI.Panel.Panel {
       try {
         // Create a temporary provider instance to get storage keys
         let tempProvider;
-        switch (provider) {
-          case 'openai':
-            tempProvider = new OpenAIProvider('');
-            break;
-          case 'litellm':
-            tempProvider = new LiteLLMProvider('', '');
-            break;
-          case 'groq':
-            tempProvider = new GroqProvider('');
-            break;
-          case 'openrouter':
-            tempProvider = new OpenRouterProvider('');
-            break;
-          case 'browseroperator':
-            tempProvider = new BrowserOperatorProvider(null, '');
-            break;
-          default:
-            logger.warn(`Unknown provider: ${provider}`);
+
+        // Handle custom providers
+        if (provider.startsWith('custom:')) {
+          const customProviderConfig = CustomProviderManager.getProvider(provider);
+          if (customProviderConfig) {
+            tempProvider = new GenericOpenAIProvider(customProviderConfig);
+            // For custom providers, get API key directly from CustomProviderManager
+            apiKey = CustomProviderManager.getApiKey(provider) || null;
+            logger.info('Retrieved custom provider API key:');
+            logger.info('- Exists:', !!apiKey);
+            logger.info('- Length:', apiKey?.length || 0);
+          } else {
+            logger.warn(`Custom provider not found: ${provider}`);
             return {canProceed: false, apiKey: null};
+          }
+        } else {
+          // Handle built-in providers
+          switch (provider) {
+            case 'openai':
+              tempProvider = new OpenAIProvider('');
+              break;
+            case 'litellm':
+              tempProvider = new LiteLLMProvider('', '');
+              break;
+            case 'groq':
+              tempProvider = new GroqProvider('');
+              break;
+            case 'openrouter':
+              tempProvider = new OpenRouterProvider('');
+              break;
+            case 'browseroperator':
+              tempProvider = new BrowserOperatorProvider(null, '');
+              break;
+            case 'cerebras':
+              tempProvider = new CerebrasProvider('');
+              break;
+            case 'anthropic':
+              tempProvider = new AnthropicProvider('');
+              break;
+            case 'googleai':
+              tempProvider = new GoogleAIProvider('');
+              break;
+            default:
+              logger.warn(`Unknown provider: ${provider}`);
+              return {canProceed: false, apiKey: null};
+          }
+
+          const storageKeys = tempProvider.getCredentialStorageKeys();
+          logger.info('Storage keys for provider:');
+          logger.info('- API key storage key:', storageKeys.apiKey);
+
+          apiKey = localStorage.getItem(storageKeys.apiKey || '') || null;
         }
-        
-        const storageKeys = tempProvider.getCredentialStorageKeys();
-        logger.info('Storage keys for provider:');
-        logger.info('- API key storage key:', storageKeys.apiKey);
-        
-        apiKey = localStorage.getItem(storageKeys.apiKey || '') || null;
         logger.info('Retrieved API key:');
         logger.info('- Exists:', !!apiKey);
         logger.info('- Length:', apiKey?.length || 0);
@@ -2464,13 +2592,26 @@ export class AIChatPanel extends UI.Panel.Panel {
     } else if (newProvider === 'groq') {
       // For Groq, update model options and refresh models if API key exists
       this.#updateModelOptions([], false);
-      
+
       const groqApiKey = localStorage.getItem('ai_chat_groq_api_key');
       if (groqApiKey) {
         await this.#refreshGroqModels();
       }
+    } else if (newProvider.startsWith('custom:')) {
+      // For custom providers, load models from the provider configuration
+      const customProviderConfig = CustomProviderManager.getProvider(newProvider);
+      if (customProviderConfig && customProviderConfig.models.length > 0) {
+        const customProviderModels: ModelOption[] = customProviderConfig.models.map(model => ({
+          value: model,
+          label: model,
+          type: newProvider
+        }));
+        this.#updateModelOptions(customProviderModels, false);
+      } else {
+        this.#updateModelOptions([], false);
+      }
     } else {
-      // For OpenAI, just update model options with empty LiteLLM models
+      // For OpenAI and other providers, just update model options
       this.#updateModelOptions([], false);
     }
     

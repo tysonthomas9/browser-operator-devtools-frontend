@@ -7,9 +7,14 @@ import * as Lit from '../../../ui/lit/lit.js';
 import * as SDK from '../../../core/sdk/sdk.js';
 import * as BaseOrchestratorAgent from '../core/BaseOrchestratorAgent.js';
 import { TIMING_CONSTANTS } from '../core/Constants.js';
-import { PromptEditDialog } from './PromptEditDialog.js';
 import { MarkdownViewerUtil } from '../common/MarkdownViewerUtil.js';
 import { createLogger } from '../core/Logger.js';
+import { ListAvailableToolsTool } from '../tools/ListAvailableToolsTool.js';
+import { RenderAgentEditorTool } from '../tools/RenderAgentEditorTool.js';
+import { GetAgentConfigDataTool } from '../tools/GetAgentConfigDataTool.js';
+import { SaveAgentConfigTool } from '../tools/SaveAgentConfigTool.js';
+import { RemoveWebAppTool } from '../tools/RemoveWebAppTool.js';
+import { AgentConfigManager } from '../core/AgentConfigManager.js';
 import type { AgentSession, ToolCallMessage as AgentToolCallMessage, ToolResultMessage as AgentToolResultMessage } from '../agent_framework/AgentSessionTypes.js';
 import { getAgentUIConfig } from '../agent_framework/AgentSessionTypes.js';
 import { VersionChecker, type VersionInfo } from '../core/VersionChecker.js';
@@ -196,6 +201,10 @@ export class ChatView extends HTMLElement {
   // Lightweight instance cache to preserve per-session element state across renders
   #liveSessionComponents = new Map<string, LiveAgentSessionComponent>();
   #handlePromptButtonClickBound: (event: Event) => void = () => {}; // Initialize with empty function, will be properly set in connectedCallback
+  // Store all agents (built-in + custom)
+  #allAgents: {[key: string]: BaseOrchestratorAgent.AgentConfig} = {};
+  // Storage sync cleanup function
+  #storageSyncCleanup?: () => void;
   // Add model selection properties
   #modelOptions?: Array<{value: string, label: string}>;
   #selectedModel?: string;
@@ -239,6 +248,16 @@ export class ChatView extends HTMLElement {
     sheet.replaceSync(chatViewStyles);
     this.#shadow.adoptedStyleSheets = [sheet];
 
+    // Load all agents (built-in + custom)
+    this.#loadAllAgents();
+
+    // Set up cross-tab synchronization for custom agents
+    this.#storageSyncCleanup = AgentConfigManager.initializeStorageSync(() => {
+      // Reload agents when they change in another tab
+      this.#loadAllAgents();
+      void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+    });
+
     // Initialize the prompt button click handler
     this.#updatePromptButtonClickHandler();
 
@@ -252,6 +271,9 @@ export class ChatView extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    // Cleanup storage sync
+    this.#storageSyncCleanup?.();
+
     // Remove URL change listener
     try {
       if (this.#onInspectedURLChangedBound) {
@@ -323,45 +345,171 @@ export class ChatView extends HTMLElement {
     this.#showPromptEditDialog(agentType);
   }
 
-  // Show prompt edit dialog
-  #showPromptEditDialog(agentType: string): void {
-    const agentConfig = BaseOrchestratorAgent.AGENT_CONFIGS[agentType];
-    if (!agentConfig) {
-      logger.error('Agent config not found for type:', agentType);
-      return;
-    }
+  // Show agent editor using webapp-based UI
+  async #showPromptEditDialog(agentType: string): Promise<void> {
+    try {
+      // Step 1: List available tools
+      const listToolsTool = new ListAvailableToolsTool();
+      const toolsResult = await listToolsTool.execute({
+        reasoning: 'Populating agent editor with available tools'
+      });
 
-    PromptEditDialog.show({
-      agentType,
-      agentLabel: agentConfig.label,
-      currentPrompt: BaseOrchestratorAgent.getAgentPrompt(agentType),
-      defaultPrompt: BaseOrchestratorAgent.getDefaultPrompt(agentType),
-      hasCustomPrompt: BaseOrchestratorAgent.hasCustomPrompt(agentType),
-      onSave: (prompt: string) => {
-        try {
-          BaseOrchestratorAgent.setCustomPrompt(agentType, prompt);
-          // Force re-render to update UI
-          void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
-        } catch (error) {
-          logger.error('Failed to save custom prompt:', error);
-          // TODO: Show user notification
-        }
-      },
-      onRestore: () => {
-        try {
-          BaseOrchestratorAgent.removeCustomPrompt(agentType);
-          // Force re-render to update UI
-          void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
-        } catch (error) {
-          logger.error('Failed to restore default prompt:', error);
-          // TODO: Show user notification
-        }
-      },
-      onError: (error: Error) => {
-        logger.error('Prompt edit error:', error);
-        // TODO: Show user notification
+      if ('error' in toolsResult) {
+        logger.error('Failed to list tools:', toolsResult.error);
+        return;
       }
-    });
+
+      // Step 2: Render agent editor in edit mode
+      const renderTool = new RenderAgentEditorTool();
+      const renderResult = await renderTool.execute({
+        mode: 'edit',
+        agentType: agentType,
+        allTools: toolsResult.tools,
+        reasoning: `Opening agent editor for ${agentType}`
+      });
+
+      if ('error' in renderResult) {
+        logger.error('Failed to render agent editor:', renderResult.error);
+        return;
+      }
+
+      const webappId = renderResult.webappId;
+
+      // Step 3: Wait for user to submit or cancel
+      const getDataTool = new GetAgentConfigDataTool();
+      const dataResult = await getDataTool.execute({
+        webappId,
+        waitForSubmit: true,
+        reasoning: 'Waiting for user to modify agent configuration'
+      });
+
+      // Step 4: Cleanup webapp regardless of outcome
+      const removeTool = new RemoveWebAppTool();
+      await removeTool.execute({
+        webappId,
+        reasoning: 'Cleaning up agent editor UI'
+      });
+
+      // Step 5: Handle result
+      if ('error' in dataResult) {
+        logger.error('Failed to get agent config:', dataResult.error);
+        return;
+      }
+
+      if (dataResult.cancelled) {
+        logger.info('User cancelled agent editing');
+        return;
+      }
+
+      // Step 6: Save the configuration
+      const saveTool = new SaveAgentConfigTool();
+      const saveResult = await saveTool.execute({
+        agentConfig: dataResult.agentConfig!,
+        reasoning: `Saving modified configuration for ${agentType}`
+      });
+
+      if ('error' in saveResult) {
+        logger.error('Failed to save agent config:', saveResult.error);
+        return;
+      }
+
+      logger.info('Agent configuration saved successfully:', saveResult.agentType);
+
+      // Step 7: Refresh UI to reflect changes
+      void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+
+    } catch (error) {
+      logger.error('Error in agent editor workflow:', error);
+    }
+  }
+
+  // Load all agents (built-in + custom) into #allAgents
+  async #loadAllAgents(): Promise<void> {
+    try {
+      this.#allAgents = await AgentConfigManager.getAllAgents();
+      logger.info('Loaded all agents', { count: Object.keys(this.#allAgents).length });
+    } catch (error) {
+      logger.error('Failed to load all agents:', error);
+      // Fall back to empty object on error
+      this.#allAgents = {};
+    }
+  }
+
+  // Handle creating new custom agents
+  async #showAgentCreator(): Promise<void> {
+    try {
+      // Step 1: List available tools
+      const listToolsTool = new ListAvailableToolsTool();
+      const toolsResult = await listToolsTool.execute({
+        reasoning: 'Populating agent creator with available tools'
+      });
+
+      if ('error' in toolsResult) {
+        logger.error('Failed to list tools:', toolsResult.error);
+        return;
+      }
+
+      // Step 2: Render agent editor in create mode
+      const renderTool = new RenderAgentEditorTool();
+      const renderResult = await renderTool.execute({
+        mode: 'create',
+        allTools: toolsResult.tools,
+        reasoning: 'Opening agent creator for new custom agent'
+      });
+
+      if ('error' in renderResult) {
+        logger.error('Failed to render agent creator:', renderResult.error);
+        return;
+      }
+
+      const webappId = renderResult.webappId;
+
+      // Step 3: Wait for user to submit or cancel
+      const getDataTool = new GetAgentConfigDataTool();
+      const dataResult = await getDataTool.execute({
+        webappId,
+        waitForSubmit: true,
+        reasoning: 'Waiting for user to create new agent configuration'
+      });
+
+      // Step 4: Cleanup webapp regardless of outcome
+      const removeTool = new RemoveWebAppTool();
+      await removeTool.execute({
+        webappId,
+        reasoning: 'Cleaning up agent creator UI'
+      });
+
+      // Step 5: Handle result
+      if ('error' in dataResult) {
+        logger.error('Failed to get agent config:', dataResult.error);
+        return;
+      }
+
+      if (dataResult.cancelled) {
+        logger.info('User cancelled agent creation');
+        return;
+      }
+
+      // Step 6: Save the new agent configuration
+      const saveTool = new SaveAgentConfigTool();
+      const saveResult = await saveTool.execute({
+        agentConfig: dataResult.agentConfig!,
+        reasoning: `Creating new custom agent: ${dataResult.agentConfig!.type}`
+      });
+
+      if ('error' in saveResult) {
+        logger.error('Failed to save new agent:', saveResult.error);
+        return;
+      }
+
+      logger.info('New agent created successfully:', saveResult.agentType);
+
+      // Step 7: Refresh UI and select the new agent
+      void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+
+    } catch (error) {
+      logger.error('Error in agent creator workflow:', error);
+    }
   }
 
   // Public getter to expose the centered view state
@@ -1162,6 +1310,8 @@ export class ChatView extends HTMLElement {
         .currentProvider=${this.#currentProvider}
         .selectedPromptType=${this.#selectedPromptType}
         .agentButtonsHandler=${this.#handlePromptButtonClickBound}
+        .onAddAgent=${this.#showAgentCreator.bind(this)}
+        .allAgents=${this.#allAgents}
         .centered=${centered}
         @send=${this.#handleChatInputSend.bind(this)}
         @inputchange=${this.#handleChatInputChange.bind(this)}

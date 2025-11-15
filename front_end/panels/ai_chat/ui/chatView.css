@@ -305,6 +305,205 @@ ai-input-bar {
   font-weight: bold;
 }
 
+/* Agent Dropdown Selector - New Horizontal Layout */
+.agent-dropdown-selector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-buttons-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Individual agent button */
+.agent-button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background-color: var(--color-background-elevation-1);
+  border: 1px solid var(--color-details-hairline);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.agent-button:hover {
+  background-color: var(--color-background-elevation-2);
+  border-color: #00a4fe;
+}
+
+.agent-button.selected {
+  background-color: #def1fb;
+  border-color: #00a4fe;
+  color: #0767d6;
+}
+
+.agent-button-text {
+  font-size: 11px;
+}
+
+.agent-button-icon {
+  font-size: 14px;
+}
+
+.agent-custom-indicator {
+  font-size: 8px;
+  color: var(--color-accent-blue);
+  margin-left: 2px;
+}
+
+/* Icon buttons (Add/Edit) */
+.agent-icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background-color: var(--color-background-elevation-1);
+  border: 1px solid var(--color-details-hairline);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  padding: 0;
+  color: var(--color-text-primary);
+}
+
+.agent-icon-button:hover:not(:disabled) {
+  background-color: var(--color-background-elevation-2);
+  border-color: #00a4fe;
+}
+
+.agent-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.agent-icon-button .icon-text {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Dropdown trigger */
+.agent-dropdown-trigger {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background-color: var(--color-background-elevation-1);
+  border: 1px solid var(--color-details-hairline);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.agent-dropdown-trigger:hover {
+  background-color: var(--color-background-elevation-2);
+  border-color: #00a4fe;
+}
+
+.agent-dropdown-trigger.selected {
+  background-color: #def1fb;
+  border-color: #00a4fe;
+  color: #0767d6;
+}
+
+.agent-dropdown-trigger.open {
+  border-color: #00a4fe;
+}
+
+.dropdown-text {
+  flex: 1;
+}
+
+.dropdown-arrow {
+  font-size: 8px;
+  transition: transform 0.2s ease;
+  color: var(--color-text-secondary);
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown container */
+.dropdown-container {
+  position: relative;
+}
+
+/* Dropdown menu */
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: var(--color-background-elevation-1);
+  border: 1px solid var(--color-details-hairline);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  z-index: 1000;
+}
+
+/* Dropdown item */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  transition: background-color 0.1s ease;
+}
+
+.dropdown-item:hover {
+  background-color: var(--color-background-elevation-2);
+}
+
+.dropdown-item.selected {
+  background-color: #e2f3fb;
+}
+
+.dropdown-item-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.dropdown-item-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.dropdown-item-indicator {
+  font-size: 8px;
+  color: var(--color-accent-blue);
+  margin-left: auto;
+}
 
 
 .prompt-buttons-row {

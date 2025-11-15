@@ -16,6 +16,8 @@ import {type AgentState, createInitialState, createUserMessage} from './State.js
 import type {CompiledGraph} from './Types.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';
+import { isCustomProvider, getProviderDisplayName } from '../LLM/LLMTypes.js';
+import { CustomProviderManager } from './CustomProviderManager.js';
 import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../tracing/TracingProvider.js';
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
@@ -190,48 +192,84 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     }
 
     // Only add the selected provider if it has valid configuration
-    switch (provider) {
-      case 'openai':
-        if (apiKey) {
-          providers.push({
-            provider: 'openai' as const,
-            apiKey
-          });
-        }
-        break;
-      case 'litellm':
-        if (endpoint) {
-          providers.push({
-            provider: 'litellm' as const,
-            apiKey: apiKey || '', // Can be empty for some LiteLLM endpoints
-            providerURL: endpoint
-          });
-        }
-        break;
-      case 'groq':
-        if (apiKey) {
-          providers.push({
-            provider: 'groq' as const,
-            apiKey
-          });
-        }
-        break;
-      case 'openrouter':
-        if (apiKey) {
-          providers.push({
-            provider: 'openrouter' as const,
-            apiKey
-          });
-        }
-        break;
-      case 'browseroperator':
-        // BrowserOperator doesn't require apiKey
-        // But we pass it if available for optional authentication
+    // Handle custom providers
+    if (isCustomProvider(provider)) {
+      const customProviderConfig = CustomProviderManager.getProvider(provider);
+      if (customProviderConfig) {
         providers.push({
-          provider: 'browseroperator' as const,
+          provider: provider as LLMProvider,
           apiKey: apiKey || ''
         });
-        break;
+      }
+    } else {
+      // Handle built-in providers
+      switch (provider) {
+        case 'openai':
+          if (apiKey) {
+            providers.push({
+              provider: 'openai' as const,
+              apiKey
+            });
+          }
+          break;
+        case 'litellm':
+          if (endpoint) {
+            providers.push({
+              provider: 'litellm' as const,
+              apiKey: apiKey || '', // Can be empty for some LiteLLM endpoints
+              providerURL: endpoint
+            });
+          }
+          break;
+        case 'groq':
+          if (apiKey) {
+            providers.push({
+              provider: 'groq' as const,
+              apiKey
+            });
+          }
+          break;
+        case 'openrouter':
+          if (apiKey) {
+            providers.push({
+              provider: 'openrouter' as const,
+              apiKey
+            });
+          }
+          break;
+        case 'browseroperator':
+          // BrowserOperator doesn't require apiKey
+          // But we pass it if available for optional authentication
+          providers.push({
+            provider: 'browseroperator' as const,
+            apiKey: apiKey || ''
+          });
+          break;
+        case 'cerebras':
+          if (apiKey) {
+            providers.push({
+              provider: 'cerebras' as const,
+              apiKey
+            });
+          }
+          break;
+        case 'anthropic':
+          if (apiKey) {
+            providers.push({
+              provider: 'anthropic' as const,
+              apiKey
+            });
+          }
+          break;
+        case 'googleai':
+          if (apiKey) {
+            providers.push({
+              provider: 'googleai' as const,
+              apiKey
+            });
+          }
+          break;
+      }
     }
 
     if (providers.length === 0) {
@@ -262,16 +300,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       // If API key is required but not provided, throw error (unless in AUTOMATED_MODE)
       if (requiresApiKey && !apiKey && !BUILD_CONFIG.AUTOMATED_MODE) {
         const provider = this.#configManager.getProvider();
-        let providerName = 'OpenAI';
-        if (provider === 'litellm') {
-          providerName = 'LiteLLM';
-        } else if (provider === 'groq') {
-          providerName = 'Groq';
-        } else if (provider === 'openrouter') {
-          providerName = 'OpenRouter';
-        } else if (provider === 'browseroperator') {
-          providerName = 'BrowserOperator';
-        }
+        const providerName = getProviderDisplayName(provider);
         throw new Error(`${providerName} API key is required for this configuration`);
       }
 

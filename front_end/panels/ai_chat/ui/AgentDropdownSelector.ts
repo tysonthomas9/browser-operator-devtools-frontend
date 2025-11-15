@@ -33,111 +33,125 @@ export class AgentDropdownSelector extends Lit.LitElement {
 
   override render(): Lit.TemplateResult {
     const { selectedAgentType, agentConfigs, showLabels } = this;
-    
-    // Get Deep Research config (always visible)
-    const deepResearchConfig = agentConfigs['deep-research'];
-    
-    // Get other agents for dropdown (exclude deep-research)
-    const otherAgents = Object.values(agentConfigs).filter(config => 
-      config.type !== 'deep-research'
-    );
 
-    // Find currently selected agent from dropdown agents
-    const selectedDropdownAgent = otherAgents.find(config => 
+    // Get all agents as an array
+    const allAgents = Object.values(agentConfigs);
+
+    // First 2 agents shown as buttons
+    const firstTwoAgents = allAgents.slice(0, 2);
+
+    // Remaining agents shown in dropdown (if more than 2)
+    const remainingAgents = allAgents.length > 2 ? allAgents.slice(2) : [];
+
+    // Find selected agent from remaining agents
+    const selectedFromRemaining = remainingAgents.find(config =>
       config.type === selectedAgentType
     );
 
     return html`
       <div class="agent-dropdown-selector">
-        ${this.renderDeepResearchButton(deepResearchConfig, selectedAgentType, showLabels)}
-        ${this.renderDropdownSelector(otherAgents, selectedDropdownAgent, showLabels)}
+        <div class="agent-buttons-row">
+          <!-- First 2 agents as buttons -->
+          ${firstTwoAgents.map(config => this.renderAgentButton(config, selectedAgentType, showLabels))}
+
+          <!-- Dropdown for remaining agents (if > 2) -->
+          ${remainingAgents.length > 0 ? this.renderDropdownSelector(remainingAgents, selectedFromRemaining, showLabels) : nothing}
+
+          <!-- Add button -->
+          ${this.onAddAgent ? html`
+            <button
+              class="agent-icon-button"
+              @click=${() => this.onAddAgent?.()}
+              title="Add new agent"
+              aria-label="Add new agent"
+            >
+              <span class="icon-text">+</span>
+            </button>
+          ` : nothing}
+
+          <!-- Edit button -->
+          ${this.onEditAgent ? html`
+            <button
+              class="agent-icon-button"
+              @click=${() => {
+                if (this.selectedAgentType) {
+                  this.onEditAgent?.(this.selectedAgentType);
+                }
+              }}
+              title="Edit current agent"
+              aria-label="Edit current agent"
+              ?disabled=${!this.selectedAgentType}
+            >
+              <span class="icon-text">✏️</span>
+            </button>
+          ` : nothing}
+        </div>
       </div>
     `;
   }
 
-  private renderDeepResearchButton(
-    config: AgentConfig | undefined, 
-    selectedAgentType: string | null, 
+  private renderAgentButton(
+    config: AgentConfig,
+    selectedAgentType: string | null,
     showLabels: boolean
   ): Lit.TemplateResult {
-    if (!config) {
-      return html`<div class="agent-button-placeholder">Loading...</div>`;
-    }
-
     const isSelected = selectedAgentType === config.type;
     const isCustomized = this.hasCustomPrompt(config.type);
-    
+
     const buttonClasses = [
-      'prompt-button',
-      'deep-research-button',
+      'agent-button',
       isSelected ? 'selected' : '',
       isCustomized ? 'customized' : ''
     ].filter(Boolean).join(' ');
 
-    const title = isCustomized ? 
-      `${config.description || config.label} (Custom prompt - double-click to edit)` : 
-      `${config.description || config.label} (Double-click to edit prompt)`;
+    const title = isCustomized ?
+      `${config.description || config.label} (Customized)` :
+      (config.description || config.label);
 
     return html`
-      <button 
+      <button
         class=${buttonClasses}
         data-agent-type=${config.type}
         @click=${() => this.handleAgentSelect(config.type)}
-        @dblclick=${() => this.handleEditAgent(config.type)}
         title=${title}
       >
-        <span class="prompt-icon">${config.icon}</span>
-        ${showLabels ? html`<span class="prompt-label ${isSelected ? 'selected' : ''}">${config.label}</span>` : nothing}
-        ${isCustomized ? html`<span class="prompt-custom-indicator">●</span>` : nothing}
+        ${showLabels ? html`<span class="agent-button-text">${config.label}</span>` : html`<span class="agent-button-icon">${config.icon}</span>`}
+        ${isCustomized ? html`<span class="agent-custom-indicator">●</span>` : nothing}
       </button>
     `;
   }
 
   private renderDropdownSelector(
-    otherAgents: AgentConfig[], 
+    remainingAgents: AgentConfig[],
     selectedAgent: AgentConfig | undefined,
     showLabels: boolean
   ): Lit.TemplateResult {
-    const dropdownText = selectedAgent ? selectedAgent.label : 'More Agents';
-    const dropdownIcon = selectedAgent ? selectedAgent.icon : '▼';
-    
+    const dropdownText = selectedAgent ? selectedAgent.label : 'More...';
+
     const isSelected = Boolean(selectedAgent);
     const dropdownClasses = [
-      'prompt-button',
-      'dropdown-button',
+      'agent-dropdown-trigger',
       isSelected ? 'selected' : '',
       this.isOpen ? 'open' : ''
     ].filter(Boolean).join(' ');
 
     return html`
       <div class="dropdown-container">
-        <button 
+        <button
           class=${dropdownClasses}
           @click=${this.toggleDropdown}
           @keydown=${this.handleDropdownKeydown}
-          title="Select agent type"
+          title="More agents"
           aria-haspopup="true"
           aria-expanded=${this.isOpen}
         >
-          <span class="prompt-icon">${dropdownIcon}</span>
-          ${showLabels ? html`<span class="prompt-label ${isSelected ? 'selected' : ''}">${dropdownText}</span>` : nothing}
+          <span class="dropdown-text">${dropdownText}</span>
           <span class="dropdown-arrow ${this.isOpen ? 'open' : ''}">▼</span>
         </button>
-        
+
         ${this.isOpen ? html`
           <div class="dropdown-menu" @click=${this.handleDropdownItemClick}>
-            ${otherAgents.map(config => this.renderDropdownItem(config))}
-            ${this.onAddAgent ? html`
-              <div class="dropdown-separator"></div>
-              <button 
-                class="dropdown-item add-agent-item"
-                data-action="add"
-                title="Create new custom agent"
-              >
-                <span class="dropdown-item-icon">+</span>
-                <span class="dropdown-item-label">Add Agent</span>
-              </button>
-            ` : nothing}
+            ${remainingAgents.map(config => this.renderDropdownItem(config))}
           </div>
         ` : nothing}
       </div>
@@ -147,37 +161,23 @@ export class AgentDropdownSelector extends Lit.LitElement {
   private renderDropdownItem(config: AgentConfig): Lit.TemplateResult {
     const isSelected = this.selectedAgentType === config.type;
     const isCustomized = this.hasCustomPrompt(config.type);
-    const isCustomAgent = !['shopping', 'default'].includes(config.type);
-    
+
     const itemClasses = [
       'dropdown-item',
       isSelected ? 'selected' : '',
-      isCustomized ? 'customized' : '',
-      isCustomAgent ? 'custom-agent' : ''
+      isCustomized ? 'customized' : ''
     ].filter(Boolean).join(' ');
 
     return html`
-      <button 
+      <button
         class=${itemClasses}
         data-agent-type=${config.type}
         data-action="select"
         title=${config.description || config.label}
-        @dblclick=${() => this.handleEditAgent(config.type)}
       >
         <span class="dropdown-item-icon">${config.icon}</span>
         <span class="dropdown-item-label">${config.label}</span>
         ${isCustomized ? html`<span class="dropdown-item-indicator">●</span>` : nothing}
-        ${isCustomAgent && this.onDeleteAgent ? html`
-          <button 
-            class="dropdown-item-delete"
-            data-agent-type=${config.type}
-            data-action="delete"
-            title="Delete ${config.label}"
-            @click=${(e: Event) => e.stopPropagation()}
-          >
-            ×
-          </button>
-        ` : nothing}
       </button>
     `;
   }
@@ -197,29 +197,15 @@ export class AgentDropdownSelector extends Lit.LitElement {
     e.stopPropagation();
     const target = e.target as HTMLElement;
     const button = target.closest('[data-action]') as HTMLButtonElement;
-    
+
     if (!button) return;
 
     const action = button.dataset.action;
     const agentType = button.dataset.agentType;
 
-    switch (action) {
-      case 'select':
-        if (agentType) {
-          this.handleAgentSelect(agentType);
-          this.closeDropdown();
-        }
-        break;
-      case 'add':
-        this.onAddAgent?.();
-        this.closeDropdown();
-        break;
-      case 'delete':
-        if (agentType) {
-          this.onDeleteAgent?.(agentType);
-          // Don't close dropdown for delete action
-        }
-        break;
+    if (action === 'select' && agentType) {
+      this.handleAgentSelect(agentType);
+      this.closeDropdown();
     }
   };
 
@@ -281,11 +267,23 @@ export class AgentDropdownSelector extends Lit.LitElement {
   }
 
   private hasCustomPrompt(agentType: string): boolean {
-    // Check if agent has custom prompt (placeholder implementation)
-    // This should integrate with the existing custom prompt system
+    // Check new custom agents system first
+    const customAgents = localStorage.getItem('ai_chat_custom_agents');
+    if (customAgents) {
+      try {
+        const agents = JSON.parse(customAgents);
+        if (agents[agentType]) {
+          return true;
+        }
+      } catch {
+        // Continue to check old system
+      }
+    }
+
+    // Check old custom prompts system for backward compatibility
     const customPrompts = localStorage.getItem('ai_chat_custom_prompts');
     if (!customPrompts) return false;
-    
+
     try {
       const prompts = JSON.parse(customPrompts);
       return Boolean(prompts[agentType]);
