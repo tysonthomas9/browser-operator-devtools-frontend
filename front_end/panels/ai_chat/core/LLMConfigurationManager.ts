@@ -5,6 +5,9 @@
 
 import { createLogger } from './Logger.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
+import { isCustomProvider } from '../LLM/LLMTypes.js';
+import { LLMProviderRegistry } from '../LLM/LLMProviderRegistry.js';
+import { CustomProviderManager } from './CustomProviderManager.js';
 
 const logger = createLogger('LLMConfigurationManager');
 
@@ -89,7 +92,12 @@ export class LLMConfigurationManager {
     if (this.overrideConfig?.miniModel) {
       return this.overrideConfig.miniModel;
     }
-    return localStorage.getItem(STORAGE_KEYS.MINI_MODEL) || '';
+    const stored = localStorage.getItem(STORAGE_KEYS.MINI_MODEL) || '';
+    // Fallback to mainModel if mini is not set
+    if (!stored) {
+      return this.getMainModel();
+    }
+    return stored;
   }
 
   /**
@@ -99,7 +107,12 @@ export class LLMConfigurationManager {
     if (this.overrideConfig?.nanoModel) {
       return this.overrideConfig.nanoModel;
     }
-    return localStorage.getItem(STORAGE_KEYS.NANO_MODEL) || '';
+    const stored = localStorage.getItem(STORAGE_KEYS.NANO_MODEL) || '';
+    // Fallback to miniModel, then mainModel if nano is not set
+    if (!stored) {
+      return this.getMiniModel() || this.getMainModel();
+    }
+    return stored;
   }
 
   /**
@@ -111,20 +124,7 @@ export class LLMConfigurationManager {
     }
 
     const provider = this.getProvider();
-    switch (provider) {
-      case 'openai':
-        return localStorage.getItem(STORAGE_KEYS.OPENAI_API_KEY) || '';
-      case 'litellm':
-        return localStorage.getItem(STORAGE_KEYS.LITELLM_API_KEY) || '';
-      case 'groq':
-        return localStorage.getItem(STORAGE_KEYS.GROQ_API_KEY) || '';
-      case 'openrouter':
-        return localStorage.getItem(STORAGE_KEYS.OPENROUTER_API_KEY) || '';
-      case 'browseroperator':
-        return localStorage.getItem(STORAGE_KEYS.BROWSEROPERATOR_API_KEY) || '';
-      default:
-        return '';
-    }
+    return LLMProviderRegistry.getProviderApiKey(provider);
   }
 
   /**
@@ -136,10 +136,7 @@ export class LLMConfigurationManager {
     }
 
     const provider = this.getProvider();
-    if (provider === 'litellm') {
-      return localStorage.getItem(STORAGE_KEYS.LITELLM_ENDPOINT) || undefined;
-    }
-    return undefined;
+    return LLMProviderRegistry.getProviderEndpoint(provider);
   }
 
   /**
@@ -312,20 +309,23 @@ export class LLMConfigurationManager {
     }
 
     // Provider-specific validation - skip credential checks in AUTOMATED_MODE
-    if (!skipCredentialChecks) {
-      switch (config.provider) {
-        case 'openai':
-        case 'groq':
-        case 'openrouter':
-          if (!config.apiKey) {
-            errors.push(`API key is required for ${config.provider}`);
-          }
-          break;
-        case 'litellm':
-          if (!config.endpoint) {
-            errors.push('Endpoint is required for LiteLLM');
-          }
-          break;
+    if (!skipCredentialChecks && config.provider) {
+      // Check if it's a custom provider
+      if (isCustomProvider(config.provider)) {
+        const customProvider = CustomProviderManager.getProvider(config.provider);
+        if (!customProvider) {
+          errors.push(`Custom provider ${config.provider} not found`);
+        } else if (!customProvider.enabled) {
+          errors.push('Provider is disabled');
+        } else if (!customProvider.models || customProvider.models.length === 0) {
+          errors.push('No models configured for this provider');
+        }
+      } else {
+        // Built-in provider - use existing validation
+        const validation = LLMProviderRegistry.validateProviderCredentials(config.provider as LLMProvider);
+        if (!validation.isValid) {
+          errors.push(validation.message);
+        }
       }
     }
 
@@ -340,41 +340,17 @@ export class LLMConfigurationManager {
    * Only modifies settings for the active provider, preserving other providers' credentials
    */
   private saveProviderSpecificSettings(config: LLMConfig): void {
-    // Save current provider's settings only (do not clear others)
-    switch (config.provider) {
-      case 'openai':
-        if (config.apiKey) {
-          localStorage.setItem(STORAGE_KEYS.OPENAI_API_KEY, config.apiKey);
-        } else {
-          localStorage.removeItem(STORAGE_KEYS.OPENAI_API_KEY);
-        }
-        break;
-      case 'litellm':
-        if (config.endpoint) {
-          localStorage.setItem(STORAGE_KEYS.LITELLM_ENDPOINT, config.endpoint);
-        } else {
-          localStorage.removeItem(STORAGE_KEYS.LITELLM_ENDPOINT);
-        }
-        if (config.apiKey) {
-          localStorage.setItem(STORAGE_KEYS.LITELLM_API_KEY, config.apiKey);
-        } else {
-          localStorage.removeItem(STORAGE_KEYS.LITELLM_API_KEY);
-        }
-        break;
-      case 'groq':
-        if (config.apiKey) {
-          localStorage.setItem(STORAGE_KEYS.GROQ_API_KEY, config.apiKey);
-        } else {
-          localStorage.removeItem(STORAGE_KEYS.GROQ_API_KEY);
-        }
-        break;
-      case 'openrouter':
-        if (config.apiKey) {
-          localStorage.setItem(STORAGE_KEYS.OPENROUTER_API_KEY, config.apiKey);
-        } else {
-          localStorage.removeItem(STORAGE_KEYS.OPENROUTER_API_KEY);
-        }
-        break;
+    // Check if this is a custom provider
+    if (isCustomProvider(config.provider)) {
+      // Use CustomProviderManager for custom providers
+      if (config.apiKey) {
+        CustomProviderManager.setApiKey(config.provider, config.apiKey);
+      }
+      // Note: endpoint/baseURL for custom providers is stored in the provider config itself
+    } else {
+      // Use LLMProviderRegistry for built-in providers
+      LLMProviderRegistry.saveProviderApiKey(config.provider, config.apiKey || null);
+      LLMProviderRegistry.saveProviderEndpoint(config.provider, config.endpoint || null);
     }
   }
 
@@ -383,12 +359,15 @@ export class LLMConfigurationManager {
    */
   private handleStorageChange(event: StorageEvent): void {
     if (event.key && Object.values(STORAGE_KEYS).includes(event.key as any)) {
-      const sensitiveKeys = new Set([
-        STORAGE_KEYS.OPENAI_API_KEY,
-        STORAGE_KEYS.LITELLM_API_KEY,
-        STORAGE_KEYS.GROQ_API_KEY,
-        STORAGE_KEYS.OPENROUTER_API_KEY,
-      ]);
+      // Get all API key storage keys from registered providers
+      const sensitiveKeys = new Set<string>();
+      for (const providerType of LLMProviderRegistry.getRegisteredProviders()) {
+        const keys = LLMProviderRegistry.getProviderStorageKeys(providerType);
+        if (keys.apiKey) {
+          sensitiveKeys.add(keys.apiKey);
+        }
+      }
+
       const redacted =
         sensitiveKeys.has(event.key as any) ? '(redacted)' :
         (event.newValue ? `${event.newValue.slice(0, 8)}…` : null);

@@ -5,6 +5,14 @@
 import { createLogger } from '../core/Logger.js';
 import type { LLMProviderInterface } from './LLMProvider.js';
 import type { LLMProvider, ModelInfo } from './LLMTypes.js';
+import { OpenAIProvider } from './OpenAIProvider.js';
+import { LiteLLMProvider } from './LiteLLMProvider.js';
+import { GroqProvider } from './GroqProvider.js';
+import { OpenRouterProvider } from './OpenRouterProvider.js';
+import { BrowserOperatorProvider } from './BrowserOperatorProvider.js';
+import { CerebrasProvider } from './CerebrasProvider.js';
+import { AnthropicProvider } from './AnthropicProvider.js';
+import { GoogleAIProvider } from './GoogleAIProvider.js';
 
 const logger = createLogger('LLMProviderRegistry');
 
@@ -102,5 +110,234 @@ export class LLMProviderRegistry {
       providersCount: this.providers.size,
       providers: Array.from(this.providers.keys()),
     };
+  }
+
+  /**
+   * Create a temporary provider instance for utility operations
+   * Used when provider isn't registered yet (e.g., during setup/validation)
+   */
+  private static createTemporaryProvider(providerType: LLMProvider): LLMProviderInterface | null {
+    try {
+      switch (providerType) {
+        case 'openai':
+          return new OpenAIProvider('');
+        case 'litellm':
+          return new LiteLLMProvider('', '');
+        case 'groq':
+          return new GroqProvider('');
+        case 'openrouter':
+          return new OpenRouterProvider('');
+        case 'browseroperator':
+          return new BrowserOperatorProvider(null, '');
+        case 'cerebras':
+          return new CerebrasProvider('');
+        case 'anthropic':
+          return new AnthropicProvider('');
+        case 'googleai':
+          return new GoogleAIProvider('');
+        default:
+          logger.warn(`Unknown provider type: ${providerType}`);
+          return null;
+      }
+    } catch (error) {
+      logger.error(`Failed to create temporary provider ${providerType}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get or create a provider instance for utility operations
+   * Prefers registered instance, falls back to temporary instance
+   */
+  private static getOrCreateProvider(providerType: LLMProvider): LLMProviderInterface | null {
+    // Try to get registered provider first
+    const registered = this.getProvider(providerType);
+    if (registered) {
+      return registered;
+    }
+
+    // Fall back to creating temporary instance
+    return this.createTemporaryProvider(providerType);
+  }
+
+  /**
+   * Get storage keys for a provider
+   * Returns the localStorage keys used by the provider for credentials
+   */
+  static getProviderStorageKeys(providerType: LLMProvider): {apiKey?: string; endpoint?: string; [key: string]: string | undefined} {
+    const provider = this.getOrCreateProvider(providerType);
+    if (!provider) {
+      logger.warn(`Provider ${providerType} not available`);
+      return {};
+    }
+    return provider.getCredentialStorageKeys();
+  }
+
+  /**
+   * Get API key from localStorage for a provider
+   */
+  static getProviderApiKey(providerType: LLMProvider): string {
+    const keys = this.getProviderStorageKeys(providerType);
+    if (!keys.apiKey) {
+      return '';
+    }
+    return localStorage.getItem(keys.apiKey) || '';
+  }
+
+  /**
+   * Get endpoint from localStorage for a provider (if applicable)
+   */
+  static getProviderEndpoint(providerType: LLMProvider): string | undefined {
+    const keys = this.getProviderStorageKeys(providerType);
+    if (!keys.endpoint) {
+      return undefined;
+    }
+    return localStorage.getItem(keys.endpoint) || undefined;
+  }
+
+  /**
+   * Save API key for a provider to localStorage
+   */
+  static saveProviderApiKey(providerType: LLMProvider, apiKey: string | null): void {
+    const keys = this.getProviderStorageKeys(providerType);
+    if (!keys.apiKey) {
+      logger.warn(`Provider ${providerType} does not have an API key storage key`);
+      return;
+    }
+
+    if (apiKey) {
+      localStorage.setItem(keys.apiKey, apiKey);
+      logger.debug(`Saved API key for ${providerType}`);
+    } else {
+      localStorage.removeItem(keys.apiKey);
+      logger.debug(`Removed API key for ${providerType}`);
+    }
+  }
+
+  /**
+   * Save endpoint for a provider to localStorage (if applicable)
+   */
+  static saveProviderEndpoint(providerType: LLMProvider, endpoint: string | null): void {
+    const keys = this.getProviderStorageKeys(providerType);
+    if (!keys.endpoint) {
+      return; // Provider doesn't use endpoint
+    }
+
+    if (endpoint) {
+      localStorage.setItem(keys.endpoint, endpoint);
+      logger.debug(`Saved endpoint for ${providerType}`);
+    } else {
+      localStorage.removeItem(keys.endpoint);
+      logger.debug(`Removed endpoint for ${providerType}`);
+    }
+  }
+
+  /**
+   * Validate credentials for a provider
+   */
+  static validateProviderCredentials(providerType: LLMProvider): {isValid: boolean; message: string; missingItems?: string[]} {
+    const provider = this.getOrCreateProvider(providerType);
+    if (!provider) {
+      return {
+        isValid: false,
+        message: `Provider ${providerType} not available`,
+        missingItems: ['Provider support']
+      };
+    }
+
+    try {
+      return provider.validateCredentials();
+    } catch (error) {
+      logger.error(`Failed to validate credentials for ${providerType}:`, error);
+      return {
+        isValid: false,
+        message: `Validation failed: ${error}`,
+      };
+    }
+  }
+
+  /**
+   * Get provider credentials from localStorage
+   */
+  static getProviderCredentials(providerType: LLMProvider): {
+    canProceed: boolean;
+    apiKey: string | null;
+    endpoint?: string | null;
+    storageKeys?: {apiKey?: string; endpoint?: string; [key: string]: string | undefined};
+  } {
+    // First validate credentials
+    const validation = this.validateProviderCredentials(providerType);
+
+    if (!validation.isValid) {
+      return { canProceed: false, apiKey: null };
+    }
+
+    // Get storage keys
+    const storageKeys = this.getProviderStorageKeys(providerType);
+
+    // Retrieve credentials from localStorage
+    const apiKey = storageKeys.apiKey ? (localStorage.getItem(storageKeys.apiKey) || null) : null;
+    const endpoint = storageKeys.endpoint ? (localStorage.getItem(storageKeys.endpoint) || null) : null;
+
+    return {
+      canProceed: true,
+      apiKey,
+      endpoint,
+      storageKeys
+    };
+  }
+
+  /**
+   * Fetch models for a provider
+   * Uses registered provider or creates temporary instance with given credentials
+   */
+  static async fetchProviderModels(
+    providerType: LLMProvider,
+    apiKey: string,
+    endpoint?: string
+  ): Promise<ModelInfo[]> {
+    const provider = this.getOrCreateProvider(providerType);
+    if (!provider) {
+      logger.warn(`Provider ${providerType} not available`);
+      return [];
+    }
+
+    try {
+      // Use the provider's fetchModels method if available
+      if ('fetchModels' in provider && typeof provider.fetchModels === 'function') {
+        return await provider.fetchModels(apiKey, endpoint);
+      }
+
+      // Fallback to getModels
+      return await provider.getModels();
+    } catch (error) {
+      logger.error(`Failed to fetch models for ${providerType}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Test connection for a provider
+   * Creates temporary instance with given credentials to test connection
+   */
+  static async testProviderConnection(
+    providerType: LLMProvider,
+    apiKey: string,
+    endpoint?: string
+  ): Promise<{success: boolean; message: string}> {
+    try {
+      // Try to fetch models as a connection test
+      await this.fetchProviderModels(providerType, apiKey, endpoint);
+      return {
+        success: true,
+        message: `Successfully connected to ${providerType}`
+      };
+    } catch (error) {
+      logger.error(`Connection test failed for ${providerType}:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error)
+      };
+    }
   }
 }

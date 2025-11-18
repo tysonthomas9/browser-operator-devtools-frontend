@@ -15,7 +15,10 @@ import { AgentDescriptorRegistry } from './AgentDescriptorRegistry.js';
 import {type AgentState, createInitialState, createUserMessage} from './State.js';
 import type {CompiledGraph} from './Types.js';
 import { LLMClient } from '../LLM/LLMClient.js';
+import { LLMProviderRegistry } from '../LLM/LLMProviderRegistry.js';
 import { LLMConfigurationManager } from './LLMConfigurationManager.js';
+import { CustomProviderManager } from './CustomProviderManager.js';
+import { isCustomProvider } from '../LLM/LLMTypes.js';
 import { createTracingProvider, getCurrentTracingContext } from '../tracing/TracingConfig.js';
 import type { TracingProvider, TracingContext } from '../tracing/TracingProvider.js';
 import { AgentRunnerEventBus } from '../agent_framework/AgentRunnerEventBus.js';
@@ -24,6 +27,8 @@ import type { AgentSession, AgentMessage } from '../agent_framework/AgentSession
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { BUILD_CONFIG } from './BuildConfig.js';
 import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
+import { ConversationManager } from '../persistence/ConversationManager.js';
+import type { ConversationMetadata } from '../persistence/ConversationTypes.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -39,6 +44,8 @@ export enum Events {
   AGENT_SESSION_UPDATED = 'agent-session-updated',
   AGENT_SESSION_COMPLETED = 'agent-session-completed',
   CHILD_AGENT_STARTED = 'child-agent-started',
+  CONVERSATION_CHANGED = 'conversation-changed',
+  CONVERSATION_SAVED = 'conversation-saved',
 }
 
 /**
@@ -52,6 +59,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   [Events.AGENT_SESSION_UPDATED]: AgentSession,
   [Events.AGENT_SESSION_COMPLETED]: AgentSession,
   [Events.CHILD_AGENT_STARTED]: { parentSession: AgentSession, childAgentName: string, childSessionId: string },
+  [Events.CONVERSATION_CHANGED]: string | null,
+  [Events.CONVERSATION_SAVED]: string,
 }> {
   static instance: AgentService;
 
@@ -70,6 +79,10 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   #sessionId: string;
   #activeAgentSessions = new Map<string, AgentSession>();
   #configManager: LLMConfigurationManager;
+  #conversationManager: ConversationManager;
+  #currentConversationId: string | null = null;
+  #autoSaveTimeoutId?: number;
+  #autoSaveDebounceMs = 1000;
 
   // Global registry for all active executions
   private static activeExecutions = new Map<string, AbortController>();
@@ -125,6 +138,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     // Initialize configuration manager
     this.#configManager = LLMConfigurationManager.getInstance();
 
+    // Initialize conversation manager
+    this.#conversationManager = ConversationManager.getInstance();
+
     // Initialize tracing
     this.#sessionId = this.generateSessionId();
     this.#initializeTracing();
@@ -137,7 +153,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       answer: i18nString(UIStrings.welcomeMessage),
       isFinalAnswer: true,
     });
-    
+
     // Initialize AgentRunner event system
     AgentRunner.initializeEventBus();
 
@@ -189,54 +205,14 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
     }
 
-    // Only add the selected provider if it has valid configuration
-    switch (provider) {
-      case 'openai':
-        if (apiKey) {
-          providers.push({
-            provider: 'openai' as const,
-            apiKey
-          });
-        }
-        break;
-      case 'litellm':
-        if (endpoint) {
-          providers.push({
-            provider: 'litellm' as const,
-            apiKey: apiKey || '', // Can be empty for some LiteLLM endpoints
-            providerURL: endpoint
-          });
-        }
-        break;
-      case 'groq':
-        if (apiKey) {
-          providers.push({
-            provider: 'groq' as const,
-            apiKey
-          });
-        }
-        break;
-      case 'openrouter':
-        if (apiKey) {
-          providers.push({
-            provider: 'openrouter' as const,
-            apiKey
-          });
-        }
-        break;
-      case 'browseroperator':
-        // BrowserOperator doesn't require apiKey
-        // But we pass it if available for optional authentication
-        providers.push({
-          provider: 'browseroperator' as const,
-          apiKey: apiKey || ''
-        });
-        break;
-    }
+    // Build provider configuration using registry
+    const providerConfig = this.#buildProviderConfig(provider, apiKey, endpoint);
 
-    if (providers.length === 0) {
+    if (!providerConfig) {
       throw new Error(`No valid configuration found for provider ${provider}`);
     }
+
+    providers.push(providerConfig);
 
     await llm.initialize({ providers });
     logger.info('LLM client initialized successfully', {
@@ -244,6 +220,64 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       providersRegistered: providers.map(p => p.provider),
       providersCount: providers.length
     });
+  }
+
+  /**
+   * Build provider configuration for LLM initialization
+   * Handles special cases like litellm endpoint and browseroperator optional key
+   */
+  #buildProviderConfig(
+    provider: string,
+    apiKey: string | undefined,
+    endpoint: string | undefined
+  ): {provider: string; apiKey: string; providerURL?: string} | null {
+    // Check if it's a custom provider
+    if (isCustomProvider(provider)) {
+      const customConfig = CustomProviderManager.getProvider(provider);
+      if (!customConfig) {
+        logger.warn(`Custom provider ${provider} not found`);
+        return null;
+      }
+
+      // Custom providers use their configured baseURL
+      return {
+        provider,
+        apiKey: apiKey || '', // API key is optional for custom providers
+        providerURL: customConfig.baseURL
+      };
+    }
+
+    // Special case: litellm requires endpoint
+    if (provider === 'litellm') {
+      if (!endpoint) {
+        logger.warn('LiteLLM provider requires endpoint');
+        return null;
+      }
+      return {
+        provider: 'litellm',
+        apiKey: apiKey || '', // Can be empty for some LiteLLM endpoints
+        providerURL: endpoint
+      };
+    }
+
+    // Special case: browseroperator doesn't require apiKey
+    if (provider === 'browseroperator') {
+      return {
+        provider: 'browseroperator',
+        apiKey: apiKey || ''
+      };
+    }
+
+    // Default: provider requires apiKey
+    if (!apiKey) {
+      logger.warn(`Provider ${provider} requires API key`);
+      return null;
+    }
+
+    return {
+      provider,
+      apiKey
+    };
   }
 
   /**
@@ -447,6 +481,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     // Notify listeners of message update
     this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
 
+    // Schedule auto-save
+    void this.#scheduleAutoSave();
+
     // Get the user's current context (URL and title)
     const currentPageUrl = await this.#getCurrentPageUrl();
     const currentPageTitle = await this.#getCurrentPageTitle();
@@ -604,7 +641,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
 
         // Notify listeners of message update immediately
         this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+
+        // Don't auto-save during iteration - wait for completion
       }
+
+      // Schedule auto-save after loop completes with final state
+      void this.#scheduleAutoSave();
 
       // Check if the last message is an error (it might have been added in the loop)
       const finalMessage = this.#state.messages[this.#state.messages.length - 1];
@@ -677,6 +719,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       // Notify listeners of message update
       this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
 
+      // Schedule auto-save
+      void this.#scheduleAutoSave();
+
       // Create error completion event
       await this.#tracingProvider.createObservation({
         id: `event-error-${Date.now()}`,
@@ -718,17 +763,137 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   }
 
   /**
-   * Clears the conversation history
+   * Gets the current conversation ID
    */
-  clearConversation(): void {
-    // Abort ALL running agent executions globally
-    logger.info('Aborting all running agent executions due to conversation clear');
-    AgentService.abortAllExecutions();
+  getCurrentConversationId(): string | null {
+    return this.#currentConversationId;
+  }
 
-    // Clear local state
-    this.#abortController = undefined;
-    this.#runningGraphStatePromise = undefined;
-    this.#executionId = undefined;
+  /**
+   * Gets the current conversation title (auto-generated from first message)
+   */
+  getCurrentConversationTitle(): string {
+    const firstUserMessage = this.#state.messages.find(msg => msg.entity === ChatMessageEntity.USER);
+    if (firstUserMessage && 'text' in firstUserMessage) {
+      const text = firstUserMessage.text as string;
+      return text.length > 50 ? text.substring(0, 50) + '...' : text;
+    }
+    return 'New Chat';
+  }
+
+  /**
+   * Auto-saves the current conversation (debounced)
+   */
+  async #scheduleAutoSave(): Promise<void> {
+    // Clear existing timeout
+    if (this.#autoSaveTimeoutId !== undefined) {
+      clearTimeout(this.#autoSaveTimeoutId);
+    }
+
+    // Schedule new auto-save
+    this.#autoSaveTimeoutId = setTimeout(async () => {
+      try {
+        const conversationId = await this.#conversationManager.autoSaveConversation(
+          this.#currentConversationId,
+          this.#state,
+          this.getActiveAgentSessions()
+        );
+
+        // Update current conversation ID if it was created
+        if (conversationId && conversationId !== this.#currentConversationId) {
+          this.#currentConversationId = conversationId;
+          this.dispatchEventToListeners(Events.CONVERSATION_CHANGED, conversationId);
+        }
+
+        if (conversationId) {
+          this.dispatchEventToListeners(Events.CONVERSATION_SAVED, conversationId);
+          logger.debug('Auto-saved conversation', { conversationId });
+        }
+      } catch (error) {
+        logger.error('Failed to auto-save conversation', { error });
+      }
+    }, this.#autoSaveDebounceMs) as unknown as number;
+  }
+
+  /**
+   * Manually saves the current conversation
+   */
+  async saveConversation(): Promise<string | null> {
+    try {
+      const conversationId = await this.#conversationManager.autoSaveConversation(
+        this.#currentConversationId,
+        this.#state,
+        this.getActiveAgentSessions()
+      );
+
+      if (conversationId && conversationId !== this.#currentConversationId) {
+        this.#currentConversationId = conversationId;
+        this.dispatchEventToListeners(Events.CONVERSATION_CHANGED, conversationId);
+      }
+
+      if (conversationId) {
+        this.dispatchEventToListeners(Events.CONVERSATION_SAVED, conversationId);
+        logger.info('Saved conversation', { conversationId });
+      }
+
+      return conversationId;
+    } catch (error) {
+      logger.error('Failed to save conversation', { error });
+      return null;
+    }
+  }
+
+  /**
+   * Loads a conversation by ID
+   */
+  async loadConversation(conversationId: string): Promise<boolean> {
+    try {
+      const result = await this.#conversationManager.loadConversation(conversationId);
+
+      if (!result) {
+        logger.warn('Conversation not found', { conversationId });
+        return false;
+      }
+
+      // Abort any running execution
+      this.cancelRun();
+
+      // Load the state
+      this.#state = result.state;
+      this.#currentConversationId = conversationId;
+
+      // Restore agent sessions
+      this.#activeAgentSessions.clear();
+      for (const session of result.agentSessions) {
+        this.#activeAgentSessions.set(session.sessionId, session);
+      }
+
+      // Notify listeners
+      this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+      this.dispatchEventToListeners(Events.CONVERSATION_CHANGED, conversationId);
+
+      logger.info('Loaded conversation', {
+        conversationId,
+        messageCount: this.#state.messages.length,
+        title: result.conversation.title
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to load conversation', { error, conversationId });
+      return false;
+    }
+  }
+
+  /**
+   * Starts a new conversation
+   */
+  async newConversation(): Promise<void> {
+    // Abort any running execution
+    this.cancelRun();
+
+    // Clear conversation ID
+    this.#currentConversationId = null;
 
     // Create a fresh state
     this.#state = createInitialState();
@@ -741,8 +906,68 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       isFinalAnswer: true,
     });
 
-    // Notify listeners that messages have changed
+    // Clear agent sessions
+    this.#activeAgentSessions.clear();
+
+    // Notify listeners
     this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+    this.dispatchEventToListeners(Events.CONVERSATION_CHANGED, null);
+
+    logger.info('Started new conversation');
+  }
+
+  /**
+   * Lists all saved conversations
+   */
+  async listConversations(): Promise<ConversationMetadata[]> {
+    try {
+      return await this.#conversationManager.listConversations();
+    } catch (error) {
+      logger.error('Failed to list conversations', { error });
+      return [];
+    }
+  }
+
+  /**
+   * Deletes a conversation by ID
+   */
+  async deleteConversation(conversationId: string): Promise<boolean> {
+    try {
+      await this.#conversationManager.deleteConversation(conversationId);
+
+      // If we deleted the current conversation, start a new one
+      if (conversationId === this.#currentConversationId) {
+        await this.newConversation();
+      }
+
+      logger.info('Deleted conversation', { conversationId });
+      return true;
+    } catch (error) {
+      logger.error('Failed to delete conversation', { error, conversationId });
+      return false;
+    }
+  }
+
+  /**
+   * Updates the title of a conversation
+   */
+  async updateConversationTitle(conversationId: string, newTitle: string): Promise<boolean> {
+    try {
+      await this.#conversationManager.updateConversationTitle(conversationId, newTitle);
+      logger.info('Updated conversation title', { conversationId, newTitle });
+      return true;
+    } catch (error) {
+      logger.error('Failed to update conversation title', { error, conversationId });
+      return false;
+    }
+  }
+
+  /**
+   * Clears the conversation history (creates a new conversation)
+   */
+  clearConversation(): void {
+    // Use newConversation() for consistency
+    void this.newConversation();
   }
 
   /**
@@ -822,37 +1047,26 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    */
   #doesCurrentConfigRequireApiKey(): boolean {
     try {
-      // Check the selected provider
       const selectedProvider = this.#configManager.getProvider();
-      
-      // OpenAI provider always requires an API key
-      if (selectedProvider === 'openai') {
-        return true;
-      }
-      
-      // Groq provider always requires an API key
-      if (selectedProvider === 'groq') {
-        return true;
-      }
-      
-      // OpenRouter provider always requires an API key
-      if (selectedProvider === 'openrouter') {
-        return true;
-      }
 
-      // BrowserOperator provider doesn't require an API key (endpoint is hardcoded)
+      // Special case: browseroperator doesn't require API key
       if (selectedProvider === 'browseroperator') {
         return false;
       }
 
-      // For LiteLLM, only require API key if no endpoint is configured
-      if (selectedProvider === 'litellm') {
-        const hasLiteLLMEndpoint = Boolean(localStorage.getItem('ai_chat_litellm_endpoint'));
-        // If we have an endpoint, API key is optional
-        return !hasLiteLLMEndpoint;
+      // Special case: custom providers have optional API keys
+      if (isCustomProvider(selectedProvider)) {
+        return false;
       }
 
-      // Default to requiring API key for any unknown provider
+      // Special case: litellm only requires API key if no endpoint is configured
+      if (selectedProvider === 'litellm') {
+        const endpoint = LLMProviderRegistry.getProviderEndpoint(selectedProvider);
+        // If we have an endpoint, API key is optional
+        return !endpoint;
+      }
+
+      // All other providers require API key
       return true;
     } catch (error) {
       logger.error('Error checking if API key is required:', error);
@@ -926,6 +1140,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           // Trigger messages changed to update the chat transcript
           this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
 
+          // Schedule auto-save after session completion
+          void this.#scheduleAutoSave();
+
           // Clean up after a short delay (5 seconds) to allow UI to finish rendering
           this.#cleanupCompletedSession(progressEvent.sessionId);
         } else {
@@ -957,6 +1174,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         const updatedParent = { ...parentSession, nestedSessions: nested } as AgentSession;
         this.#state.messages[parentIdx] = { ...parentMsg, agentSession: updatedParent };
         this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+        void this.#scheduleAutoSave();
         return;
       }
     }
@@ -976,6 +1194,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       }
     }
     this.dispatchEventToListeners(Events.MESSAGES_CHANGED, [...this.#state.messages]);
+    void this.#scheduleAutoSave();
   }
   
   /**

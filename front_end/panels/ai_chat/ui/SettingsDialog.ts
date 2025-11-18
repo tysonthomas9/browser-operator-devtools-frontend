@@ -5,6 +5,8 @@
 import * as UI from '../../../ui/legacy/legacy.js';
 import { createLogger } from '../core/Logger.js';
 import { LLMClient } from '../LLM/LLMClient.js';
+import { CustomProviderDialog } from './CustomProviderDialog.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
 
 // Import settings utilities
 import { i18nString, UIStrings } from './settings/i18n-strings.js';
@@ -17,11 +19,12 @@ import type { ModelOption, ProviderType, FetchLiteLLMModelsFunction, UpdateModel
 export { isVectorDBEnabled };
 
 // Import provider settings classes
-import { OpenAISettings } from './settings/providers/OpenAISettings.js';
+import { GenericProviderSettings } from './settings/providers/GenericProviderSettings.js';
 import { LiteLLMSettings } from './settings/providers/LiteLLMSettings.js';
-import { GroqSettings } from './settings/providers/GroqSettings.js';
 import { OpenRouterSettings } from './settings/providers/OpenRouterSettings.js';
-import { BrowserOperatorSettings } from './settings/providers/BrowserOperatorSettings.js';
+
+// Import provider configurations
+import { OpenAIConfig, BrowserOperatorConfig, GroqConfig, CerebrasConfig, AnthropicConfig, GoogleAIConfig } from './settings/providerConfigs.js';
 
 // Import advanced feature settings classes
 import { MCPSettings } from './settings/advanced/MCPSettings.js';
@@ -33,6 +36,25 @@ import { EvaluationSettings } from './settings/advanced/EvaluationSettings.js';
 import './model_selector/ModelSelector.js';
 
 const logger = createLogger('SettingsDialog');
+
+// Provider configuration registry
+interface ProviderConfig {
+  id: ProviderType;
+  i18nKey: keyof typeof UIStrings;
+  config?: any;
+  settingsClass?: 'generic' | 'litellm' | 'openrouter';
+}
+
+const PROVIDER_REGISTRY: ProviderConfig[] = [
+  { id: 'openai', i18nKey: 'openaiProvider', config: OpenAIConfig, settingsClass: 'generic' },
+  { id: 'litellm', i18nKey: 'litellmProvider', settingsClass: 'litellm' },
+  { id: 'groq', i18nKey: 'groqProvider', config: GroqConfig, settingsClass: 'generic' },
+  { id: 'openrouter', i18nKey: 'openrouterProvider', settingsClass: 'openrouter' },
+  { id: 'browseroperator', i18nKey: 'browseroperatorProvider', config: BrowserOperatorConfig, settingsClass: 'generic' },
+  { id: 'cerebras', i18nKey: 'cerebrasProvider', config: CerebrasConfig, settingsClass: 'generic' },
+  { id: 'anthropic', i18nKey: 'anthropicProvider', config: AnthropicConfig, settingsClass: 'generic' },
+  { id: 'googleai', i18nKey: 'googleaiProvider', config: GoogleAIConfig, settingsClass: 'generic' },
+];
 
 export class SettingsDialog {
   static async show(
@@ -94,141 +116,267 @@ export class SettingsDialog {
     // Use the stored provider from localStorage
     const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as ProviderType;
 
+    // Helper function to create ProviderConfig from CustomProviderConfig
+    const createCustomProviderConfig = (customConfig: any): any => {
+      return {
+        id: customConfig.id,
+        displayName: customConfig.name,
+        apiKeyStorageKey: CustomProviderManager.getApiKeyStorageKey(customConfig.id),
+        apiKeyLabel: `${customConfig.name} API Key`,
+        apiKeyHint: `API key for ${customConfig.name} (optional)`,
+        apiKeyPlaceholder: 'Enter API key (optional)',
+        hasModelSelectors: true,
+        hasFetchButton: false,
+        apiKeyOptional: true
+      };
+    };
+
+    // Helper function to create model options getter for custom providers
+    const createCustomModelOptionsGetter = (providerId: string) => {
+      return (_provider?: ProviderType) => {
+        const config = CustomProviderManager.getProvider(providerId);
+        if (!config) return [];
+        return config.models.map(modelId => ({
+          value: modelId,
+          label: modelId,
+          type: providerId
+        }));
+      };
+    };
+
+    // Helper function to initialize custom provider settings
+    const initializeCustomProviderSettings = (
+      providerId: string,
+      container: HTMLElement
+    ): GenericProviderSettings | null => {
+      const customConfig = CustomProviderManager.getProvider(providerId);
+      if (!customConfig) return null;
+
+      const providerConfig = createCustomProviderConfig(customConfig);
+      const settings = new GenericProviderSettings(
+        container,
+        providerConfig,
+        createCustomModelOptionsGetter(providerId),
+        addCustomModelOption,
+        removeCustomModelOption
+      );
+      settings.render();
+      return settings;
+    };
+
+    // Helper function to toggle provider content visibility
+    const toggleProviderVisibility = (
+      selectedProvider: string,
+      providerContents: Map<string, HTMLElement>,
+      customContent: HTMLElement
+    ): void => {
+      const isCustom = CustomProviderManager.isCustomProvider(selectedProvider);
+
+      // Hide all provider contents
+      providerContents.forEach((content, providerId) => {
+        content.style.display = providerId === selectedProvider ? 'block' : 'none';
+      });
+
+      // Show/hide custom provider content
+      customContent.style.display = isCustom ? 'block' : 'none';
+    };
+
     // Create provider selection dropdown
     const providerSelect = document.createElement('select');
     providerSelect.className = 'settings-select provider-select';
     providerSection.appendChild(providerSelect);
 
-    // Add options to the dropdown
-    const openaiOption = document.createElement('option');
-    openaiOption.value = 'openai';
-    openaiOption.textContent = i18nString(UIStrings.openaiProvider);
-    openaiOption.selected = currentProvider === 'openai';
-    providerSelect.appendChild(openaiOption);
+    // Add provider options from registry
+    PROVIDER_REGISTRY.forEach(provider => {
+      const option = document.createElement('option');
+      option.value = provider.id;
+      option.textContent = i18nString(UIStrings[provider.i18nKey]);
+      option.selected = currentProvider === provider.id;
+      providerSelect.appendChild(option);
+    });
 
-    const litellmOption = document.createElement('option');
-    litellmOption.value = 'litellm';
-    litellmOption.textContent = i18nString(UIStrings.litellmProvider);
-    litellmOption.selected = currentProvider === 'litellm';
-    providerSelect.appendChild(litellmOption);
+    // Add custom providers to the dropdown
+    const customProviders = CustomProviderManager.listEnabledProviders();
+    if (customProviders.length > 0) {
+      // Add separator
+      const separator = document.createElement('option');
+      separator.disabled = true;
+      separator.textContent = '──────────';
+      providerSelect.appendChild(separator);
 
-    const groqOption = document.createElement('option');
-    groqOption.value = 'groq';
-    groqOption.textContent = i18nString(UIStrings.groqProvider);
-    groqOption.selected = currentProvider === 'groq';
-    providerSelect.appendChild(groqOption);
-
-    const openrouterOption = document.createElement('option');
-    openrouterOption.value = 'openrouter';
-    openrouterOption.textContent = i18nString(UIStrings.openrouterProvider);
-    openrouterOption.selected = currentProvider === 'openrouter';
-    providerSelect.appendChild(openrouterOption);
-
-    const browseroperatorOption = document.createElement('option');
-    browseroperatorOption.value = 'browseroperator';
-    browseroperatorOption.textContent = i18nString(UIStrings.browseroperatorProvider);
-    browseroperatorOption.selected = currentProvider === 'browseroperator';
-    providerSelect.appendChild(browseroperatorOption);
+      // Add each custom provider
+      customProviders.forEach(provider => {
+        const customOption = document.createElement('option');
+        customOption.value = provider.id;
+        customOption.textContent = `${provider.name} (Custom)`;
+        customOption.selected = currentProvider === provider.id;
+        providerSelect.appendChild(customOption);
+      });
+    }
 
     // Ensure the select's value reflects the computed currentProvider
     providerSelect.value = currentProvider;
 
-    // Create provider-specific content containers
-    const openaiContent = document.createElement('div');
-    openaiContent.className = 'provider-content openai-content';
-    openaiContent.style.display = currentProvider === 'openai' ? 'block' : 'none';
-    contentDiv.appendChild(openaiContent);
+    // Add "Manage Custom Providers" button
+    const manageCustomButton = document.createElement('button');
+    manageCustomButton.className = 'settings-button manage-custom-providers-button';
+    manageCustomButton.textContent = i18nString(UIStrings.manageCustomProvidersButton);
+    manageCustomButton.style.cssText = 'margin-top: 8px; padding: 6px 12px; cursor: pointer;';
+    manageCustomButton.addEventListener('click', () => {
+      // Create and show custom provider dialog
+      const customProviderDialog = new CustomProviderDialog(() => {
+        // Refresh the settings dialog to show updated custom providers
+        dialog.hide();
+        SettingsDialog.show(
+          selectedModel,
+          miniModel,
+          nanoModel,
+          onSettingsSaved,
+          fetchLiteLLMModels,
+          updateModelOptions,
+          getModelOptions,
+          addCustomModelOption,
+          removeCustomModelOption
+        );
+      });
+      customProviderDialog.show();
+    });
+    providerSection.appendChild(manageCustomButton);
 
-    const litellmContent = document.createElement('div');
-    litellmContent.className = 'provider-content litellm-content';
-    litellmContent.style.display = currentProvider === 'litellm' ? 'block' : 'none';
-    contentDiv.appendChild(litellmContent);
+    // Create provider-specific content containers using registry
+    const providerContents = new Map<string, HTMLElement>();
 
-    const groqContent = document.createElement('div');
-    groqContent.className = 'provider-content groq-content';
-    groqContent.style.display = currentProvider === 'groq' ? 'block' : 'none';
-    contentDiv.appendChild(groqContent);
+    PROVIDER_REGISTRY.forEach(provider => {
+      const content = document.createElement('div');
+      content.className = `provider-content ${provider.id}-content`;
+      content.style.display = currentProvider === provider.id ? 'block' : 'none';
+      contentDiv.appendChild(content);
+      providerContents.set(provider.id, content);
+    });
 
-    const openrouterContent = document.createElement('div');
-    openrouterContent.className = 'provider-content openrouter-content';
-    openrouterContent.style.display = currentProvider === 'openrouter' ? 'block' : 'none';
-    contentDiv.appendChild(openrouterContent);
+    // Create custom provider content container
+    const customProviderContent = document.createElement('div');
+    customProviderContent.className = 'provider-content custom-provider-content';
+    customProviderContent.style.display = CustomProviderManager.isCustomProvider(currentProvider) ? 'block' : 'none';
+    contentDiv.appendChild(customProviderContent);
 
-    const browseroperatorContent = document.createElement('div');
-    browseroperatorContent.className = 'provider-content browseroperator-content';
-    browseroperatorContent.style.display = currentProvider === 'browseroperator' ? 'block' : 'none';
-    contentDiv.appendChild(browseroperatorContent);
+    // Variable to hold current custom provider settings instance
+    let customProviderSettings: GenericProviderSettings | null = null;
 
-    // Instantiate provider settings classes
-    const openaiSettings = new OpenAISettings(
-      openaiContent,
-      getModelOptions,
-      addCustomModelOption,
-      removeCustomModelOption
-    );
+    // Instantiate provider settings classes using registry
+    const providerSettings = new Map<ProviderType, any>();
 
-    const litellmSettings = new LiteLLMSettings(
-      litellmContent,
-      getModelOptions,
-      addCustomModelOption,
-      removeCustomModelOption,
-      updateModelOptions,
-      fetchLiteLLMModels
-    );
+    PROVIDER_REGISTRY.forEach(provider => {
+      const content = providerContents.get(provider.id);
+      if (!content) return;
 
-    const groqSettings = new GroqSettings(
-      groqContent,
-      getModelOptions,
-      addCustomModelOption,
-      removeCustomModelOption,
-      updateModelOptions
-    );
+      let settings;
+      if (provider.settingsClass === 'litellm') {
+        settings = new LiteLLMSettings(
+          content,
+          getModelOptions,
+          addCustomModelOption,
+          removeCustomModelOption,
+          updateModelOptions,
+          fetchLiteLLMModels
+        );
+      } else if (provider.settingsClass === 'openrouter') {
+        settings = new OpenRouterSettings(
+          content,
+          getModelOptions,
+          addCustomModelOption,
+          removeCustomModelOption,
+          updateModelOptions,
+          onSettingsSaved,
+          () => dialog.hide()
+        );
+      } else {
+        // Generic provider settings
+        const hasUpdateModelOptions = ['groq', 'cerebras', 'anthropic', 'googleai'].includes(provider.id);
+        settings = new GenericProviderSettings(
+          content,
+          provider.config!,
+          getModelOptions,
+          addCustomModelOption,
+          removeCustomModelOption,
+          hasUpdateModelOptions ? updateModelOptions : undefined
+        );
+      }
 
-    const openrouterSettings = new OpenRouterSettings(
-      openrouterContent,
-      getModelOptions,
-      addCustomModelOption,
-      removeCustomModelOption,
-      updateModelOptions,
-      onSettingsSaved,
-      () => dialog.hide()
-    );
+      settings.render();
+      providerSettings.set(provider.id, settings);
+    });
 
-    const browseroperatorSettings = new BrowserOperatorSettings(
-      browseroperatorContent,
-      getModelOptions,
-      addCustomModelOption,
-      removeCustomModelOption
-    );
+    // Initialize custom provider settings if current provider is custom
+    if (CustomProviderManager.isCustomProvider(currentProvider)) {
+      customProviderSettings = initializeCustomProviderSettings(currentProvider, customProviderContent);
+    }
 
-    // Render all providers (only visible one will be shown)
-    openaiSettings.render();
-    litellmSettings.render();
-    groqSettings.render();
-    openrouterSettings.render();
-    browseroperatorSettings.render();
+    // Provider auto-fetch configuration for generic handling
+    interface ProviderAutoFetchConfig {
+      fetchMethod: (apiKey: string) => Promise<any[]>;
+      storageKey: string;
+      hasNameField: boolean;
+      cacheConfig?: {
+        cacheKey: string;
+        timestampKey: string;
+      };
+    }
 
-    // Store provider settings for later access
-    const providerSettings = new Map<ProviderType, any>([
-      ['openai', openaiSettings],
-      ['litellm', litellmSettings],
-      ['groq', groqSettings],
-      ['openrouter', openrouterSettings],
-      ['browseroperator', browseroperatorSettings],
-    ]);
+    const providerAutoFetchMap: Record<string, ProviderAutoFetchConfig> = {
+      groq: {
+        fetchMethod: LLMClient.fetchGroqModels,
+        storageKey: 'ai_chat_groq_api_key',
+        hasNameField: false
+      },
+      openrouter: {
+        fetchMethod: LLMClient.fetchOpenRouterModels,
+        storageKey: 'ai_chat_openrouter_api_key',
+        hasNameField: true,
+        cacheConfig: {
+          cacheKey: 'openrouter_models_cache',
+          timestampKey: 'openrouter_models_cache_timestamp'
+        }
+      },
+      cerebras: {
+        fetchMethod: LLMClient.fetchCerebrasModels,
+        storageKey: 'ai_chat_cerebras_api_key',
+        hasNameField: false
+      },
+      anthropic: {
+        fetchMethod: LLMClient.fetchAnthropicModels,
+        storageKey: 'ai_chat_anthropic_api_key',
+        hasNameField: true
+      },
+      googleai: {
+        fetchMethod: LLMClient.fetchGoogleAIModels,
+        storageKey: 'ai_chat_googleai_api_key',
+        hasNameField: true
+      }
+    };
 
     // Event listener for provider change
     providerSelect.addEventListener('change', async () => {
       const selectedProvider = providerSelect.value as ProviderType;
 
-      // Toggle visibility of provider content
-      openaiContent.style.display = selectedProvider === 'openai' ? 'block' : 'none';
-      litellmContent.style.display = selectedProvider === 'litellm' ? 'block' : 'none';
-      groqContent.style.display = selectedProvider === 'groq' ? 'block' : 'none';
-      openrouterContent.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
-      browseroperatorContent.style.display = selectedProvider === 'browseroperator' ? 'block' : 'none';
+      // Check if it's a custom provider
+      const isCustom = CustomProviderManager.isCustomProvider(selectedProvider);
 
-      // If switching to LiteLLM, fetch the latest models if endpoint is configured
+      // Toggle visibility using helper function
+      toggleProviderVisibility(selectedProvider, providerContents, customProviderContent);
+
+      // Handle custom provider
+      if (isCustom) {
+        // Cleanup existing custom provider settings if any
+        if (customProviderSettings) {
+          customProviderSettings.cleanup();
+        }
+
+        // Initialize new custom provider settings
+        customProviderSettings = initializeCustomProviderSettings(selectedProvider, customProviderContent);
+      }
+
+      // Handle LiteLLM separately (special case with endpoint and hadWildcard)
       if (selectedProvider === 'litellm') {
         const endpoint = localStorage.getItem('ai_chat_litellm_endpoint');
         const liteLLMApiKey = localStorage.getItem('ai_chat_litellm_api_key') || '';
@@ -238,53 +386,45 @@ export class SettingsDialog {
             logger.debug('Fetching LiteLLM models after provider change...');
             const { models: litellmModels, hadWildcard } = await fetchLiteLLMModels(liteLLMApiKey, endpoint);
             updateModelOptions(litellmModels, hadWildcard);
-            litellmSettings.updateModelSelectors();
+            const litellmSettings = providerSettings.get('litellm');
+            if (litellmSettings) {
+              litellmSettings.updateModelSelectors();
+            }
             logger.debug('Successfully refreshed LiteLLM models after provider change');
           } catch (error) {
             logger.error('Failed to fetch LiteLLM models after provider change:', error);
           }
         }
-      } else if (selectedProvider === 'groq') {
-        // If switching to Groq, fetch models if API key is configured
-        const groqApiKey = localStorage.getItem('ai_chat_groq_api_key') || '';
+      }
+      // Generic handler for other providers
+      else if (providerAutoFetchMap[selectedProvider]) {
+        const config = providerAutoFetchMap[selectedProvider];
+        const apiKey = localStorage.getItem(config.storageKey) || '';
 
-        if (groqApiKey) {
+        if (apiKey) {
           try {
-            logger.debug('Fetching Groq models after provider change...');
-            const groqModels = await LLMClient.fetchGroqModels(groqApiKey);
-            const modelOptions: ModelOption[] = groqModels.map(model => ({
+            logger.debug(`Fetching ${selectedProvider} models after provider change...`);
+            const models = await config.fetchMethod(apiKey);
+            const modelOptions: ModelOption[] = models.map(model => ({
               value: model.id,
-              label: model.id,
-              type: 'groq' as const
+              label: config.hasNameField ? (model.name || model.id) : model.id,
+              type: selectedProvider as any
             }));
             updateModelOptions(modelOptions, false);
-            groqSettings.updateModelSelectors();
-            logger.debug('Successfully refreshed Groq models after provider change');
-          } catch (error) {
-            logger.error('Failed to fetch Groq models after provider change:', error);
-          }
-        }
-      } else if (selectedProvider === 'openrouter') {
-        // If switching to OpenRouter, fetch models if API key is configured
-        const openrouterApiKey = localStorage.getItem('ai_chat_openrouter_api_key') || '';
 
-        if (openrouterApiKey) {
-          try {
-            logger.debug('Fetching OpenRouter models after provider change...');
-            const openrouterModels = await LLMClient.fetchOpenRouterModels(openrouterApiKey);
-            const modelOptions: ModelOption[] = openrouterModels.map(model => ({
-              value: model.id,
-              label: model.name || model.id,
-              type: 'openrouter' as const
-            }));
-            updateModelOptions(modelOptions, false);
-            // Persist cache alongside timestamp for consistency
-            localStorage.setItem('openrouter_models_cache', JSON.stringify(modelOptions));
-            localStorage.setItem('openrouter_models_cache_timestamp', Date.now().toString());
-            openrouterSettings.updateModelSelectors();
-            logger.debug('Successfully refreshed OpenRouter models after provider change');
+            // Handle optional caching (OpenRouter)
+            if (config.cacheConfig) {
+              localStorage.setItem(config.cacheConfig.cacheKey, JSON.stringify(modelOptions));
+              localStorage.setItem(config.cacheConfig.timestampKey, Date.now().toString());
+            }
+
+            const settings = providerSettings.get(selectedProvider);
+            if (settings) {
+              settings.updateModelSelectors();
+            }
+            logger.debug(`Successfully refreshed ${selectedProvider} models after provider change`);
           } catch (error) {
-            logger.error('Failed to fetch OpenRouter models after provider change:', error);
+            logger.error(`Failed to fetch ${selectedProvider} models after provider change:`, error);
           }
         }
       }
@@ -450,14 +590,20 @@ export class SettingsDialog {
       localStorage.setItem(PROVIDER_SELECTION_KEY, selectedProvider);
 
       // Save all provider settings
-      openaiSettings.save();
-      litellmSettings.save();
-      groqSettings.save();
-      openrouterSettings.save();
-      browseroperatorSettings.save();
+      providerSettings.forEach(settings => {
+        settings.save();
+      });
 
-      // Save mini/nano model selections from current provider
-      const currentProviderSettings = providerSettings.get(selectedProvider as ProviderType);
+      // Save custom provider settings if active
+      if (customProviderSettings) {
+        customProviderSettings.save();
+      }
+
+      // Get current provider settings (either standard or custom)
+      let currentProviderSettings = CustomProviderManager.isCustomProvider(selectedProvider)
+        ? customProviderSettings
+        : providerSettings.get(selectedProvider as ProviderType);
+
       if (currentProviderSettings) {
         const miniModelValue = currentProviderSettings.getMiniModel();
         const nanoModelValue = currentProviderSettings.getNanoModel();

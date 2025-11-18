@@ -44,13 +44,13 @@ interface ValidationResult {
 export class FileStorageManager {
   private static instance: FileStorageManager | null = null;
 
-  private readonly sessionId: string;
+  private sessionId: string;
   private db: IDBDatabase | null = null;
   private dbInitializationPromise: Promise<IDBDatabase> | null = null;
 
   private constructor() {
-    this.sessionId = this.generateUUID();
-    logger.info('Initialized FileStorageManager with session', { sessionId: this.sessionId });
+    this.sessionId = 'default'; // Will be set to conversation ID when conversation is created/loaded
+    logger.info('Initialized FileStorageManager with default session');
   }
 
   static getInstance(): FileStorageManager {
@@ -58,6 +58,23 @@ export class FileStorageManager {
       FileStorageManager.instance = new FileStorageManager();
     }
     return FileStorageManager.instance;
+  }
+
+  /**
+   * Gets the current session ID
+   */
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
+  /**
+   * Sets the session ID (used when loading a conversation)
+   */
+  setSessionId(sessionId: string): void {
+    if (this.sessionId !== sessionId) {
+      logger.info('Restoring session ID', { oldSessionId: this.sessionId, newSessionId: sessionId });
+      this.sessionId = sessionId;
+    }
   }
 
   async createFile(fileName: string, content: string, mimeType = 'text/plain'): Promise<StoredFile> {
