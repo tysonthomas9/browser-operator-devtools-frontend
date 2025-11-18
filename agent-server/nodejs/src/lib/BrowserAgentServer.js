@@ -1254,9 +1254,29 @@ export class BrowserAgentServer extends EventEmitter {
         });
       }
 
+      // Extract value from CDP RemoteObject
+      // CDP returns RemoteObject with structure: {type: 'string', value: 'foo'}
+      // For undefined/null, CDP returns: {type: 'undefined'} or {type: 'null', value: null}
+      // We need to check if 'value' property exists, not if it's undefined
+      let extractedResult;
+      if (result.result) {
+        if ('value' in result.result) {
+          // RemoteObject has a value field - extract it
+          extractedResult = result.result.value;
+        } else if (result.result.type === 'undefined') {
+          // Special case: undefined has no value field
+          extractedResult = undefined;
+        } else {
+          // For objects/functions without returnByValue, return the whole RemoteObject
+          extractedResult = result.result;
+        }
+      } else {
+        extractedResult = result.result;
+      }
+
       return {
         tabId,
-        result: result.result?.value !== undefined ? result.result.value : result.result,
+        result: extractedResult,
         exceptionDetails: result.exceptionDetails
       };
     } catch (error) {
