@@ -1220,6 +1220,74 @@ export class BrowserAgentServer extends EventEmitter {
     }
   }
 
+  /**
+   * Execute JavaScript in a browser tab
+   * @param {string} tabId - Tab ID (target ID)
+   * @param {string} expression - JavaScript expression to execute
+   * @param {Object} options - Execution options
+   * @param {boolean} options.returnByValue - Whether to return by value (default: true)
+   * @param {boolean} options.awaitPromise - Whether to await promises (default: false)
+   * @returns {Promise<Object>} Result with execution result
+   */
+  async evaluateJavaScript(tabId, expression, options = {}) {
+    const { returnByValue = true, awaitPromise = false } = options;
+
+    try {
+      logger.info('Executing JavaScript via CDP', { tabId, expressionLength: expression.length });
+
+      // Use Runtime.evaluate to execute JavaScript
+      const result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
+        expression,
+        returnByValue,
+        awaitPromise
+      });
+
+      if (result.exceptionDetails) {
+        logger.warn('JavaScript execution threw exception', {
+          tabId,
+          exception: result.exceptionDetails
+        });
+      } else {
+        logger.info('JavaScript executed successfully', {
+          tabId,
+          resultType: result.result?.type
+        });
+      }
+
+      // Extract value from CDP RemoteObject
+      // CDP returns RemoteObject with structure: {type: 'string', value: 'foo'}
+      // For undefined/null, CDP returns: {type: 'undefined'} or {type: 'null', value: null}
+      // We need to check if 'value' property exists, not if it's undefined
+      let extractedResult;
+      if (result.result) {
+        if ('value' in result.result) {
+          // RemoteObject has a value field - extract it
+          extractedResult = result.result.value;
+        } else if (result.result.type === 'undefined') {
+          // Special case: undefined has no value field
+          extractedResult = undefined;
+        } else {
+          // For objects/functions without returnByValue, return the whole RemoteObject
+          extractedResult = result.result;
+        }
+      } else {
+        extractedResult = result.result;
+      }
+
+      return {
+        tabId,
+        result: extractedResult,
+        exceptionDetails: result.exceptionDetails
+      };
+    } catch (error) {
+      logger.error('Failed to execute JavaScript via CDP', {
+        tabId,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
 }
 
 /**
