@@ -39,7 +39,7 @@ The eval-server is a **thin HTTP API wrapper for Browser Operator**. It provides
 ### HTTP API Server (src/api-server.js)
 - Exposes REST endpoints for external callers (e.g., Python evals)
 - Main endpoint: `POST /v1/responses` - Send task to agent
-- CDP endpoints: screenshot, page content, tab management
+- CDP endpoints: screenshot, page content, JavaScript execution, tab management
 - Returns metadata (clientId, tabId) for subsequent operations
 
 ### RPC Client (src/rpc-client.js)
@@ -57,6 +57,7 @@ The eval-server is a **thin HTTP API wrapper for Browser Operator**. It provides
 - Direct Chrome DevTools Protocol communication
 - Screenshot capture via `Page.captureScreenshot`
 - Page content access via `Runtime.evaluate`
+- JavaScript execution via `Runtime.evaluate` (with configurable options)
 - Tab management via `Target.createTarget` / `Target.closeTarget`
 
 ### Logger (src/logger.js)
@@ -211,6 +212,109 @@ Get HTML or text content of a page.
   "format": "html"
 }
 ```
+
+**Response:**
+```json
+{
+  "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
+  "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
+  "content": "<html>...</html>",
+  "format": "html",
+  "length": 12345,
+  "timestamp": 1234567890
+}
+```
+
+### POST /page/execute
+
+Execute JavaScript code in the context of a specific browser tab via Chrome DevTools Protocol.
+
+**Request:**
+```json
+{
+  "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
+  "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
+  "expression": "document.title",
+  "returnByValue": true,
+  "awaitPromise": false
+}
+```
+
+**Parameters:**
+- `clientId` (required): The client ID from `/v1/responses` metadata
+- `tabId` (required): The tab ID from `/v1/responses` metadata
+- `expression` (required): JavaScript code to execute (string)
+- `returnByValue` (optional, default: `true`): Whether to return result by value or as object reference
+- `awaitPromise` (optional, default: `false`): Whether to await if the result is a Promise
+
+**Response:**
+```json
+{
+  "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
+  "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
+  "result": {
+    "type": "string",
+    "value": "Example Page Title"
+  },
+  "exceptionDetails": null,
+  "timestamp": 1234567890
+}
+```
+
+**Response Fields:**
+- `clientId`: Base client ID (without tab suffix)
+- `tabId`: The tab ID where JavaScript was executed
+- `result`: CDP `Runtime.evaluate` result object containing:
+  - `type`: Result type (string, number, object, etc.)
+  - `value`: The actual value (if `returnByValue: true`)
+- `exceptionDetails`: Error details if execution failed, otherwise `null`
+- `timestamp`: Unix timestamp in milliseconds
+
+**Implementation:**
+- Uses CDP `Runtime.evaluate` via `browserAgentServer.evaluateJavaScript()`
+- Executes code in the page's main JavaScript context
+- First 100 characters of expression logged for debugging
+
+**Example Usage:**
+
+```bash
+# Get page title
+curl -X POST http://localhost:8080/page/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
+    "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
+    "expression": "document.title"
+  }'
+
+# Count elements
+curl -X POST http://localhost:8080/page/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
+    "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
+    "expression": "document.querySelectorAll(\"button\").length"
+  }'
+
+# Execute async code with await
+curl -X POST http://localhost:8080/page/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
+    "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
+    "expression": "fetch(\"https://api.example.com/data\").then(r => r.json())",
+    "awaitPromise": true
+  }'
+```
+
+**Use Cases:**
+- Extract specific data from the page (e.g., element counts, text content)
+- Verify JavaScript state/variables for evaluations
+- Check DOM state programmatically
+- Execute custom validation logic
+- Interact with page APIs directly
+
+This endpoint complements `/page/content` by allowing precise JavaScript execution rather than just fetching full HTML/text content.
 
 ### POST /tabs/open, POST /tabs/close
 
@@ -412,5 +516,6 @@ Removed dependencies:
 - ✅ HTTP REST API endpoints
 - ✅ CDP screenshot capture
 - ✅ CDP page content retrieval
+- ✅ CDP JavaScript execution
 - ✅ CDP tab management
 - ✅ Return metadata (clientId, tabId) for screenshot capture

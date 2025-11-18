@@ -284,7 +284,7 @@ class APIServer {
   }
 
   async getPageContent(payload) {
-    const { clientId, tabId, format = 'html' } = payload;
+    const { clientId, tabId, format = 'html', includeIframes = false } = payload;
 
     if (!clientId) {
       throw new Error('Client ID is required');
@@ -300,14 +300,14 @@ class APIServer {
 
     const baseClientId = clientId.split(':')[0];
 
-    logger.info('Getting page content', { baseClientId, tabId, format });
+    logger.info('Getting page content', { baseClientId, tabId, format, includeIframes });
 
     // Call appropriate method based on format
     const result = format === 'html'
-      ? await this.browserAgentServer.getPageHTML(tabId)
-      : await this.browserAgentServer.getPageText(tabId);
+      ? await this.browserAgentServer.getPageHTML(tabId, { includeIframes })
+      : await this.browserAgentServer.getPageText(tabId, { includeIframes });
 
-    return {
+    const response = {
       clientId: baseClientId,
       tabId: result.tabId,
       content: result.content,
@@ -315,6 +315,13 @@ class APIServer {
       length: result.length,
       timestamp: Date.now()
     };
+
+    // Include frame count if iframes were captured
+    if (result.frameCount !== undefined) {
+      response.frameCount = result.frameCount;
+    }
+
+    return response;
   }
 
   async getScreenshot(payload) {
