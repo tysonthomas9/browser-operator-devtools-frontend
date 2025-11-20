@@ -1188,13 +1188,35 @@ export class BrowserAgentServer extends EventEmitter {
     // Capture HTML from each frame
     const htmlParts = [];
 
-    for (const frame of frames) {
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
       try {
-        const result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
-          expression: 'document.documentElement.outerHTML',
-          returnByValue: true,
-          contextId: frame.id  // Execute in specific frame context
-        });
+        // For the main frame (first frame), use Runtime.evaluate without frameId
+        // For child frames, we need to create an execution context in that frame
+
+        let result;
+        if (i === 0) {
+          // Main frame - simple evaluation
+          result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
+            expression: 'document.documentElement.outerHTML',
+            returnByValue: true
+          });
+        } else {
+          // Child frame - need to create isolated world in the frame's context
+          // First, create an execution context in this frame
+          const contextResult = await this.sendCDPCommandToTarget(tabId, 'Page.createIsolatedWorld', {
+            frameId: frame.id,
+            grantUniversalAccess: true,
+            worldName: 'iframe-capture'
+          });
+
+          // Now evaluate in that context
+          result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
+            expression: 'document.documentElement.outerHTML',
+            returnByValue: true,
+            contextId: contextResult.executionContextId
+          });
+        }
 
         htmlParts.push({
           frameId: frame.id,
@@ -1212,6 +1234,7 @@ export class BrowserAgentServer extends EventEmitter {
         logger.warn('Failed to capture frame HTML', {
           tabId,
           frameId: frame.id,
+          url: frame.url,
           error: error.message
         });
       }
