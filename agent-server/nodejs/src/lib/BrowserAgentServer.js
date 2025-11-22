@@ -1110,28 +1110,50 @@ export class BrowserAgentServer extends EventEmitter {
    * @param {string} tabId - Tab ID (target ID)
    * @returns {Promise<Object>} Result with HTML content
    */
-  async getPageHTML(tabId) {
+  async getPageHTML(tabId, options = {}) {
+    const { includeIframes = false } = options;
+
     try {
-      logger.info('Getting page HTML via CDP', { tabId });
+      logger.info('Getting page HTML via CDP', { tabId, includeIframes });
 
-      // Use Runtime.evaluate to get document.documentElement.outerHTML
-      const result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
-        expression: 'document.documentElement.outerHTML',
-        returnByValue: true
-      });
+      if (!includeIframes) {
+        // Original behavior - main frame only
+        const result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
+          expression: 'document.documentElement.outerHTML',
+          returnByValue: true
+        });
 
-      const html = result.result.value;
+        const html = result.result.value;
 
-      logger.info('Page HTML retrieved successfully', {
+        logger.info('Page HTML retrieved successfully', {
+          tabId,
+          length: html.length
+        });
+
+        return {
+          tabId,
+          content: html,
+          format: 'html',
+          length: html.length
+        };
+      }
+
+      // Enhanced behavior - include all frames
+      const frameTree = await this.sendCDPCommandToTarget(tabId, 'Page.getFrameTree', {});
+      const allFrameHTML = await this.captureAllFramesHTML(tabId, frameTree.frameTree);
+
+      logger.info('Page HTML with iframes retrieved successfully', {
         tabId,
-        length: html.length
+        length: allFrameHTML.length,
+        frameCount: this.countFrames(frameTree.frameTree)
       });
 
       return {
         tabId,
-        content: html,
+        content: allFrameHTML,
         format: 'html',
-        length: html.length
+        length: allFrameHTML.length,
+        frameCount: this.countFrames(frameTree.frameTree)
       };
     } catch (error) {
       logger.error('Failed to get page HTML via CDP', {
@@ -1140,6 +1162,111 @@ export class BrowserAgentServer extends EventEmitter {
       });
       throw error;
     }
+  }
+
+  /**
+   * Recursively capture HTML from all frames
+   * @param {string} tabId Tab ID
+   * @param {Object} frameTree Frame tree from Page.getFrameTree
+   * @returns {Promise<string>} Combined HTML from all frames
+   */
+  async captureAllFramesHTML(tabId, frameTree) {
+    const frames = [];
+
+    // Helper to recursively collect frames
+    const collectFrames = (node) => {
+      frames.push(node.frame);
+      if (node.childFrames) {
+        node.childFrames.forEach(collectFrames);
+      }
+    };
+
+    collectFrames(frameTree);
+
+    logger.info('Collecting HTML from frames', { tabId, frameCount: frames.length });
+
+    // Capture HTML from each frame
+    const htmlParts = [];
+
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      try {
+        // For the main frame (first frame), use Runtime.evaluate without frameId
+        // For child frames, we need to create an execution context in that frame
+
+        let result;
+        if (i === 0) {
+          // Main frame - simple evaluation
+          result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
+            expression: 'document.documentElement.outerHTML',
+            returnByValue: true
+          });
+        } else {
+          // Child frame - need to create isolated world in the frame's context
+          // First, create an execution context in this frame
+          const contextResult = await this.sendCDPCommandToTarget(tabId, 'Page.createIsolatedWorld', {
+            frameId: frame.id,
+            grantUniversalAccess: true,
+            worldName: 'iframe-capture'
+          });
+
+          // Now evaluate in that context
+          result = await this.sendCDPCommandToTarget(tabId, 'Runtime.evaluate', {
+            expression: 'document.documentElement.outerHTML',
+            returnByValue: true,
+            contextId: contextResult.executionContextId
+          });
+        }
+
+        htmlParts.push({
+          frameId: frame.id,
+          url: frame.url,
+          html: result.result.value
+        });
+
+        logger.info('Captured frame HTML', {
+          tabId,
+          frameId: frame.id,
+          url: frame.url,
+          length: result.result.value.length
+        });
+      } catch (error) {
+        logger.warn('Failed to capture frame HTML', {
+          tabId,
+          frameId: frame.id,
+          url: frame.url,
+          error: error.message
+        });
+      }
+    }
+
+    // Combine HTML with frame markers
+    if (htmlParts.length === 0) {
+      throw new Error('No frames captured');
+    }
+
+    let combined = htmlParts[0].html; // Main frame
+
+    for (let i = 1; i < htmlParts.length; i++) {
+      combined += `\n\n<!-- FRAME ${i}: ${htmlParts[i].url} -->\n${htmlParts[i].html}`;
+    }
+
+    return combined;
+  }
+
+  /**
+   * Count total frames in frame tree
+   * @param {Object} frameTree Frame tree node
+   * @returns {number} Total frame count
+   */
+  countFrames(frameTree) {
+    let count = 1; // Current frame
+    if (frameTree.childFrames) {
+      frameTree.childFrames.forEach(child => {
+        count += this.countFrames(child);
+      });
+    }
+    return count;
   }
 
   /**
