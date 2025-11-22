@@ -1166,8 +1166,8 @@ export class BrowserAgentServer extends EventEmitter {
 
   /**
    * Recursively capture HTML from all frames
-   * @param {string} tabId - Tab ID
-   * @param {Object} frameTree - Frame tree from Page.getFrameTree
+   * @param {string} tabId Tab ID
+   * @param {Object} frameTree Frame tree from Page.getFrameTree
    * @returns {Promise<string>} Combined HTML from all frames
    */
   async captureAllFramesHTML(tabId, frameTree) {
@@ -1256,7 +1256,7 @@ export class BrowserAgentServer extends EventEmitter {
 
   /**
    * Count total frames in frame tree
-   * @param {Object} frameTree - Frame tree node
+   * @param {Object} frameTree Frame tree node
    * @returns {number} Total frame count
    */
   countFrames(frameTree) {

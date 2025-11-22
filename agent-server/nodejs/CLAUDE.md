@@ -209,9 +209,16 @@ Get HTML or text content of a page.
 {
   "clientId": "9907fd8d-92a8-4a6a-bce9-458ec8c57306",
   "tabId": "482D56EE57B1931A3B9D1BFDAF935429",
-  "format": "html"
+  "format": "html",
+  "includeIframes": true
 }
 ```
+
+**Parameters:**
+- `clientId` (required): The client ID from `/v1/responses` metadata
+- `tabId` (required): The tab ID from `/v1/responses` metadata
+- `format` (optional, default: `"html"`): Content format - either `"html"` or `"text"`
+- `includeIframes` (optional, default: `false`): Whether to include HTML content from iframes. When `true`, recursively captures content from all iframe elements on the page.
 
 **Response:**
 ```json
@@ -221,9 +228,13 @@ Get HTML or text content of a page.
   "content": "<html>...</html>",
   "format": "html",
   "length": 12345,
+  "frameCount": 3,
   "timestamp": 1234567890
 }
 ```
+
+**Response fields:**
+- `frameCount` (number, optional): Number of frames included in the content. Only present when `includeIframes: true` is used.
 
 ### POST /page/execute
 
