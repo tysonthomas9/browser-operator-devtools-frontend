@@ -3,11 +3,13 @@
 // found in the LICENSE file.
 
 import * as UI from '../../../ui/legacy/legacy.js';
+import * as Geometry from '../../../models/geometry/geometry.js';
 import { CustomProviderManager } from '../core/CustomProviderManager.js';
 import type { CustomProviderConfig } from '../core/CustomProviderManager.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { createLogger } from '../core/Logger.js';
 import { PROVIDER_SELECTION_KEY } from './settings/constants.js';
+import { applyCustomProviderStyles } from './customProviderStyles.js';
 
 const logger = createLogger('CustomProviderDialog');
 
@@ -46,23 +48,23 @@ export class CustomProviderDialog {
     this.dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.MEASURE_CONTENT);
     this.dialog.setDimmed(true);
     this.dialog.addCloseButton();
+    this.dialog.contentElement.classList.add('custom-provider-dialog');
 
     const container = document.createElement('div');
-    container.style.cssText = 'min-width: 500px; max-width: 600px; padding: 20px;';
+    container.className = 'custom-provider-container';
 
     // Create header
     const header = document.createElement('div');
-    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;';
+    header.className = 'custom-provider-header';
 
     const title = document.createElement('h2');
     title.textContent = 'Manage Custom Providers';
-    title.style.cssText = 'margin: 0; font-size: 18px; font-weight: 500;';
+    title.className = 'custom-provider-title';
     header.appendChild(title);
 
     const addButton = document.createElement('button');
     addButton.textContent = '+ Add Provider';
-    addButton.className = 'devtools-button';
-    addButton.style.cssText = 'padding: 6px 12px; cursor: pointer;';
+    addButton.className = 'custom-provider-add-button';
     addButton.addEventListener('click', () => this.showAddEditDialog());
     header.appendChild(addButton);
 
@@ -70,12 +72,12 @@ export class CustomProviderDialog {
 
     // Create provider list
     const listContainer = document.createElement('div');
-    listContainer.style.cssText = 'max-height: 400px; overflow-y: auto;';
+    listContainer.className = 'provider-list-container';
 
     if (this.providers.length === 0) {
       const emptyMessage = document.createElement('div');
       emptyMessage.textContent = 'No custom providers configured. Click "Add Provider" to add one.';
-      emptyMessage.style.cssText = 'color: var(--sys-color-token-subtle); text-align: center; padding: 32px;';
+      emptyMessage.className = 'provider-empty-message';
       listContainer.appendChild(emptyMessage);
     } else {
       this.providers.forEach(provider => {
@@ -88,6 +90,10 @@ export class CustomProviderDialog {
 
     this.dialog.contentElement.appendChild(container);
     this.dialog.setOutsideClickCallback(() => this.hide());
+
+    // Apply styles
+    applyCustomProviderStyles(this.dialog.contentElement);
+
     this.dialog.show();
   }
 
@@ -96,42 +102,40 @@ export class CustomProviderDialog {
    */
   private createProviderListItem(provider: CustomProviderConfig): HTMLElement {
     const item = document.createElement('div');
-    item.style.cssText = 'padding: 12px; margin-bottom: 8px; border: 1px solid var(--sys-color-divider); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
+    item.className = 'provider-list-item';
 
     const info = document.createElement('div');
-    info.style.cssText = 'flex: 1;';
+    info.className = 'provider-info';
 
     const name = document.createElement('div');
     name.textContent = provider.name;
-    name.style.cssText = 'font-weight: 500; margin-bottom: 4px;';
+    name.className = 'provider-name';
     info.appendChild(name);
 
     const url = document.createElement('div');
     url.textContent = provider.baseURL;
-    url.style.cssText = 'font-size: 12px; color: var(--sys-color-token-subtle);';
+    url.className = 'provider-url';
     info.appendChild(url);
 
     const models = document.createElement('div');
     models.textContent = `Models: ${provider.models.length}`;
-    models.style.cssText = 'font-size: 11px; color: var(--sys-color-token-subtle); margin-top: 2px;';
+    models.className = 'provider-models-count';
     info.appendChild(models);
 
     item.appendChild(info);
 
     const actions = document.createElement('div');
-    actions.style.cssText = 'display: flex; gap: 8px;';
+    actions.className = 'provider-actions';
 
     const editButton = document.createElement('button');
     editButton.textContent = 'Edit';
-    editButton.className = 'devtools-button';
-    editButton.style.cssText = 'padding: 4px 8px; cursor: pointer;';
+    editButton.className = 'provider-edit-button';
     editButton.addEventListener('click', () => this.showAddEditDialog(provider));
     actions.appendChild(editButton);
 
     const deleteButton = document.createElement('button');
     deleteButton.textContent = 'Delete';
-    deleteButton.className = 'devtools-button';
-    deleteButton.style.cssText = 'padding: 4px 8px; cursor: pointer; color: var(--sys-color-error);';
+    deleteButton.className = 'provider-delete-button';
     deleteButton.addEventListener('click', () => this.deleteProvider(provider.id));
     actions.appendChild(deleteButton);
 
@@ -145,32 +149,34 @@ export class CustomProviderDialog {
    */
   private showAddEditDialog(existingProvider?: CustomProviderConfig): void {
     const addEditDialog = new UI.Dialog.Dialog();
-    addEditDialog.setSizeBehavior(UI.GlassPane.SizeBehavior.MEASURE_CONTENT);
+    addEditDialog.setSizeBehavior(UI.GlassPane.SizeBehavior.SET_EXACT_SIZE);
+    addEditDialog.setMaxContentSize(new Geometry.Size(window.innerWidth, window.innerHeight));
     addEditDialog.setDimmed(true);
     addEditDialog.addCloseButton();
+    addEditDialog.contentElement.classList.add('custom-provider-dialog', 'full-screen');
 
     const container = document.createElement('div');
-    container.style.cssText = 'min-width: 450px; padding: 20px;';
+    container.className = 'add-edit-container';
 
     // Title
     const title = document.createElement('h2');
     title.textContent = existingProvider ? 'Edit Custom Provider' : 'Add Custom Provider';
-    title.style.cssText = 'margin: 0 0 20px 0; font-size: 16px; font-weight: 500;';
+    title.className = 'add-edit-title';
     container.appendChild(title);
 
     // Form
     const form = document.createElement('div');
-    form.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+    form.className = 'add-edit-form';
 
     // Provider Name
     const nameLabel = document.createElement('label');
     nameLabel.textContent = 'Provider Name';
-    nameLabel.style.cssText = 'font-weight: 500; margin-bottom: 4px; display: block;';
+    nameLabel.className = 'form-field-label';
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.value = existingProvider?.name || '';
     nameInput.placeholder = 'e.g., Z.AI';
-    nameInput.style.cssText = 'padding: 8px; border: 1px solid var(--sys-color-divider); border-radius: 4px; width: 100%;';
+    nameInput.className = 'form-field-input';
     nameInput.disabled = !!existingProvider; // Can't change name when editing
     form.appendChild(nameLabel);
     form.appendChild(nameInput);
@@ -178,48 +184,47 @@ export class CustomProviderDialog {
     // Base URL
     const urlLabel = document.createElement('label');
     urlLabel.textContent = 'Base URL';
-    urlLabel.style.cssText = 'font-weight: 500; margin-bottom: 4px; display: block;';
+    urlLabel.className = 'form-field-label';
     const urlInput = document.createElement('input');
     urlInput.type = 'text';
     urlInput.value = existingProvider?.baseURL || '';
     urlInput.placeholder = 'https://api.example.com/v1';
-    urlInput.style.cssText = 'padding: 8px; border: 1px solid var(--sys-color-divider); border-radius: 4px; width: 100%;';
+    urlInput.className = 'form-field-input';
     form.appendChild(urlLabel);
     form.appendChild(urlInput);
 
     const urlHint = document.createElement('div');
     urlHint.textContent = 'The base URL for the OpenAI-compatible API (without /chat/completions)';
-    urlHint.style.cssText = 'font-size: 12px; color: var(--sys-color-token-subtle); margin-top: -8px;';
+    urlHint.className = 'form-field-hint';
     form.appendChild(urlHint);
 
     // API Key (optional)
     const apiKeyLabel = document.createElement('label');
     apiKeyLabel.textContent = 'API Key (Optional)';
-    apiKeyLabel.style.cssText = 'font-weight: 500; margin-bottom: 4px; display: block;';
+    apiKeyLabel.className = 'form-field-label';
     const apiKeyInput = document.createElement('input');
     apiKeyInput.type = 'password';
     apiKeyInput.value = existingProvider ? (CustomProviderManager.getApiKey(existingProvider.id) || '') : '';
     apiKeyInput.placeholder = 'Enter API key if required';
-    apiKeyInput.style.cssText = 'padding: 8px; border: 1px solid var(--sys-color-divider); border-radius: 4px; width: 100%;';
+    apiKeyInput.className = 'form-field-input';
     form.appendChild(apiKeyLabel);
     form.appendChild(apiKeyInput);
 
     // Test Connection Section
     const testSection = document.createElement('div');
-    testSection.style.cssText = 'padding: 12px; background: var(--sys-color-surface2); border-radius: 4px;';
+    testSection.className = 'test-connection-section';
 
     const testButton = document.createElement('button');
     testButton.textContent = 'Test Connection & Fetch Models';
-    testButton.className = 'devtools-button';
-    testButton.style.cssText = 'padding: 8px 16px; cursor: pointer; width: 100%;';
+    testButton.className = 'test-connection-button';
     testSection.appendChild(testButton);
 
     const statusDiv = document.createElement('div');
-    statusDiv.style.cssText = 'margin-top: 12px; padding: 8px; border-radius: 4px; display: none;';
+    statusDiv.className = 'status-message';
     testSection.appendChild(statusDiv);
 
     const modelsDiv = document.createElement('div');
-    modelsDiv.style.cssText = 'margin-top: 12px; display: none;';
+    modelsDiv.className = 'fetched-models-display';
     testSection.appendChild(modelsDiv);
 
     form.appendChild(testSection);
@@ -228,36 +233,35 @@ export class CustomProviderDialog {
 
     // Models Management Section
     const modelsSection = document.createElement('div');
-    modelsSection.style.cssText = 'margin-top: 16px; padding: 12px; background: var(--sys-color-surface2); border-radius: 4px;';
+    modelsSection.className = 'models-management-section';
 
     const modelsTitle = document.createElement('div');
     modelsTitle.textContent = 'Available Models';
-    modelsTitle.style.cssText = 'font-weight: 500; margin-bottom: 8px;';
+    modelsTitle.className = 'models-section-title';
     modelsSection.appendChild(modelsTitle);
 
     const modelsListContainer = document.createElement('div');
-    modelsListContainer.style.cssText = 'max-height: 200px; overflow-y: auto; margin-bottom: 12px; padding: 8px; background: var(--sys-color-surface1); border-radius: 4px; min-height: 40px;';
+    modelsListContainer.className = 'models-list-container';
     modelsSection.appendChild(modelsListContainer);
 
     // Add Model Section
     const addModelContainer = document.createElement('div');
-    addModelContainer.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+    addModelContainer.className = 'add-model-container';
 
     const addModelLabel = document.createElement('label');
     addModelLabel.textContent = 'Add Model:';
-    addModelLabel.style.cssText = 'font-weight: 500; min-width: 80px;';
+    addModelLabel.className = 'add-model-label';
     addModelContainer.appendChild(addModelLabel);
 
     const modelNameInput = document.createElement('input');
     modelNameInput.type = 'text';
     modelNameInput.placeholder = 'Enter model name';
-    modelNameInput.style.cssText = 'flex: 1; padding: 6px; border: 1px solid var(--sys-color-divider); border-radius: 4px;';
+    modelNameInput.className = 'add-model-input';
     addModelContainer.appendChild(modelNameInput);
 
     const addModelButton = document.createElement('button');
     addModelButton.textContent = 'Add';
-    addModelButton.className = 'devtools-button';
-    addModelButton.style.cssText = 'padding: 6px 16px; cursor: pointer;';
+    addModelButton.className = 'add-model-button';
     addModelContainer.appendChild(addModelButton);
 
     modelsSection.appendChild(addModelContainer);
@@ -266,8 +270,7 @@ export class CustomProviderDialog {
     // Save button (disabled until at least one model exists)
     const saveButton = document.createElement('button');
     saveButton.textContent = existingProvider ? 'Update Provider' : 'Add Provider';
-    saveButton.className = 'devtools-button';
-    saveButton.style.cssText = 'padding: 10px 20px; cursor: pointer; margin-top: 20px; width: 100%;';
+    saveButton.className = 'save-provider-button';
     saveButton.disabled = !existingProvider; // Disabled for new providers until models exist
     container.appendChild(saveButton);
 
@@ -281,23 +284,22 @@ export class CustomProviderDialog {
       if (allModels.length === 0) {
         const emptyMessage = document.createElement('div');
         emptyMessage.textContent = 'No models added yet. Test connection to fetch models or add manually.';
-        emptyMessage.style.cssText = 'color: var(--sys-color-token-subtle); font-size: 12px; padding: 8px; text-align: center;';
+        emptyMessage.className = 'models-empty-message';
         modelsListContainer.appendChild(emptyMessage);
         saveButton.disabled = true;
       } else {
         allModels.forEach(modelName => {
           const modelItem = document.createElement('div');
-          modelItem.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin-bottom: 4px; background: var(--sys-color-surface2); border-radius: 3px;';
+          modelItem.className = 'model-item';
 
           const modelLabel = document.createElement('span');
           modelLabel.textContent = modelName;
-          modelLabel.style.cssText = 'font-family: monospace; font-size: 12px; flex: 1;';
+          modelLabel.className = 'model-name';
           modelItem.appendChild(modelLabel);
 
           const removeButton = document.createElement('button');
           removeButton.textContent = '×';
-          removeButton.className = 'devtools-button';
-          removeButton.style.cssText = 'padding: 2px 8px; cursor: pointer; color: var(--sys-color-error); font-size: 16px; line-height: 1;';
+          removeButton.className = 'model-remove-button';
           removeButton.title = 'Remove model';
           removeButton.addEventListener('click', () => {
             allModels = allModels.filter(m => m !== modelName);
@@ -448,6 +450,10 @@ export class CustomProviderDialog {
 
     addEditDialog.contentElement.appendChild(container);
     addEditDialog.setOutsideClickCallback(() => addEditDialog.hide());
+
+    // Apply styles
+    applyCustomProviderStyles(addEditDialog.contentElement);
+
     addEditDialog.show();
   }
 
@@ -455,18 +461,18 @@ export class CustomProviderDialog {
    * Show status message
    */
   private showStatus(element: HTMLElement, message: string, success: boolean | null): void {
-    element.style.display = 'block';
+    element.classList.add('visible');
     element.textContent = message;
 
+    // Remove existing status classes
+    element.classList.remove('status-success', 'status-error', 'status-neutral');
+
     if (success === true) {
-      element.style.background = 'var(--sys-color-green-container)';
-      element.style.color = 'var(--sys-color-on-green-container)';
+      element.classList.add('status-success');
     } else if (success === false) {
-      element.style.background = 'var(--sys-color-error-container)';
-      element.style.color = 'var(--sys-color-on-error-container)';
+      element.classList.add('status-error');
     } else {
-      element.style.background = 'var(--sys-color-neutral-container)';
-      element.style.color = 'var(--sys-color-on-surface)';
+      element.classList.add('status-neutral');
     }
   }
 
@@ -474,21 +480,21 @@ export class CustomProviderDialog {
    * Show fetched models
    */
   private showModels(element: HTMLElement, models: string[]): void {
-    element.style.display = 'block';
+    element.classList.add('visible');
     element.innerHTML = '';
 
     const title = document.createElement('div');
     title.textContent = 'Available Models:';
-    title.style.cssText = 'font-weight: 500; margin-bottom: 8px;';
+    title.className = 'fetched-models-title';
     element.appendChild(title);
 
     const modelList = document.createElement('div');
-    modelList.style.cssText = 'max-height: 150px; overflow-y: auto; padding: 8px; background: var(--sys-color-surface1); border-radius: 4px;';
+    modelList.className = 'fetched-models-list';
 
     models.forEach(model => {
       const modelItem = document.createElement('div');
       modelItem.textContent = `• ${model}`;
-      modelItem.style.cssText = 'padding: 4px 0; font-size: 12px; font-family: monospace;';
+      modelItem.className = 'fetched-model-item';
       modelList.appendChild(modelItem);
     });
 

@@ -42,10 +42,13 @@ export interface FetcherToolResult {
  * This agent takes a list of URLs, navigates to each one, and extracts
  * the main content as markdown. It uses NavigateURLTool for navigation
  * and HTMLToMarkdownTool for content extraction.
+ *
+ * Content extraction is handled by HTMLToMarkdownTool, which
+ * automatically chunks large pages for efficient processing.
  */
 export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
   name = 'fetcher_tool';
-  description = 'Navigates to URLs, extracts and cleans the main content, returning markdown for each source';
+  description = 'Navigates to URLs, extracts and cleans the main content, returning markdown for each source.';
 
 
   schema = {
@@ -124,7 +127,11 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
   /**
    * Fetch and extract content from a single URL
    */
-  private async fetchContentFromUrl(url: string, reasoning: string, ctx?: LLMContext): Promise<FetchedContent> {
+  private async fetchContentFromUrl(
+    url: string,
+    reasoning: string,
+    ctx?: LLMContext
+  ): Promise<FetchedContent> {
     const signal = ctx?.abortSignal;
     const throwIfAborted = () => {
       if (signal?.aborted) {
@@ -201,7 +208,7 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
         };
       }
 
-      // Return the fetched content
+      // Return the fetched content (HTMLToMarkdownTool handles chunking)
       return {
         url: metadata?.url || url,
         title: metadata?.title || '',
