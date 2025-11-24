@@ -344,11 +344,17 @@ export class GoogleAIProvider extends LLMBaseProvider {
   /**
    * Fetch available models from Google AI API
    */
-  async fetchModels(): Promise<GoogleAIModel[]> {
+  async fetchModels(apiKey?: string, endpoint?: string): Promise<GoogleAIModel[]> {
     logger.debug('Fetching available Google AI models...');
 
+    // Use provided apiKey if available, otherwise fall back to instance apiKey
+    const keyToUse = apiKey || this.apiKey;
+
+    // Build endpoint URL with API key
+    const modelsUrl = `${GoogleAIProvider.API_BASE_URL}/models?key=${keyToUse}`;
+
     try {
-      const response = await fetch(this.getModelsEndpoint(), {
+      const response = await fetch(modelsUrl, {
         method: 'GET',
       });
 

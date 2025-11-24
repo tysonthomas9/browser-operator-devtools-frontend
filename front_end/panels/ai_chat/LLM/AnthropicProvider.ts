@@ -17,6 +17,7 @@ const logger = createLogger('AnthropicProvider');
 export class AnthropicProvider extends LLMBaseProvider {
   private static readonly API_BASE_URL = 'https://api.anthropic.com/v1';
   private static readonly MESSAGES_PATH = '/messages';
+  private static readonly MODELS_PATH = '/models';
   private static readonly API_VERSION = '2023-06-01';
 
   readonly name: LLMProvider = 'anthropic';
@@ -30,6 +31,13 @@ export class AnthropicProvider extends LLMBaseProvider {
    */
   private getMessagesEndpoint(): string {
     return `${AnthropicProvider.API_BASE_URL}${AnthropicProvider.MESSAGES_PATH}`;
+  }
+
+  /**
+   * Get the models endpoint URL
+   */
+  private getModelsEndpoint(): string {
+    return `${AnthropicProvider.API_BASE_URL}${AnthropicProvider.MODELS_PATH}`;
   }
 
   /**
@@ -165,6 +173,7 @@ export class AnthropicProvider extends LLMBaseProvider {
         'Content-Type': 'application/json',
         'x-api-key': this.apiKey,
         'anthropic-version': AnthropicProvider.API_VERSION,
+        'anthropic-dangerous-direct-browser-access': 'true',
       };
 
       // Add beta headers if provided
@@ -323,12 +332,94 @@ export class AnthropicProvider extends LLMBaseProvider {
   }
 
   /**
+   * Fetch available models from Anthropic API
+   */
+  async fetchModels(apiKey?: string, endpoint?: string): Promise<AnthropicModel[]> {
+    logger.debug('Fetching available Anthropic models...');
+
+    // Use provided apiKey if available, otherwise fall back to instance apiKey
+    const keyToUse = apiKey || this.apiKey;
+
+    try {
+      const response = await fetch(this.getModelsEndpoint(), {
+        method: 'GET',
+        headers: {
+          'x-api-key': keyToUse,
+          'anthropic-version': AnthropicProvider.API_VERSION,
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+        logger.error('Anthropic models API error:', JSON.stringify(errorData, null, 2));
+        throw new Error(`Anthropic models API error: ${response.statusText} - ${errorData?.error?.message || 'Unknown error'}`);
+      }
+
+      const data: AnthropicModelsResponse = await response.json();
+      logger.debug('Anthropic Models Response:', data);
+
+      if (!data?.data || !Array.isArray(data.data)) {
+        throw new Error('Invalid models response format');
+      }
+
+      return data.data;
+    } catch (error) {
+      logger.error('Failed to fetch Anthropic models:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all models supported by this provider
    */
   async getModels(): Promise<ModelInfo[]> {
-    // Anthropic doesn't provide a public models API endpoint
-    // Return hardcoded list of known models
-    return this.getDefaultModels();
+    try {
+      // Fetch models from Anthropic API
+      const anthropicModels = await this.fetchModels();
+
+      return anthropicModels.map(model => ({
+        id: model.id,
+        name: model.display_name || model.id,
+        provider: 'anthropic' as LLMProvider,
+        capabilities: {
+          functionCalling: this.modelSupportsFunctionCalling(model.id),
+          reasoning: this.modelSupportsReasoning(model.id),
+          vision: this.modelSupportsVision(model.id),
+          structured: true, // All Anthropic models support structured outputs
+        }
+      }));
+    } catch (error) {
+      logger.warn('Failed to fetch models from API, falling back to default list:', error);
+      // Fallback to hardcoded list if API call fails
+      return this.getDefaultModels();
+    }
+  }
+
+  /**
+   * Check if a model supports function calling
+   */
+  private modelSupportsFunctionCalling(modelId: string): boolean {
+    // All Claude 3+ models support function calling
+    return modelId.includes('claude-3') || modelId.includes('claude-sonnet-4');
+  }
+
+  /**
+   * Check if a model supports extended thinking/reasoning
+   */
+  private modelSupportsReasoning(modelId: string): boolean {
+    // Claude Sonnet 4.5 and newer support extended thinking
+    return modelId.includes('claude-sonnet-4.5') || modelId.includes('claude-sonnet-4-');
+  }
+
+  /**
+   * Check if a model supports vision/image inputs
+   */
+  private modelSupportsVision(modelId: string): boolean {
+    // Claude 3 Opus, Sonnet, and Haiku support vision
+    // Claude Sonnet 4+ also supports vision
+    return (modelId.includes('claude-3') && !modelId.includes('haiku')) ||
+           modelId.includes('claude-sonnet-4');
   }
 
   /**
@@ -466,4 +557,24 @@ export class AnthropicProvider extends LLMBaseProvider {
       apiKey: 'ai_chat_anthropic_api_key'
     };
   }
+}
+
+/**
+ * Anthropic model object from the /v1/models API
+ */
+interface AnthropicModel {
+  id: string;
+  display_name: string;
+  created_at: string;
+  type: 'model';
+}
+
+/**
+ * Response from Anthropic /v1/models endpoint
+ */
+interface AnthropicModelsResponse {
+  data: AnthropicModel[];
+  first_id: string;
+  last_id: string;
+  has_more: boolean;
 }

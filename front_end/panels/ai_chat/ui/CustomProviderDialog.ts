@@ -4,8 +4,7 @@
 
 import * as UI from '../../../ui/legacy/legacy.js';
 import * as Geometry from '../../../models/geometry/geometry.js';
-import { CustomProviderManager } from '../core/CustomProviderManager.js';
-import type { CustomProviderConfig } from '../core/CustomProviderManager.js';
+import { CustomProviderManager, type CustomProviderConfig } from '../core/CustomProviderManager.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { createLogger } from '../core/Logger.js';
 import { PROVIDER_SELECTION_KEY } from './settings/constants.js';
