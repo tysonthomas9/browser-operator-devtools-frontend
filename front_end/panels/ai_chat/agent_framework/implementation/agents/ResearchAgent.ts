@@ -45,7 +45,7 @@ export function createResearchAgentConfig(): AgentToolConfig {
 ## Key Tools
 - **navigate_url + fetcher_tool**: Primary research loop
 - **extract_data**: Structured data extraction with JSON schema
-- **html_to_markdown**: Clean page text extraction
+- **readability_extractor**: Fast plain text extraction
 - **create_file/update_file/read_file/list_files**: Persist and track findings across iterations
 
 ## Quality Standards
@@ -97,7 +97,7 @@ Example for "AI trends in 2025": ai-trends-2025_research.md, ai-trends-2025_sour
       'fetcher_tool',
       'extract_data',
       'node_ids_to_urls',
-      'html_to_markdown',
+      'readability_extractor',
       'create_file',
       'update_file',
       'read_file',
@@ -173,8 +173,8 @@ ${args.scope ? `The scope of research expected: ${args.scope}` : ''}
                 // Only save successful fetches with content
                 if (source.success && source.markdownContent && source.markdownContent.trim().length > 0) {
                   try {
-                    // Create a sanitized filename from the URL
-                    const filename = sanitizeUrlToFilename(source.url);
+                    // Create a sanitized filename from the URL and title
+                    const filename = sanitizeUrlToFilename(source.url, source.title);
 
                     // Create file content with metadata header
                     const fileContent = `# ${source.title || 'Untitled'}
@@ -232,31 +232,46 @@ ${source.markdownContent}`;
 }
 
 /**
- * Sanitize a URL to create a safe filename
+ * Sanitize a URL and optional title to create a safe filename
+ * Prefers title-based names for readability, falls back to URL-based names
  */
-function sanitizeUrlToFilename(url: string): string {
+function sanitizeUrlToFilename(url: string, title?: string): string {
   try {
-    const urlObj = new URL(url);
+    let baseName = '';
 
-    // Extract domain and path
-    let domain = urlObj.hostname.replace(/^www\./, '');
-    let path = urlObj.pathname.replace(/^\//, '').replace(/\/$/, '');
-
-    // Create a base name from domain and path
-    let baseName = domain;
-    if (path) {
-      // Take first 2 path segments for readability
-      const pathParts = path.split('/').filter(p => p.length > 0);
-      if (pathParts.length > 0) {
-        baseName += '-' + pathParts.slice(0, 2).join('-');
-      }
+    // Prefer title if available
+    if (title && title.trim()) {
+      baseName = title
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9\s-]/g, '')  // Remove special characters
+        .replace(/\s+/g, '-')              // Convert spaces to dashes
+        .replace(/-+/g, '-')               // Collapse multiple dashes
+        .replace(/^-|-$/g, '')             // Remove leading/trailing dashes
+        .substring(0, 60);                 // Limit length for readability
     }
 
-    // Remove special characters and limit length
-    baseName = baseName
-      .replace(/[^a-zA-Z0-9-_]/g, '-')
-      .replace(/-+/g, '-')
-      .substring(0, 80);
+    // Fallback to URL-based name if no title or title is empty after sanitization
+    if (!baseName) {
+      const urlObj = new URL(url);
+      let domain = urlObj.hostname.replace(/^www\./, '');
+      let path = urlObj.pathname.replace(/^\//, '').replace(/\/$/, '');
+
+      baseName = domain;
+      if (path) {
+        // Take first 2 path segments for readability
+        const pathParts = path.split('/').filter(p => p.length > 0);
+        if (pathParts.length > 0) {
+          baseName += '-' + pathParts.slice(0, 2).join('-');
+        }
+      }
+
+      // Remove special characters and limit length
+      baseName = baseName
+        .replace(/[^a-zA-Z0-9-_]/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 60);
+    }
 
     // Add a short hash of the full URL to prevent collisions
     const hash = simpleHash(url).substring(0, 8);

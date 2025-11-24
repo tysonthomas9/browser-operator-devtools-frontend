@@ -12,6 +12,7 @@ import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchCon
 import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
 import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
+import { ReadabilityExtractorTool } from '../../tools/ReadabilityExtractorTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
 import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
@@ -48,6 +49,7 @@ export function initializeConfiguredAgents(): void {
   ToolRegistry.registerToolFactory('search_content', () => new SearchContentTool());
   ToolRegistry.registerToolFactory('take_screenshot', () => new TakeScreenshotTool());
   ToolRegistry.registerToolFactory('html_to_markdown', () => new HTMLToMarkdownTool());
+  ToolRegistry.registerToolFactory('readability_extractor', () => new ReadabilityExtractorTool());
   ToolRegistry.registerToolFactory('scroll_page', () => new ScrollPageTool());
   ToolRegistry.registerToolFactory('wait_for_page_load', () => new WaitTool());
   ToolRegistry.registerToolFactory('thinking', () => new ThinkingTool());

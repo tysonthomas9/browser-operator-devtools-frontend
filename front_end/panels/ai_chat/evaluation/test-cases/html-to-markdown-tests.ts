@@ -327,7 +327,9 @@ export function getTestsByDuration(
  * CommonJS export for Node.js compatibility
  * Allows backend evaluation runner to import test cases
  */
+// @ts-ignore - module is not defined in browser context
 if (typeof module !== 'undefined' && module.exports) {
+  // @ts-ignore
   module.exports = {
     simpleArticleTest,
     largeArticleChunkingTest,

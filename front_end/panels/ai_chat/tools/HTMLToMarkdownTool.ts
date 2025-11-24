@@ -36,8 +36,8 @@ export interface HTMLToMarkdownArgs {
  */
 export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdownResult> {
   // Chunking configuration
-  private readonly TOKEN_LIMIT_FOR_CHUNKING = 10000; // Auto-chunk if tree exceeds this (40k chars)
-  private readonly CHUNK_TOKEN_LIMIT = 8000; // Max tokens per chunk (32k chars)
+  private readonly TOKEN_LIMIT_FOR_CHUNKING = 65000; // Auto-chunk if tree exceeds this (~260k chars)
+  private readonly CHUNK_TOKEN_LIMIT = 40000; // Max tokens per chunk (~160k chars)
   private readonly CHARS_PER_TOKEN = 4; // Conservative estimate
 
   private contentChunker = new ContentChunker();

@@ -32,7 +32,7 @@ export function createSearchAgentConfig(): AgentToolConfig {
 3. **Collect leads**:
    - Use navigate_url to reach the most relevant search entry point (search engines, directories, LinkedIn public results, company pages, press releases).
    - Use extract_data with an explicit JSON schema every time you capture structured search results. Prefer capturing multiple leads in one call.
-   - Batch follow-up pages with fetcher_tool, and use html_to_markdown when you need to confirm context inside long documents.
+   - Batch follow-up pages with fetcher_tool, and use readability_extractor when you need to confirm context inside long documents.
    - After each significant batch of new leads or fetcher_tool response, immediately persist the harvested candidates (including query, timestamp, and confidence notes) by appending to a coordination file via 'create_file'/'update_file'. This keeps other subtasks aligned and prevents redundant scraping.
 4. **Mandatory Pagination Loop (ENFORCED)**:
    - Harvest target per task: collect 30–50 unique candidates before enrichment (unless the user specifies otherwise). Absolute minimum 25 when the request requires it.
@@ -58,7 +58,7 @@ export function createSearchAgentConfig(): AgentToolConfig {
     "name": "extract_data",
     "arguments": "{\"instruction\":\"From the currently loaded Google News results page for query 'OpenAI September 2025 news', extract the top 15 news items visible in the search results. For each item extract: title (string), snippet (string), url (string, format:url), source (string), and publishDate (string). Return a JSON object with property 'results' which is an array of these items.\",\"reasoning\":\"Collect structured list of recent news articles about OpenAI in September 2025 so we can batch-fetch the full content for comprehensive research.\",\"schema\":{\"type\":\"object\",\"properties\":{\"results\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"snippet\":{\"type\":\"string\"},\"url\":{\"type\":\"string\",\"format\":\"url\"},\"source\":{\"type\":\"string\"},\"publishDate\":{\"type\":\"string\"}},\"required\":[\"title\",\"url\",\"source\"]}}},\"required\":[\"results\"]}}"
 })
-- Use html_to_markdown when you need high-quality page text in addition to (not instead of) structured extractions.
+- Use readability_extractor when you need fast plain text extraction in addition to (not instead of) structured extractions.
 - Never call extract_data or fetcher_tool without a clear plan for how the results will fill gaps in the objective.
 - Before starting new queries, call 'list_files'/'read_file' to review previous batches and avoid duplicating work; always append incremental findings to the existing coordination file for the current objective.
 
@@ -132,7 +132,7 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
       'extract_data',
       'scroll_page',
       'action_agent',
-      'html_to_markdown',
+      'readability_extractor',
       'create_file',
       'update_file',
       'delete_file',
@@ -273,7 +273,7 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
           ],
           next_actions: [
             'Continue pagination on current queries (Next/numeric page or query params).',
-            'Batch fetcher_tool on shortlisted URLs; use html_to_markdown + document_search to extract location, availability, portfolio, and contact.',
+            'Batch fetcher_tool on shortlisted URLs; use readability_extractor + document_search to extract location, availability, portfolio, and contact.',
             'Deduplicate by normalized name + hostname and canonical URL.'
           ]
         };

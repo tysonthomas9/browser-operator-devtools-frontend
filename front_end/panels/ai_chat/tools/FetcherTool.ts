@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import { createLogger } from '../core/Logger.js';
-import { HTMLToMarkdownTool, type HTMLToMarkdownResult } from './HTMLToMarkdownTool.js';
+import { ReadabilityExtractorTool, type ReadabilityExtractorResult } from './ReadabilityExtractorTool.js';
 import { NavigateURLTool, type Tool, type LLMContext } from './Tools.js';
 
 const logger = createLogger('Tool:Fetcher');
@@ -14,7 +14,7 @@ const logger = createLogger('Tool:Fetcher');
 export interface FetchedContent {
   url: string;
   title: string;
-  markdownContent: string;
+  markdownContent: string;  // Plain text content (for backwards compatibility, named markdownContent)
   success: boolean;
   error?: string;
 }
@@ -40,15 +40,15 @@ export interface FetcherToolResult {
  * Agent that fetches and extracts content from URLs
  *
  * This agent takes a list of URLs, navigates to each one, and extracts
- * the main content as markdown. It uses NavigateURLTool for navigation
- * and HTMLToMarkdownTool for content extraction.
+ * the main content as plain text. It uses NavigateURLTool for navigation
+ * and ReadabilityExtractorTool for fast content extraction.
  *
- * Content extraction is handled by HTMLToMarkdownTool, which
- * automatically chunks large pages for efficient processing.
+ * Content extraction is handled by ReadabilityExtractorTool, which uses
+ * Mozilla Readability for deterministic extraction without LLM calls.
  */
 export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
   name = 'fetcher_tool';
-  description = 'Navigates to URLs, extracts and cleans the main content, returning markdown for each source.';
+  description = 'Navigates to URLs, extracts and cleans the main content, returning plain text for each source';
 
 
   schema = {
@@ -70,7 +70,7 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
   };
 
   private navigateURLTool = new NavigateURLTool();
-  private htmlToMarkdownTool = new HTMLToMarkdownTool();
+  private readabilityExtractorTool = new ReadabilityExtractorTool();
 
   /**
    * Execute the fetcher agent to process multiple URLs
@@ -138,29 +138,6 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
         throw new DOMException('The operation was aborted', 'AbortError');
       }
     };
-    const sleep = (ms: number) => new Promise<void>((resolve, reject) => {
-      if (!ms) return resolve();
-      const timer = setTimeout(() => {
-        cleanup();
-        resolve();
-      }, ms);
-      const onAbort = () => {
-        clearTimeout(timer);
-        cleanup();
-        reject(new DOMException('The operation was aborted', 'AbortError'));
-      };
-      const cleanup = () => {
-        signal?.removeEventListener('abort', onAbort);
-      };
-      if (signal) {
-        if (signal.aborted) {
-          clearTimeout(timer);
-          cleanup();
-          return reject(new DOMException('The operation was aborted', 'AbortError'));
-        }
-        signal.addEventListener('abort', onAbort, { once: true });
-      }
-    });
     try {
       // Step 1: Navigate to the URL
       logger.info('Navigating to URL', { url });
@@ -182,37 +159,34 @@ export class FetcherTool implements Tool<FetcherToolArgs, FetcherToolResult> {
         };
       }
 
-      // Wait for 1 second to ensure the page has time to load
-      await sleep(1000);
-      throwIfAborted();
-
       // Get metadata from navigation result
       const metadata = navigationResult.metadata ? navigationResult.metadata : { url: '', title: '' };
 
-      // Step 2: Extract markdown content using HTMLToMarkdownTool
+      // Step 2: Extract content using ReadabilityExtractorTool (with automatic LLM fallback)
       logger.info('Extracting content from URL', { url });
       throwIfAborted();
-      const extractionResult = await this.htmlToMarkdownTool.execute({
-        instruction: 'Extract the main content focusing on article text, headings, and important information. Remove ads, navigation, and distracting elements.',
+
+      // Always pass ctx for LLM fallback capability
+      const extractionResult = await this.readabilityExtractorTool.execute({
         reasoning
       }, ctx);
 
       // Check for extraction errors
-      if (!extractionResult.success || !extractionResult.markdownContent) {
+      if (!extractionResult.success || !extractionResult.textContent) {
         return {
           url,
-          title: metadata?.title || '',
+          title: metadata?.title || extractionResult.title || '',
           markdownContent: '',
           success: false,
           error: extractionResult.error || 'Failed to extract content'
         };
       }
 
-      // Return the fetched content (HTMLToMarkdownTool handles chunking)
+      // Return the fetched content (plain text from Readability)
       return {
         url: metadata?.url || url,
-        title: metadata?.title || '',
-        markdownContent: extractionResult.markdownContent,
+        title: extractionResult.title || metadata?.title || '',
+        markdownContent: extractionResult.textContent,  // Plain text content
         success: true
       };
     } catch (error: any) {
