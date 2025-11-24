@@ -3,12 +3,18 @@
 // found in the LICENSE file.
 
 import type { LLMMessage, LLMResponse, LLMCallOptions, LLMProvider, ModelInfo, RetryConfig } from './LLMTypes.js';
+import { isCustomProvider } from './LLMTypes.js';
 import { LLMProviderRegistry } from './LLMProviderRegistry.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
 import { LiteLLMProvider } from './LiteLLMProvider.js';
 import { GroqProvider } from './GroqProvider.js';
 import { OpenRouterProvider } from './OpenRouterProvider.js';
 import { BrowserOperatorProvider } from './BrowserOperatorProvider.js';
+import { CerebrasProvider } from './CerebrasProvider.js';
+import { AnthropicProvider } from './AnthropicProvider.js';
+import { GoogleAIProvider } from './GoogleAIProvider.js';
+import { GenericOpenAIProvider } from './GenericOpenAIProvider.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
 import { LLMResponseParser } from './LLMResponseParser.js';
 import { createLogger } from '../core/Logger.js';
 
@@ -18,7 +24,7 @@ const logger = createLogger('LLMClient');
  * Configuration for individual LLM providers
  */
 export interface LLMProviderConfig {
-  provider: LLMProvider;
+  provider: string; // Can be LLMProvider or custom provider ID (e.g., "custom:my-provider")
   apiKey: string;
   providerURL?: string; // Optional: for LiteLLM endpoint or custom OpenAI endpoint
 }
@@ -100,6 +106,15 @@ export class LLMClient {
               providerConfig.providerURL  // Optional override for testing
             );
             break;
+          case 'cerebras':
+            providerInstance = new CerebrasProvider(providerConfig.apiKey);
+            break;
+          case 'anthropic':
+            providerInstance = new AnthropicProvider(providerConfig.apiKey);
+            break;
+          case 'googleai':
+            providerInstance = new GoogleAIProvider(providerConfig.apiKey);
+            break;
           default:
             logger.warn(`Unknown provider type: ${providerConfig.provider}`);
             continue;
@@ -110,6 +125,31 @@ export class LLMClient {
       } catch (error) {
         logger.error(`Failed to initialize ${providerConfig.provider} provider:`, error);
       }
+    }
+
+    // Load and register custom providers
+    try {
+      const customProviders = CustomProviderManager.listEnabledProviders();
+      logger.info(`Loading ${customProviders.length} custom providers`);
+
+      for (const customProviderConfig of customProviders) {
+        try {
+          const apiKey = CustomProviderManager.getApiKey(customProviderConfig.id);
+          const providerInstance = new GenericOpenAIProvider(
+            customProviderConfig,
+            apiKey || undefined
+          );
+          LLMProviderRegistry.registerProvider(
+            customProviderConfig.id as LLMProvider,
+            providerInstance
+          );
+          logger.info(`Registered custom provider: ${customProviderConfig.name} (${customProviderConfig.id})`);
+        } catch (error) {
+          logger.error(`Failed to initialize custom provider ${customProviderConfig.name}:`, error);
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to load custom providers:', error);
     }
 
     this.initialized = true;
@@ -308,51 +348,42 @@ export class LLMClient {
    * Static method to fetch models from LiteLLM endpoint (for UI use without initialization)
    */
   static async fetchLiteLLMModels(apiKey: string | null, baseUrl?: string): Promise<any[]> {
-    const provider = new LiteLLMProvider(apiKey, baseUrl);
-    const models = await provider.fetchModels();
-    return models;
+    return LLMProviderRegistry.fetchProviderModels('litellm', apiKey || '', baseUrl);
   }
 
   /**
    * Static method to test LiteLLM connection (for UI use without initialization)
    */
   static async testLiteLLMConnection(apiKey: string | null, modelName: string, baseUrl?: string): Promise<{success: boolean, message: string}> {
-    const provider = new LiteLLMProvider(apiKey, baseUrl);
-    return provider.testConnection(modelName);
+    return LLMProviderRegistry.testProviderConnection('litellm', apiKey || '', baseUrl);
   }
 
   /**
    * Static method to fetch models from Groq API (for UI use without initialization)
    */
   static async fetchGroqModels(apiKey: string): Promise<any[]> {
-    const provider = new GroqProvider(apiKey);
-    const models = await provider.fetchModels();
-    return models;
+    return LLMProviderRegistry.fetchProviderModels('groq', apiKey);
   }
 
   /**
    * Static method to test Groq connection (for UI use without initialization)
    */
   static async testGroqConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
-    const provider = new GroqProvider(apiKey);
-    return provider.testConnection(modelName);
+    return LLMProviderRegistry.testProviderConnection('groq', apiKey);
   }
 
   /**
    * Static method to fetch models from OpenRouter API (for UI use without initialization)
    */
   static async fetchOpenRouterModels(apiKey: string): Promise<any[]> {
-    const provider = new OpenRouterProvider(apiKey);
-    const models = await provider.fetchModels();
-    return models;
+    return LLMProviderRegistry.fetchProviderModels('openrouter', apiKey);
   }
 
   /**
    * Static method to test OpenRouter connection (for UI use without initialization)
    */
   static async testOpenRouterConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
-    const provider = new OpenRouterProvider(apiKey);
-    return provider.testConnection(modelName);
+    return LLMProviderRegistry.testProviderConnection('openrouter', apiKey);
   }
 
   /**
@@ -384,43 +415,189 @@ export class LLMClient {
   }
 
   /**
+   * Static method to fetch models from Cerebras API (for UI use without initialization)
+   */
+  static async fetchCerebrasModels(apiKey: string): Promise<any[]> {
+    return LLMProviderRegistry.fetchProviderModels('cerebras', apiKey);
+  }
+
+  /**
+   * Static method to test Cerebras connection (for UI use without initialization)
+   */
+  static async testCerebrasConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    return LLMProviderRegistry.testProviderConnection('cerebras', apiKey);
+  }
+
+  /**
+   * Static method to fetch models from Anthropic API (for UI use without initialization)
+   */
+  static async fetchAnthropicModels(apiKey: string): Promise<any[]> {
+    return LLMProviderRegistry.fetchProviderModels('anthropic', apiKey);
+  }
+
+  /**
+   * Static method to test Anthropic connection (for UI use without initialization)
+   */
+  static async testAnthropicConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    return LLMProviderRegistry.testProviderConnection('anthropic', apiKey);
+  }
+
+  /**
+   * Static method to fetch models from Google AI API (for UI use without initialization)
+   */
+  static async fetchGoogleAIModels(apiKey: string): Promise<any[]> {
+    return LLMProviderRegistry.fetchProviderModels('googleai', apiKey);
+  }
+
+  /**
+   * Static method to test Google AI connection (for UI use without initialization)
+   */
+  static async testGoogleAIConnection(apiKey: string, modelName: string): Promise<{success: boolean, message: string}> {
+    return LLMProviderRegistry.testProviderConnection('googleai', apiKey);
+  }
+
+  /**
    * Static method to validate credentials for a specific provider
    */
   static validateProviderCredentials(providerType: string): {isValid: boolean, message: string, missingItems?: string[]} {
     try {
-      // Create temporary provider instance for validation (no API key needed for validation)
-      let provider;
-      
-      switch (providerType) {
-        case 'openai':
-          provider = new OpenAIProvider('');
-          break;
-        case 'litellm':
-          provider = new LiteLLMProvider('', '');
-          break;
-        case 'groq':
-          provider = new GroqProvider('');
-          break;
-        case 'openrouter':
-          provider = new OpenRouterProvider('');
-          break;
-        case 'browseroperator':
-          provider = new BrowserOperatorProvider(null, '');
-          break;
-        default:
+      // Check if it's a custom provider
+      if (isCustomProvider(providerType)) {
+        // Validate that the custom provider exists
+        const customProvider = CustomProviderManager.getProvider(providerType);
+        if (!customProvider) {
           return {
             isValid: false,
-            message: `Unknown provider type: ${providerType}`,
-            missingItems: ['Valid provider selection']
+            message: 'Custom provider not found',
+            missingItems: ['Provider']
           };
+        }
+
+        // Validate that it has models configured
+        if (!customProvider.models || customProvider.models.length === 0) {
+          return {
+            isValid: false,
+            message: 'No models configured for this provider',
+            missingItems: ['Models']
+          };
+        }
+
+        // Validate that it's enabled
+        if (!customProvider.enabled) {
+          return {
+            isValid: false,
+            message: 'Provider is disabled',
+            missingItems: ['Enabled status']
+          };
+        }
+
+        return {
+          isValid: true,
+          message: 'Custom provider configuration valid'
+        };
       }
-      
-      return provider.validateCredentials();
+
+      // Delegate to LLMProviderRegistry for standard providers
+      return LLMProviderRegistry.validateProviderCredentials(providerType as LLMProvider);
     } catch (error) {
       return {
         isValid: false,
         message: `Failed to validate ${providerType} credentials: ${error instanceof Error ? error.message : String(error)}`,
         missingItems: ['Provider configuration']
+      };
+    }
+  }
+
+  /**
+   * Static method to get provider credentials from localStorage
+   * Combines validation and credential retrieval in one call
+   * @param providerType The provider type
+   * @returns Object with canProceed flag, apiKey, and optional endpoint
+   */
+  static getProviderCredentials(providerType: string): {
+    canProceed: boolean;
+    apiKey: string | null;
+    endpoint?: string | null;
+    storageKeys?: {apiKey?: string; endpoint?: string; [key: string]: string | undefined};
+  } {
+    try {
+      // Check if it's a custom provider
+      if (isCustomProvider(providerType)) {
+        // Validate the custom provider first
+        const validation = LLMClient.validateProviderCredentials(providerType);
+        if (!validation.isValid) {
+          return {
+            canProceed: false,
+            apiKey: null
+          };
+        }
+
+        // Get API key and storage key from CustomProviderManager
+        const apiKey = CustomProviderManager.getApiKey(providerType);
+        const apiKeyStorageKey = CustomProviderManager.getApiKeyStorageKey(providerType);
+
+        return {
+          canProceed: true,
+          apiKey,
+          storageKeys: {
+            apiKey: apiKeyStorageKey
+          }
+        };
+      }
+
+      // Delegate to LLMProviderRegistry for standard providers
+      return LLMProviderRegistry.getProviderCredentials(providerType as LLMProvider);
+    } catch (error) {
+      logger.error(`Failed to get credentials for ${providerType}:`, error);
+      return {
+        canProceed: false,
+        apiKey: null
+      };
+    }
+  }
+
+  /**
+   * Static method to test custom provider connection and fetch models
+   */
+  static async testCustomProviderConnection(
+    name: string,
+    baseURL: string,
+    apiKey?: string
+  ): Promise<{success: boolean, message: string, models?: string[]}> {
+    try {
+      // Create a temporary custom provider config
+      const tempConfig = {
+        id: `custom:${name.toLowerCase().replace(/\s+/g, '-')}`,
+        name,
+        baseURL,
+        models: [],
+        enabled: true
+      };
+
+      // Create a temporary GenericOpenAIProvider instance
+      const provider = new GenericOpenAIProvider(tempConfig, apiKey);
+
+      // Test connection by fetching models
+      const modelObjects = await provider.fetchModels();
+
+      if (modelObjects && modelObjects.length > 0) {
+        // Extract model IDs from model objects
+        const modelIds = modelObjects.map(model => model.id);
+        return {
+          success: true,
+          message: `Successfully connected to ${name}. Found ${modelIds.length} models.`,
+          models: modelIds
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Connection successful but no models found'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   }

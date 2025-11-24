@@ -41,6 +41,18 @@ export const UIStrings = {
    */
   browseroperatorProvider: 'BrowserOperator',
   /**
+   *@description Cerebras provider option
+   */
+  cerebrasProvider: 'Cerebras',
+  /**
+   *@description Anthropic provider option
+   */
+  anthropicProvider: 'Anthropic',
+  /**
+   *@description Google AI provider option
+   */
+  googleaiProvider: 'Google AI',
+  /**
    *@description LiteLLM API Key label
    */
   liteLLMApiKey: 'LiteLLM API Key',
@@ -469,6 +481,34 @@ export const UIStrings = {
    *@description Save button text
    */
   saveButton: 'Save',
+  /**
+   *@description Manage custom providers button text
+   */
+  manageCustomProvidersButton: '+ Manage Custom Providers',
+  /**
+   *@description Available models section label
+   */
+  availableModelsLabel: 'Available Models',
+  /**
+   *@description Add model button text
+   */
+  addModelButton: 'Add',
+  /**
+   *@description Model name input placeholder
+   */
+  modelNamePlaceholder: 'Enter model name',
+  /**
+   *@description Remove model button text
+   */
+  removeModelButton: '×',
+  /**
+   *@description Add model section label
+   */
+  addModelLabel: 'Add Model',
+  /**
+   *@description Models count hint text
+   */
+  modelsCountHint: '{n} model(s)',
 };
 
 /**

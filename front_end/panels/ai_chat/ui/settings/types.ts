@@ -8,7 +8,7 @@
 export interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+  type: string; // Supports standard providers and custom providers (e.g., 'custom:my-provider')
 }
 
 /**
@@ -20,9 +20,9 @@ export interface ValidationResult {
 }
 
 /**
- * Provider type
+ * Provider type - supports standard providers and custom providers with 'custom:' prefix
  */
-export type ProviderType = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+export type ProviderType = string;
 
 /**
  * Model tier type

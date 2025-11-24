@@ -21,6 +21,10 @@ export const LITELLM_ENDPOINT_KEY = 'ai_chat_litellm_endpoint';
 export const LITELLM_API_KEY_STORAGE_KEY = 'ai_chat_litellm_api_key';
 export const GROQ_API_KEY_STORAGE_KEY = 'ai_chat_groq_api_key';
 export const OPENROUTER_API_KEY_STORAGE_KEY = 'ai_chat_openrouter_api_key';
+export const BROWSEROPERATOR_API_KEY_STORAGE_KEY = 'ai_chat_browseroperator_api_key';
+export const CEREBRAS_API_KEY_STORAGE_KEY = 'ai_chat_cerebras_api_key';
+export const ANTHROPIC_API_KEY_STORAGE_KEY = 'ai_chat_anthropic_api_key';
+export const GOOGLEAI_API_KEY_STORAGE_KEY = 'ai_chat_googleai_api_key';
 
 /**
  * Cache constants

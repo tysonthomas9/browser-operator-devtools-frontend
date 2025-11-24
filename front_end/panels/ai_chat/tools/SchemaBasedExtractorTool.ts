@@ -212,31 +212,67 @@ Schema Examples:
           heading: c.sectionInfo?.heading
         })));
 
-        // Extract from each chunk
-        const chunkResults: any[] = [];
-        for (const chunk of chunks) {
-          logger.info(`Processing chunk ${chunk.id + 1}/${chunks.length}...`);
+        // Extract from each chunk in parallel (4 at a time)
+        // Optimized based on Mind2Web validation results (EXTENDED_VALIDATION_RESULTS.md)
+        const chunkResults: any[] = new Array(chunks.length);
+        const BATCH_SIZE = 4; // Process 4 chunks concurrently
 
-          try {
-            const extractedData = await this.extractFromChunk(
+        for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+          const batchPromises: Promise<void>[] = [];
+
+          // Create batch of up to 4 promises
+          for (let j = 0; j < BATCH_SIZE && i + j < chunks.length; j++) {
+            const chunkIndex = i + j;
+            const chunk = chunks[chunkIndex];
+
+            logger.info(`Processing chunk ${chunk.id + 1}/${chunks.length} in parallel batch`, {
+              batchStart: i + 1,
+              batchEnd: Math.min(i + BATCH_SIZE, chunks.length)
+            });
+
+            // Create promise and handle errors per chunk
+            const promise = this.extractFromChunk(
               chunk,
               transformedSchema,
               instruction || 'Extract data according to schema',
               apiKey || '',
               ctx
-            );
-            chunkResults.push(extractedData);
-            logger.info(`Chunk ${chunk.id + 1} extraction complete`);
-          } catch (error) {
-            logger.error(`Error extracting from chunk ${chunk.id}:`, error);
-            // Continue with other chunks even if one fails
+            ).then(extractedData => {
+              // Store result at correct index to maintain order
+              chunkResults[chunkIndex] = extractedData;
+              logger.info(`Chunk ${chunk.id + 1} extraction complete`);
+            }).catch(error => {
+              logger.error(`Error extracting from chunk ${chunk.id}:`, error);
+              // Store null on error to maintain order, will be filtered during merge
+              chunkResults[chunkIndex] = null;
+            });
+
+            batchPromises.push(promise);
           }
+
+          // Wait for current batch to complete before starting next batch
+          logger.info(`Waiting for batch to complete`, {
+            batchStart: i + 1,
+            batchSize: batchPromises.length
+          });
+          await Promise.all(batchPromises);
+          logger.info(`Batch completed`, {
+            batchStart: i + 1,
+            completedChunks: i + batchPromises.length
+          });
         }
 
+        // Filter out null results from failed chunks
+        const validChunkResults = chunkResults.filter(result => result !== null);
+
         // Merge results using LLM
-        logger.info('Merging chunk results with LLM...');
+        logger.info('Merging chunk results with LLM...', {
+          totalChunks: chunks.length,
+          validChunks: validChunkResults.length,
+          failedChunks: chunks.length - validChunkResults.length
+        });
         const mergedData = await this.callMergeLLM({
-          chunkResults,
+          chunkResults: validChunkResults,
           schema: transformedSchema,
           instruction: instruction || 'Extract data according to schema',
           apiKey: apiKey || '',

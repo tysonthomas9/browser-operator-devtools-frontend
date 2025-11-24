@@ -142,7 +142,7 @@ export interface ExtendedRetryConfig extends ErrorRetryConfig {
 /**
  * LLM Provider types
  */
-export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+export type LLMProvider = 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' | 'cerebras' | 'anthropic' | 'googleai';
 
 /**
  * Content types for multimodal messages (text + images + files)
@@ -237,4 +237,87 @@ export interface ModelInfo {
   name: string;
   provider: LLMProvider;
   capabilities?: ModelCapabilities;
+}
+
+/**
+ * Helper functions for custom provider handling
+ */
+
+/**
+ * Check if a provider ID represents a custom provider
+ * Custom providers have IDs that start with "custom:"
+ */
+export function isCustomProvider(providerId: string): boolean {
+  return providerId.startsWith('custom:');
+}
+
+/**
+ * Check if a provider ID represents a built-in provider
+ */
+export function isBuiltInProvider(providerId: string): providerId is LLMProvider {
+  const builtInProviders: LLMProvider[] = [
+    'openai',
+    'litellm',
+    'groq',
+    'openrouter',
+    'browseroperator',
+    'cerebras',
+    'anthropic',
+    'googleai'
+  ];
+  return builtInProviders.includes(providerId as LLMProvider);
+}
+
+/**
+ * Get the display name for a provider (handles both built-in and custom)
+ * For custom providers, extracts the name from the ID (e.g., "custom:z-ai" -> "Z.AI")
+ */
+export function getProviderDisplayName(providerId: string): string {
+  // Handle built-in providers
+  const builtInNames: Record<LLMProvider, string> = {
+    'openai': 'OpenAI',
+    'litellm': 'LiteLLM',
+    'groq': 'Groq',
+    'openrouter': 'OpenRouter',
+    'browseroperator': 'BrowserOperator',
+    'cerebras': 'Cerebras',
+    'anthropic': 'Anthropic',
+    'googleai': 'Google AI'
+  };
+
+  if (isBuiltInProvider(providerId)) {
+    return builtInNames[providerId as LLMProvider];
+  }
+
+  // Handle custom providers - extract name from ID
+  if (isCustomProvider(providerId)) {
+    const name = providerId.replace('custom:', '');
+    // Capitalize first letter of each word
+    return name.split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  return providerId;
+}
+
+/**
+ * Validate provider ID format
+ */
+export function isValidProviderId(providerId: string): boolean {
+  if (!providerId || typeof providerId !== 'string') {
+    return false;
+  }
+
+  // Check if it's a built-in provider
+  if (isBuiltInProvider(providerId)) {
+    return true;
+  }
+
+  // Check if it's a valid custom provider ID (starts with "custom:" and has content after)
+  if (isCustomProvider(providerId)) {
+    return providerId.length > 7; // "custom:" is 7 characters
+  }
+
+  return false;
 }

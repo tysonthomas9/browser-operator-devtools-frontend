@@ -1647,6 +1647,27 @@ details[open] .tool-details-content {
   max-height: none !important;
 }
 
+/* Conversation history dialog styles */
+.conversation-history-dialog {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.conversation-history-dialog .widget {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
 /* Deep research actions styling */
 .deep-research-actions {
   margin-top: 12px;

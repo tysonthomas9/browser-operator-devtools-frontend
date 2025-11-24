@@ -526,10 +526,13 @@ export async function waitForPageLoad(target: SDK.Target.Target, timeoutMs: numb
     throw new Error('RuntimeAgent not found for target.');
   }
 
-  let loadEventListener: Common.EventTarget.EventDescriptor | null = null;
+  let lifecycleEventListener: Common.EventTarget.EventDescriptor | null = null;
   let overallTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   try {
+    // Enable lifecycle events for networkAlmostIdle detection
+    await resourceTreeModel.setLifecycleEventsEnabled(true);
+
     // 1. Overall Timeout Promise
     const timeoutPromise = new Promise<never>((_, reject) => {
       overallTimeoutId = setTimeout(() => {
@@ -538,13 +541,19 @@ export async function waitForPageLoad(target: SDK.Target.Target, timeoutMs: numb
       }, timeoutMs);
     });
 
-    // 2. Load Event Promise
-    const loadPromise = new Promise<void>(resolve => {
-      // Attach listener - Load event should fire even if already loaded.
-      loadEventListener = resourceTreeModel.addEventListener(SDK.ResourceTreeModel.Events.Load, () => {
-        logger.info('waitForPageLoad: Load event received.');
-        resolve();
-      });
+    // 2. Network Almost Idle Promise (via lifecycle events)
+    const networkIdlePromise = new Promise<void>(resolve => {
+      lifecycleEventListener = resourceTreeModel.addEventListener(
+        SDK.ResourceTreeModel.Events.LifecycleEvent,
+        (event: Common.EventTarget.EventTargetEvent<{frameId: Protocol.Page.FrameId, name: string}>) => {
+          const {name} = event.data;
+          // networkAlmostIdle means ≤2 network connections for 500ms
+          if (name === 'networkAlmostIdle' || name === 'networkIdle') {
+            logger.info(`waitForPageLoad: ${name} lifecycle event received.`);
+            resolve();
+          }
+        }
+      );
     });
 
     // 3. LCP Promise (via injected script)
@@ -613,10 +622,10 @@ export async function waitForPageLoad(target: SDK.Target.Target, timeoutMs: numb
       }
     })();
 
-    // 4. Race the promises: Wait for the first of load, LCP success, or overall timeout
-    logger.info(`waitForPageLoad: Waiting for Load event, LCP, or timeout (${timeoutMs}ms)...`);
-    await Promise.race([loadPromise, lcpPromise, timeoutPromise]);
-    logger.info('waitForPageLoad: Race finished (Load, LCP, or Timeout).');
+    // 4. Race the promises: Wait for the first of networkIdle, LCP, or timeout
+    logger.info(`waitForPageLoad: Waiting for networkIdle, LCP, or timeout (${timeoutMs}ms)...`);
+    await Promise.race([networkIdlePromise, lcpPromise, timeoutPromise]);
+    logger.info('waitForPageLoad: Race finished (networkIdle, LCP, or Timeout).');
 
   } catch (error) {
     // This catch block will primarily handle the overall timeout rejection
@@ -628,9 +637,9 @@ export async function waitForPageLoad(target: SDK.Target.Target, timeoutMs: numb
     if (overallTimeoutId !== null) {
       clearTimeout(overallTimeoutId);
     }
-    if (loadEventListener) {
-      Common.EventTarget.removeEventListeners([loadEventListener]);
-      logger.info('waitForPageLoad: Load event listener removed.');
+    if (lifecycleEventListener) {
+      Common.EventTarget.removeEventListeners([lifecycleEventListener]);
+      logger.info('waitForPageLoad: Lifecycle event listener removed.');
     }
     // The LCP observer should disconnect itself within the injected script.
   }
@@ -3574,6 +3583,11 @@ export type { RemoveWebAppArgs, RemoveWebAppResult } from './RemoveWebAppTool.js
 
 // Export visual indicator manager
 export { VisualIndicatorManager } from './VisualIndicatorTool.js';
+
+// Export ReadabilityExtractorTool
+export { ReadabilityExtractorTool } from './ReadabilityExtractorTool.js';
+export type { ReadabilityExtractorArgs, ReadabilityExtractorResult } from './ReadabilityExtractorTool.js';
+
 export { CreateFileTool } from './CreateFileTool.js';
 export type { CreateFileArgs, CreateFileResult } from './CreateFileTool.js';
 export { UpdateFileTool } from './UpdateFileTool.js';

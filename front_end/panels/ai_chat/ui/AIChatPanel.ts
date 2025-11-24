@@ -11,12 +11,10 @@ import {AgentService, Events as AgentEvents} from '../core/AgentService.js';
 import { LLMClient } from '../LLM/LLMClient.js';
 import { LLMConfigurationManager } from '../core/LLMConfigurationManager.js';
 import { LLMProviderRegistry } from '../LLM/LLMProviderRegistry.js';
-import { OpenAIProvider } from '../LLM/OpenAIProvider.js';
-import { LiteLLMProvider } from '../LLM/LiteLLMProvider.js';
-import { GroqProvider } from '../LLM/GroqProvider.js';
-import { OpenRouterProvider } from '../LLM/OpenRouterProvider.js';
-import { BrowserOperatorProvider } from '../LLM/BrowserOperatorProvider.js';
 import { createLogger } from '../core/Logger.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
+import type { LLMProvider } from '../LLM/LLMTypes.js';
+import type { ProviderType } from './settings/types.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
 import { BUILD_CONFIG } from '../core/BuildConfig.js';
@@ -90,13 +88,15 @@ import { MCPRegistry } from '../mcp/MCPRegistry.js';
 import { getMCPConfig } from '../mcp/MCPConfig.js';
 import { onMCPConfigChange } from '../mcp/MCPConfig.js';
 import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js';
+// Conversation history
+import { ConversationHistoryList } from './ConversationHistoryList.js';
 
 
 // Model type definition
 export interface ModelOption {
   value: string;
   label: string;
-  type: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+  type: string; // Supports standard providers and custom providers (e.g., 'custom:my-provider')
 }
 
 // Add model options constant - these are the default OpenAI models
@@ -137,6 +137,21 @@ export const DEFAULT_PROVIDER_MODELS: Record<string, {main: string, mini?: strin
     main: 'main',
     mini: 'mini',
     nano: 'nano'
+  },
+  cerebras: {
+    main: 'llama-3.3-70b',
+    mini: 'llama-3.3-8b',
+    nano: 'llama-3.3-8b'
+  },
+  anthropic: {
+    main: 'claude-sonnet-4-20250514',
+    mini: 'claude-haiku-3-5-20241022',
+    nano: 'claude-haiku-3-5-20241022'
+  },
+  googleai: {
+    main: 'gemini-2.0-flash-exp',
+    mini: 'gemini-2.0-flash-thinking-exp-01-21',
+    nano: 'gemini-2.0-flash-thinking-exp-01-21'
   }
 };
 
@@ -179,17 +194,9 @@ const UIStrings = {
    */
   newChatCreated: 'New chat created',
   /**
-   *@description Announcement text for screen readers when the chat is deleted.
-   */
-  chatDeleted: 'Chat deleted',
-  /**
    *@description AI chat UI text creating selecting a history entry.
    */
   history: 'History',
-  /**
-   *@description AI chat UI text deleting the current chat session from local history.
-   */
-  deleteChat: 'Delete local chat',
   /**
    * @description Default text shown in the chat input
    */
@@ -252,7 +259,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     return nanoModel || miniModel || mainModel;
   }
 
-  static getNanoModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' } {
+  static getNanoModelWithProvider(): { model: string, provider: LLMProvider } {
     const configManager = LLMConfigurationManager.getInstance();
     const modelName = AIChatPanel.getNanoModel();
     const provider = configManager.getProvider();
@@ -263,7 +270,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     };
   }
 
-  static getMiniModelWithProvider(): { model: string, provider: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' } {
+  static getMiniModelWithProvider(): { model: string, provider: LLMProvider } {
     const configManager = LLMConfigurationManager.getInstance();
     const modelName = AIChatPanel.getMiniModel();
     const provider = configManager.getProvider();
@@ -274,21 +281,21 @@ export class AIChatPanel extends UI.Panel.Panel {
     };
   }
 
-  static getProviderForModel(modelName: string): 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' {
+  static getProviderForModel(modelName: string): LLMProvider {
     // Get model options lookup
     const allModelOptions = AIChatPanel.getModelOptions();
     const modelOption = allModelOptions.find(option => option.value === modelName);
-    const originalProvider = (modelOption?.type as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator') || 'openai';
-    
+    const originalProvider = (modelOption?.type as LLMProvider) || 'openai';
+
     // Check if the model's original provider is available in the registry
     if (LLMProviderRegistry.hasProvider(originalProvider)) {
       return originalProvider;
     }
-    
+
     // If the original provider isn't available, fall back to the currently selected provider
     const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     logger.debug(`Provider ${originalProvider} not available for model ${modelName}, falling back to current provider: ${currentProvider}`);
-    return currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator';
+    return currentProvider as LLMProvider;
   }
 
   /**
@@ -369,7 +376,7 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @param provider Optional provider to filter by
    * @returns Array of model options
    */
-  static getModelOptions(provider?: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator'): ModelOption[] {
+  static getModelOptions(provider?: ProviderType): ModelOption[] {
     // Try to get from all_model_options first (comprehensive list)
     const allModelOptionsStr = localStorage.getItem('ai_chat_all_model_options');
     if (allModelOptionsStr) {
@@ -435,112 +442,104 @@ export class AIChatPanel extends UI.Panel.Panel {
       type: 'litellm' as const
     }));
     
-    // Separate existing models by provider type
-    const existingOpenAIModels = existingAllModels.filter((m: ModelOption) => m.type === 'openai');
-    const existingLiteLLMModels = existingAllModels.filter((m: ModelOption) => m.type === 'litellm');
-    const existingGroqModels = existingAllModels.filter((m: ModelOption) => m.type === 'groq');
-    const existingOpenRouterModels = existingAllModels.filter((m: ModelOption) => m.type === 'openrouter');
-    const existingBrowserOperatorModels = existingAllModels.filter((m: ModelOption) => m.type === 'browseroperator');
+    // Define standard provider types
+    const STANDARD_PROVIDER_TYPES: ProviderType[] = [
+      'openai', 'litellm', 'groq', 'openrouter', 'browseroperator',
+      'cerebras', 'anthropic', 'googleai'
+    ];
 
-    // Update models based on what type of models we're adding
-    // Always use DEFAULT_OPENAI_MODELS for OpenAI to ensure we have the latest hardcoded list
-    let updatedOpenAIModels = DEFAULT_OPENAI_MODELS;
-    let updatedLiteLLMModels = existingLiteLLMModels;
-    let updatedGroqModels = existingGroqModels;
-    let updatedOpenRouterModels = existingOpenRouterModels;
-    let updatedBrowserOperatorModels = existingBrowserOperatorModels;
+    // Get custom providers dynamically
+    const customProviders = CustomProviderManager.listEnabledProviders().map(p => p.id);
 
-    // Replace models for the provider type we're updating
-    if (providerModels.length > 0) {
-      const firstModelType = providerModels[0].type;
-      if (firstModelType === 'litellm') {
-        updatedLiteLLMModels = [...customModels, ...providerModels];
-      } else if (firstModelType === 'groq') {
-        updatedGroqModels = providerModels;
-      } else if (firstModelType === 'openrouter') {
-        updatedOpenRouterModels = providerModels;
-      } else if (firstModelType === 'openai') {
-        updatedOpenAIModels = providerModels;
-      } else if (firstModelType === 'browseroperator') {
-        updatedBrowserOperatorModels = providerModels;
+    // Combine standard and custom providers
+    const ALL_PROVIDER_TYPES = [...STANDARD_PROVIDER_TYPES, ...customProviders];
+
+    // Build a map of provider type -> models for generic handling
+    const modelsByProvider = new Map<ProviderType, ModelOption[]>();
+
+    // Initialize with existing models for each provider
+    for (const providerType of ALL_PROVIDER_TYPES) {
+      const existingModels = existingAllModels.filter((m: ModelOption) => m.type === providerType);
+      modelsByProvider.set(providerType, existingModels);
+    }
+
+    // Special case: OpenAI always uses DEFAULT_OPENAI_MODELS to ensure latest hardcoded list
+    modelsByProvider.set('openai', DEFAULT_OPENAI_MODELS);
+
+    // Load models from custom providers
+    for (const customProviderId of customProviders) {
+      const customProvider = CustomProviderManager.getProvider(customProviderId);
+      if (customProvider && customProvider.models && customProvider.models.length > 0) {
+        const customProviderModels = customProvider.models.map(modelId => ({
+          value: modelId,
+          label: `${customProvider.name}: ${modelId}`,
+          type: customProviderId as ProviderType
+        }));
+        modelsByProvider.set(customProviderId as ProviderType, customProviderModels);
       }
     }
-    
-    // Create the comprehensive model list with all models from all providers
-    const allModels = [
-      ...updatedOpenAIModels,
-      ...updatedLiteLLMModels,
-      ...updatedGroqModels,
-      ...updatedOpenRouterModels,
-      ...updatedBrowserOperatorModels
-    ];
-    
-    // Save the comprehensive list to localStorage
+
+    // Update models for the provider type we're adding (if any)
+    if (providerModels.length > 0) {
+      const firstModelType = providerModels[0].type;
+
+      if (firstModelType === 'litellm') {
+        // Special case: LiteLLM includes custom models
+        modelsByProvider.set('litellm', [...customModels, ...providerModels]);
+      } else {
+        // For all other providers, just replace with new models
+        modelsByProvider.set(firstModelType, providerModels);
+      }
+    }
+
+    // Create comprehensive model list from all providers
+    const allModels: ModelOption[] = [];
+    for (const providerType of ALL_PROVIDER_TYPES) {
+      const models = modelsByProvider.get(providerType) || [];
+      allModels.push(...models);
+    }
+
+    // Save comprehensive list to localStorage
     localStorage.setItem('ai_chat_all_model_options', JSON.stringify(allModels));
-    
-    // For backwards compatibility, also update the MODEL_OPTIONS variable
-    // based on the currently selected provider
-    if (selectedProvider === 'openai') {
-      MODEL_OPTIONS = updatedOpenAIModels;
-    } else if (selectedProvider === 'groq') {
-      MODEL_OPTIONS = updatedGroqModels;
-      
-      // Add placeholder if no Groq models available
-      if (MODEL_OPTIONS.length === 0) {
-        MODEL_OPTIONS.push({
-          value: MODEL_PLACEHOLDERS.NO_MODELS,
-          label: 'Groq: Please configure API key in settings',
-          type: 'groq' as const
-        });
-      }
-    } else if (selectedProvider === 'openrouter') {
-      MODEL_OPTIONS = updatedOpenRouterModels;
 
-      // Add placeholder if no OpenRouter models available
-      if (MODEL_OPTIONS.length === 0) {
-        MODEL_OPTIONS.push({
-          value: MODEL_PLACEHOLDERS.NO_MODELS,
-          label: 'OpenRouter: Please configure API key in settings',
-          type: 'openrouter' as const
-        });
-      }
-    } else if (selectedProvider === 'browseroperator') {
-      MODEL_OPTIONS = updatedBrowserOperatorModels;
+    // Set MODEL_OPTIONS based on currently selected provider
+    MODEL_OPTIONS = modelsByProvider.get(selectedProvider as ProviderType) || [];
 
-      // Add placeholder if no BrowserOperator models available
-      if (MODEL_OPTIONS.length === 0) {
-        MODEL_OPTIONS.push({
-          value: MODEL_PLACEHOLDERS.NO_MODELS,
-          label: 'BrowserOperator: Models not loaded',
-          type: 'browseroperator' as const
-        });
-      }
-    } else {
-      // For LiteLLM provider, include custom models and fetched models
-      MODEL_OPTIONS = updatedLiteLLMModels;
-
-      // Add placeholder if needed for LiteLLM when we have no models
-      if (hadWildcard && MODEL_OPTIONS.length === 0) {
+    // Add placeholder if no models available for the selected provider
+    if (MODEL_OPTIONS.length === 0) {
+      // Special case for LiteLLM with wildcard
+      if (selectedProvider === 'litellm' && hadWildcard) {
         MODEL_OPTIONS.push({
           value: MODEL_PLACEHOLDERS.ADD_CUSTOM,
           label: 'LiteLLM: Please add custom models in settings',
           type: 'litellm' as const
         });
+      } else {
+        // Generic placeholder for all other providers
+        const providerLabel = selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1);
+        MODEL_OPTIONS.push({
+          value: MODEL_PLACEHOLDERS.NO_MODELS,
+          label: `${providerLabel}: Please configure in settings`,
+          type: selectedProvider as ProviderType
+        });
       }
     }
-    
+
     // Save MODEL_OPTIONS to localStorage for backwards compatibility
     localStorage.setItem('ai_chat_model_options', JSON.stringify(MODEL_OPTIONS));
-    
-    logger.info('Updated model options:', {
+
+    // Build log info dynamically for all providers
+    const logInfo: Record<string, unknown> = {
       provider: selectedProvider,
-      openaiModels: updatedOpenAIModels.length,
-      litellmModels: updatedLiteLLMModels.length,
-      groqModels: updatedGroqModels.length,
-      openrouterModels: updatedOpenRouterModels.length,
       totalModelOptions: MODEL_OPTIONS.length,
       allModelsLength: allModels.length
-    });
+    };
+    for (const providerType of ALL_PROVIDER_TYPES) {
+      const models = modelsByProvider.get(providerType) || [];
+      logInfo[`${providerType}Models`] = models.length;
+    }
+
+    logger.info('Updated model options:', logInfo);
     
     return allModels;
   }
@@ -551,7 +550,10 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @param modelType Type of the model ('openai' or 'litellm')
    * @returns Updated model options
    */
-  static addCustomModelOption(modelName: string, modelType: 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator' = 'litellm'): ModelOption[] {
+  static addCustomModelOption(modelName: string, modelType?: ProviderType): ModelOption[] {
+    // Default to litellm if not specified
+    const finalModelType = modelType || 'litellm';
+
     // Get existing custom models
     const savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
     
@@ -568,11 +570,11 @@ export class AIChatPanel extends UI.Panel.Panel {
     // Create the model option object
     const newOption: ModelOption = {
       value: modelName,
-      label: modelType === 'litellm' ? `LiteLLM: ${modelName}` : 
-             modelType === 'groq' ? `Groq: ${modelName}` : 
-             modelType === 'openrouter' ? `OpenRouter: ${modelName}` :
+      label: finalModelType === 'litellm' ? `LiteLLM: ${modelName}` :
+             finalModelType === 'groq' ? `Groq: ${modelName}` :
+             finalModelType === 'openrouter' ? `OpenRouter: ${modelName}` :
              `OpenAI: ${modelName}`,
-      type: modelType
+      type: finalModelType
     };
     
     // Get all existing model options
@@ -654,7 +656,6 @@ export class AIChatPanel extends UI.Panel.Panel {
   #leftToolbar!: UI.Toolbar.Toolbar;
   #rightToolbar!: UI.Toolbar.Toolbar;
   #newChatButton!: UI.Toolbar.ToolbarButton;
-  #deleteButton!: UI.Toolbar.ToolbarButton;
   #bookmarkButton!: UI.Toolbar.ToolbarButton;
   #settingsMenuButton!: UI.Toolbar.ToolbarMenuButton;
   #closeButton!: UI.Toolbar.ToolbarButton;
@@ -668,6 +669,8 @@ export class AIChatPanel extends UI.Panel.Panel {
   // Store bound event listeners to properly add/remove without duplications
   #boundOnMessagesChanged?: (e: Common.EventTarget.EventTargetEvent<ChatMessage[]>) => void;
   #boundOnAgentSessionStarted?: (e: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>) => void;
+  #boundOnConversationSaved?: (e: Common.EventTarget.EventTargetEvent<string>) => void;
+  #boundOnConversationChanged?: (e: Common.EventTarget.EventTargetEvent<string | null>) => void;
   #boundOnAgentToolStarted?: (e: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolCall: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>) => void;
   #boundOnAgentToolCompleted?: (e: Common.EventTarget.EventTargetEvent<{ session: import('../agent_framework/AgentSessionTypes.js').AgentSession, toolResult: import('../agent_framework/AgentSessionTypes.js').AgentMessage }>) => void;
   #boundOnAgentSessionUpdated?: (e: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentSessionTypes.js').AgentSession>) => void;
@@ -689,6 +692,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#boundOnAgentToolCompleted = this.#handleAgentToolCompleted.bind(this);
     this.#boundOnAgentSessionUpdated = this.#handleAgentSessionUpdated.bind(this);
     this.#boundOnChildAgentStarted = this.#handleChildAgentStarted.bind(this);
+    this.#boundOnConversationSaved = this.#handleConversationSaved.bind(this);
+    this.#boundOnConversationChanged = this.#handleConversationChanged.bind(this);
 
     this.#setupUI();
     this.#setupInitialState();
@@ -740,18 +745,6 @@ export class AIChatPanel extends UI.Panel.Panel {
       this
     );
 
-    this.#deleteButton = new UI.Toolbar.ToolbarButton(
-      i18nString(UIStrings.deleteChat),
-      'bin',
-      undefined,
-      'ai-chat.delete'
-    );
-    this.#deleteButton.addEventListener(
-      UI.Toolbar.ToolbarButton.Events.CLICK,
-      this.#onDeleteClick,
-      this
-    );
-
     this.#bookmarkButton = new UI.Toolbar.ToolbarButton(
       i18nString(UIStrings.bookmarkPage),
       'download',
@@ -780,10 +773,6 @@ export class AIChatPanel extends UI.Panel.Panel {
 
     // Add buttons to toolbars ONCE (order matters for right toolbar)
     this.#leftToolbar.appendToolbarItem(this.#newChatButton);
-
-    this.#rightToolbar.appendSeparator();
-    this.#rightToolbar.appendToolbarItem(this.#deleteButton);
-    this.#rightToolbar.appendToolbarItem(this.#bookmarkButton);
     this.#rightToolbar.appendToolbarItem(this.#settingsMenuButton);
     this.#rightToolbar.appendToolbarItem(this.#closeButton);
 
@@ -1408,6 +1397,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     if (this.#boundOnAgentToolCompleted) this.#agentService.removeEventListener(AgentEvents.AGENT_TOOL_COMPLETED, this.#boundOnAgentToolCompleted);
     if (this.#boundOnAgentSessionUpdated) this.#agentService.removeEventListener(AgentEvents.AGENT_SESSION_UPDATED, this.#boundOnAgentSessionUpdated);
     if (this.#boundOnChildAgentStarted) this.#agentService.removeEventListener(AgentEvents.CHILD_AGENT_STARTED, this.#boundOnChildAgentStarted);
+    if (this.#boundOnConversationSaved) this.#agentService.removeEventListener(AgentEvents.CONVERSATION_SAVED, this.#boundOnConversationSaved);
+    if (this.#boundOnConversationChanged) this.#agentService.removeEventListener(AgentEvents.CONVERSATION_CHANGED, this.#boundOnConversationChanged);
     
     // Register for messages changed events
     if (this.#boundOnMessagesChanged) this.#agentService.addEventListener(AgentEvents.MESSAGES_CHANGED, this.#boundOnMessagesChanged);
@@ -1416,6 +1407,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     if (this.#boundOnAgentToolCompleted) this.#agentService.addEventListener(AgentEvents.AGENT_TOOL_COMPLETED, this.#boundOnAgentToolCompleted);
     if (this.#boundOnAgentSessionUpdated) this.#agentService.addEventListener(AgentEvents.AGENT_SESSION_UPDATED, this.#boundOnAgentSessionUpdated);
     if (this.#boundOnChildAgentStarted) this.#agentService.addEventListener(AgentEvents.CHILD_AGENT_STARTED, this.#boundOnChildAgentStarted);
+    if (this.#boundOnConversationSaved) this.#agentService.addEventListener(AgentEvents.CONVERSATION_SAVED, this.#boundOnConversationSaved);
+    if (this.#boundOnConversationChanged) this.#agentService.addEventListener(AgentEvents.CONVERSATION_CHANGED, this.#boundOnConversationChanged);
     
     // Initialize the agent service
     logger.info('Calling agentService.initialize()...');
@@ -1459,18 +1452,27 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @returns true if at least one provider has valid credentials
    */
   #hasAnyProviderCredentials(): boolean {
-
     const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
 
+    // Define standard provider types
+    const STANDARD_PROVIDER_TYPES: ProviderType[] = [
+      'openai', 'litellm', 'groq', 'openrouter', 'browseroperator',
+      'cerebras', 'anthropic', 'googleai'
+    ];
+
+    // Get custom providers dynamically
+    const customProviders = CustomProviderManager.listEnabledProviders().map(p => p.id);
+
+    // Combine standard and custom providers
+    const ALL_PROVIDER_TYPES = [...STANDARD_PROVIDER_TYPES, ...customProviders];
+
     // Check all providers except LiteLLM (unless LiteLLM is selected)
-    const providers = ['openai', 'groq', 'openrouter', 'browseroperator'];
+    // LiteLLM is excluded by default because it requires endpoint configuration
+    const providersToCheck = ALL_PROVIDER_TYPES.filter(provider =>
+      provider !== 'litellm' || selectedProvider === 'litellm'
+    );
 
-    // Only include LiteLLM if it's the selected provider
-    if (selectedProvider === 'litellm') {
-      providers.push('litellm');
-    }
-
-    for (const provider of providers) {
+    for (const provider of providersToCheck) {
       const validation = LLMClient.validateProviderCredentials(provider);
       if (validation.isValid) {
         return true;
@@ -1482,75 +1484,32 @@ export class AIChatPanel extends UI.Panel.Panel {
 
   /**
    * Checks if required credentials are available based on provider using provider-specific validation
-   * @param provider The selected provider ('openai', 'litellm', 'groq', 'openrouter')
+   * @param provider The selected provider ('openai', 'litellm', 'groq', 'openrouter', 'cerebras', 'anthropic', 'googleai', etc.)
    * @returns Object with canProceed flag and apiKey
    */
   #checkCredentials(provider: string): {canProceed: boolean, apiKey: string | null} {
     logger.info('=== CHECKING CREDENTIALS FOR PROVIDER ===');
     logger.info('Provider:', provider);
     logger.info('Timestamp:', new Date().toISOString());
-    
-    // Use provider-specific validation
-    logger.info('Calling LLMClient.validateProviderCredentials()...');
-    const validation = LLMClient.validateProviderCredentials(provider);
-    logger.info('Validation result:');
-    logger.info('- Is valid:', validation.isValid);
-    logger.info('- Message:', validation.message);
-    logger.info('- Missing items:', validation.missingItems);
-    
-    let apiKey: string | null = null;
-    
-    if (validation.isValid) {
-      logger.info('Validation passed, retrieving API key...');
-      
-      // Get the API key from the provider-specific storage
-      try {
-        // Create a temporary provider instance to get storage keys
-        let tempProvider;
-        switch (provider) {
-          case 'openai':
-            tempProvider = new OpenAIProvider('');
-            break;
-          case 'litellm':
-            tempProvider = new LiteLLMProvider('', '');
-            break;
-          case 'groq':
-            tempProvider = new GroqProvider('');
-            break;
-          case 'openrouter':
-            tempProvider = new OpenRouterProvider('');
-            break;
-          case 'browseroperator':
-            tempProvider = new BrowserOperatorProvider(null, '');
-            break;
-          default:
-            logger.warn(`Unknown provider: ${provider}`);
-            return {canProceed: false, apiKey: null};
-        }
-        
-        const storageKeys = tempProvider.getCredentialStorageKeys();
-        logger.info('Storage keys for provider:');
-        logger.info('- API key storage key:', storageKeys.apiKey);
-        
-        apiKey = localStorage.getItem(storageKeys.apiKey || '') || null;
-        logger.info('Retrieved API key:');
-        logger.info('- Exists:', !!apiKey);
-        logger.info('- Length:', apiKey?.length || 0);
-        logger.info('- Prefix:', apiKey?.substring(0, 8) + '...' || 'none');
-        
-      } catch (error) {
-        logger.error(`❌ Failed to get API key for ${provider}:`, error);
-        return {canProceed: false, apiKey: null};
-      }
-    } else {
-      logger.warn('❌ Validation failed for provider:', provider);
+
+    // Use centralized credential checking from LLMClient
+    logger.info('Calling LLMClient.getProviderCredentials()...');
+    const result = LLMClient.getProviderCredentials(provider);
+
+    logger.info('Credential check result:');
+    logger.info('- Can proceed:', result.canProceed);
+    logger.info('- API key exists:', !!result.apiKey);
+    logger.info('- API key length:', result.apiKey?.length || 0);
+    if (result.endpoint) {
+      logger.info('- Endpoint:', result.endpoint);
     }
-    
-    const result = {canProceed: validation.isValid, apiKey};
+
     logger.info('=== CREDENTIAL CHECK COMPLETE ===');
-    logger.info('Final result:', result);
-    
-    return result;
+
+    return {
+      canProceed: result.canProceed,
+      apiKey: result.apiKey
+    };
   }
 
   /**
@@ -1747,6 +1706,34 @@ export class AIChatPanel extends UI.Panel.Panel {
     const { parentSession } = event.data;
     this.#upsertAgentSessionMessage(parentSession);
     this.performUpdate();
+  }
+
+  /**
+   * Handle conversation saved event
+   */
+  #handleConversationSaved(event: Common.EventTarget.EventTargetEvent<string>): void {
+    const conversationId = event.data;
+    logger.debug('Conversation saved event', {conversationId});
+  }
+
+  /**
+   * Handle conversation changed event
+   */
+  async #handleConversationChanged(event: Common.EventTarget.EventTargetEvent<string | null>): Promise<void> {
+    const conversationId = event.data;
+    logger.debug('Conversation changed event', {conversationId});
+
+    // Set the file storage session ID to the conversation ID
+    if (conversationId) {
+      const {FileStorageManager} = await import('../tools/FileStorageManager.js');
+      FileStorageManager.getInstance().setSessionId(conversationId);
+      logger.info('Set file storage sessionId to conversationId', {conversationId});
+
+      // Refresh the file list to show files for this conversation
+      if (this.#chatView) {
+        await this.#chatView.refreshFileList();
+      }
+    }
   }
 
   /**
@@ -2005,7 +1992,6 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Updates the UI components with the current state
    */
   override performUpdate(): void {
-    this.#updateToolbar();
     this.#updateSettingsButtonHighlight();
     this.#updateChatViewState();
   }
@@ -2021,6 +2007,11 @@ export class AIChatPanel extends UI.Panel.Panel {
           'Settings',
           () => this.#onSettingsClick(),
           {jslogContext: 'settings'}
+        );
+        contextMenu.defaultSection().appendItem(
+          i18nString(UIStrings.history),
+          () => void this.#onHistoryClick(),
+          {jslogContext: 'history'}
         );
         contextMenu.defaultSection().appendItem(
           'Help',
@@ -2048,20 +2039,6 @@ export class AIChatPanel extends UI.Panel.Panel {
     return menuButton;
   }
 
-  /**
-   * Updates the toolbar UI
-   */
-  #updateToolbar(): void {
-    // Update button visibility based on current state
-    // Delete button is only visible when there are messages to delete
-    this.#deleteButton.setVisible(this.#messages.length > 1);
-
-    // Bookmark button visibility can be controlled here if needed
-    // this.#bookmarkButton.setVisible(someCondition);
-
-    // All other buttons (New Chat, Settings Menu, Close) are always visible
-  }
-  
   /**
    * Updates the chat view with current state
    */
@@ -2205,22 +2182,105 @@ export class AIChatPanel extends UI.Panel.Panel {
     }
   }
 
-  #onNewChatClick(): void {
+  async #onNewChatClick(): Promise<void> {
     this.#agentService.clearConversation();
     this.#messages = this.#agentService.getMessages();
     this.#isProcessing = false;
     this.#selectedAgentType = null; // Reset selected agent type
-    
+
+    // Reset file storage session ID to default for new chat
+    const {FileStorageManager} = await import('../tools/FileStorageManager.js');
+    FileStorageManager.getInstance().setSessionId('default');
+    logger.info('Reset file storage sessionId to default for new chat');
+
     // Create new EvaluationAgent for new chat session
     this.#createEvaluationAgentIfNeeded();
-    
+
     this.performUpdate();
     UI.ARIAUtils.LiveAnnouncer.alert(i18nString(UIStrings.newChatCreated));
   }
 
-  #onDeleteClick(): void {
-    this.#onNewChatClick();
-    UI.ARIAUtils.LiveAnnouncer.alert(i18nString(UIStrings.chatDeleted));
+  /**
+   * Loads a conversation from history
+   */
+  async #loadConversation(conversationId: string): Promise<void> {
+    const success = await this.#agentService.loadConversation(conversationId);
+
+    if (success) {
+      this.#messages = this.#agentService.getMessages();
+      this.#selectedAgentType = this.#agentService.getState().selectedAgentType || null;
+
+      // Set file storage session ID to the conversation ID
+      const {FileStorageManager} = await import('../tools/FileStorageManager.js');
+      FileStorageManager.getInstance().setSessionId(conversationId);
+      logger.info('Set file storage sessionId to conversationId', {conversationId});
+
+      // Refresh the file list to show files for this conversation
+      if (this.#chatView) {
+        await this.#chatView.refreshFileList();
+      }
+
+      this.performUpdate();
+
+      logger.info('Conversation loaded from history', {conversationId});
+    } else {
+      logger.error('Failed to load conversation', {conversationId});
+    }
+  }
+
+  /**
+   * Starts a new conversation
+   */
+  async #startNewConversation(): Promise<void> {
+    await this.#agentService.newConversation();
+    this.#messages = this.#agentService.getMessages();
+    this.#isProcessing = false;
+    this.#selectedAgentType = null;
+    this.#createEvaluationAgentIfNeeded();
+    this.performUpdate();
+
+    logger.info('New conversation started from history dialog');
+  }
+
+  /**
+   * Deletes a conversation
+   */
+  async #deleteConversation(conversationId: string): Promise<void> {
+    const success = await this.#agentService.deleteConversation(conversationId);
+
+    if (success) {
+      logger.info('Conversation deleted', {conversationId});
+    } else {
+      logger.error('Failed to delete conversation', {conversationId});
+    }
+  }
+
+
+  /**
+   * Handles history button click to show conversation history dialog
+   */
+  async #onHistoryClick(): Promise<void> {
+    const conversations = await this.#agentService.listConversations();
+    const currentId = this.#agentService.getCurrentConversationId();
+
+    // Create dialog
+    const dialog = new UI.Dialog.Dialog();
+    dialog.setDimmed(true);
+    dialog.contentElement.classList.add('conversation-history-dialog');
+
+    // Create the conversation history list component
+    const historyList = new ConversationHistoryList();
+    historyList.conversations = conversations;
+    historyList.currentConversationId = currentId;
+    historyList.onConversationSelected = (id) => this.#loadConversation(id);
+    historyList.onDeleteConversation = (id) => this.#deleteConversation(id);
+    historyList.onClose = () => dialog.hide();
+
+    dialog.setOutsideClickCallback(() => dialog.hide());
+    dialog.contentElement.appendChild(historyList);
+    dialog.show();
+
+    logger.info('Conversation history dialog opened');
   }
 
   #onHelpClick(): void {
@@ -2254,7 +2314,7 @@ export class AIChatPanel extends UI.Panel.Panel {
         await this.#handleSettingsChanged();
       },
       this.#fetchLiteLLMModels.bind(this),
-      AIChatPanel.updateModelOptions,
+      (providerModels, hadWildcard) => { AIChatPanel.updateModelOptions(providerModels, hadWildcard); },
       AIChatPanel.getModelOptions,
       AIChatPanel.addCustomModelOption,
       AIChatPanel.removeCustomModelOption
@@ -2487,8 +2547,6 @@ export class AIChatPanel extends UI.Panel.Panel {
     } catch (err) {
       logger.error('Failed to reinitialize MCP after settings change', err);
     }
-    // Update toolbar to reflect vector DB enabled state
-    this.#updateToolbar();
   }
   
   /**

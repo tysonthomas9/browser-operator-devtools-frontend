@@ -10,6 +10,7 @@ import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { waitForPageLoad, type Tool, type LLMContext } from './Tools.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
+import { ContentChunker } from '../utils/ContentChunker.js';
 
 const logger = createLogger('Tool:HTMLToMarkdown');
 
@@ -34,8 +35,15 @@ export interface HTMLToMarkdownArgs {
  * Tool for extracting the main article content from a webpage and converting it to Markdown
  */
 export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdownResult> {
+  // Chunking configuration
+  private readonly TOKEN_LIMIT_FOR_CHUNKING = 65000; // Auto-chunk if tree exceeds this (~260k chars)
+  private readonly CHUNK_TOKEN_LIMIT = 40000; // Max tokens per chunk (~160k chars)
+  private readonly CHARS_PER_TOKEN = 4; // Conservative estimate
+
+  private contentChunker = new ContentChunker();
+
   name = 'html_to_markdown';
-  description = 'Extracts the main article content from a webpage and converts it to well-formatted Markdown, removing ads, navigation, and other distracting elements.';
+  description = 'Extracts the main article content from a webpage and converts it to well-formatted Markdown, removing ads, navigation, and other distracting elements. Automatically chunks large pages for efficient processing.';
 
 
   schema = {
@@ -106,12 +114,10 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
 
       logger.info('Retrieved page content', { contentLength: content.length });
 
-      // Create prompts for the LLM
-      const systemPrompt = this.createSystemPrompt();
-      const userPrompt = this.createUserPrompt(content, instruction);
+      // Check if we need to chunk the content
+      const estimatedTokens = Math.ceil(content.length / this.CHARS_PER_TOKEN);
+      logger.info('Estimated token count', { estimatedTokens });
 
-      // Call the LLM for extraction
-      logger.info('Calling LLM for extraction');
       if (!ctx?.provider || !ctx.nanoModel) {
         return {
           success: false,
@@ -119,20 +125,40 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
           error: 'Missing LLM context (provider/nanoModel) for HTMLToMarkdownTool'
         };
       }
-      const extractionResult = await this.callExtractionLLM({
-        systemPrompt,
-        userPrompt,
-        apiKey: apiKey || '',  // Use empty string for BrowserOperator
-        provider: ctx.provider,
-        model: ctx.nanoModel,
-      });
+
+      let markdownContent: string;
+
+      // If content is too large, use chunking
+      if (estimatedTokens > this.TOKEN_LIMIT_FOR_CHUNKING) {
+        logger.info('Content exceeds token limit, using chunked processing', {
+          estimatedTokens,
+          limit: this.TOKEN_LIMIT_FOR_CHUNKING
+        });
+
+        markdownContent = await this.processWithChunking(content, instruction, apiKey || '', ctx.provider, ctx.nanoModel);
+      } else {
+        // Normal processing for smaller content
+        logger.info('Using standard processing');
+        const systemPrompt = this.createSystemPrompt();
+        const userPrompt = this.createUserPrompt(content, instruction);
+
+        const extractionResult = await this.callExtractionLLM({
+          systemPrompt,
+          userPrompt,
+          apiKey: apiKey || '',
+          provider: ctx.provider,
+          model: ctx.nanoModel,
+        });
+
+        markdownContent = extractionResult.markdownContent;
+      }
 
       logger.info('Extraction completed successfully');
 
       // Return the result
       return {
         success: true,
-        markdownContent: extractionResult.markdownContent
+        markdownContent
       };
 
     } catch (error: any) {
@@ -321,6 +347,91 @@ Here is the instruction from planning agent:
 
 ${instruction}
 `;
+  }
+
+  /**
+   * Process large content by chunking the raw accessibility tree
+   * and extracting markdown from each chunk separately
+   */
+  private async processWithChunking(
+    content: string,
+    instruction: string | undefined,
+    apiKey: string,
+    provider: LLMProvider,
+    model: string
+  ): Promise<string> {
+    // Chunk the raw accessibility tree content
+    logger.info('Chunking raw accessibility tree content');
+    const chunks = this.contentChunker.chunk(content, {
+      maxTokensPerChunk: this.CHUNK_TOKEN_LIMIT,
+      strategy: 'accessibility-tree', // Split on [nodeId] boundaries
+      preserveContext: false
+    });
+
+    logger.info('Created chunks from accessibility tree', { chunkCount: chunks.length });
+
+    // Extract markdown from each accessibility tree chunk in parallel (4 at a time)
+    const markdownChunks: string[] = new Array(chunks.length);
+    const BATCH_SIZE = 4; // Process 4 chunks concurrently
+
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      const batchPromises: Promise<string>[] = [];
+
+      // Create batch of up to 4 promises
+      for (let j = 0; j < BATCH_SIZE && i + j < chunks.length; j++) {
+        const chunkIndex = i + j;
+        const chunk = chunks[chunkIndex];
+
+        logger.info(`Processing chunk ${chunkIndex + 1}/${chunks.length} in parallel batch`, {
+          batchStart: i + 1,
+          batchEnd: Math.min(i + BATCH_SIZE, chunks.length),
+          tokenEstimate: chunk.tokenEstimate
+        });
+
+        const systemPrompt = this.createSystemPrompt();
+        const userPrompt = this.createUserPrompt(chunk.content, instruction);
+
+        // Create promise and handle errors per chunk
+        const promise = this.callExtractionLLM({
+          systemPrompt,
+          userPrompt,
+          apiKey,
+          provider,
+          model,
+        }).then(result => {
+          // Store result at correct index to maintain order
+          markdownChunks[chunkIndex] = result.markdownContent;
+          return result.markdownContent;
+        }).catch(error => {
+          logger.error(`Error processing chunk ${chunkIndex + 1}`, { error });
+          // Store empty string on error to maintain order
+          markdownChunks[chunkIndex] = '';
+          return '';
+        });
+
+        batchPromises.push(promise);
+      }
+
+      // Wait for current batch to complete before starting next batch
+      logger.info(`Waiting for batch to complete`, {
+        batchStart: i + 1,
+        batchSize: batchPromises.length
+      });
+      await Promise.all(batchPromises);
+      logger.info(`Batch completed`, {
+        batchStart: i + 1,
+        completedChunks: i + batchPromises.length
+      });
+    }
+
+    // Combine markdown results
+    const mergedMarkdown = markdownChunks.join('\n\n');
+    logger.info('Combined markdown from all chunks', {
+      totalChunks: chunks.length,
+      finalLength: mergedMarkdown.length
+    });
+
+    return mergedMarkdown;
   }
 
   /**

@@ -282,6 +282,17 @@ export class ChatView extends HTMLElement {
     this.#structuredController.resetLastProcessed();
   }
 
+  /**
+   * Refreshes the file list display
+   */
+  async refreshFileList(): Promise<void> {
+    const fileListDisplay = this.#shadow.querySelector('ai-file-list-display') as any;
+    if (fileListDisplay && typeof fileListDisplay.refresh === 'function') {
+      await fileListDisplay.refresh();
+      logger.debug('FileListDisplay refreshed');
+    }
+  }
+
   // Lane-based routing: deprecated session-heuristics removed
 
   // Scroll behavior handled by <ai-message-list>

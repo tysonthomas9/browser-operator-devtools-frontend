@@ -10,6 +10,7 @@ import { MarkdownReportGenerator } from '../evaluation/framework/MarkdownReportG
 import { MarkdownViewerUtil } from '../common/MarkdownViewerUtil.js';
 import { schemaExtractorTests } from '../evaluation/test-cases/schema-extractor-tests.js';
 import { streamlinedSchemaExtractorTests } from '../evaluation/test-cases/streamlined-schema-extractor-tests.js';
+import { htmlToMarkdownTests } from '../evaluation/test-cases/html-to-markdown-tests.js';
 import { researchAgentTests } from '../evaluation/test-cases/research-agent-tests.js';
 import { actionAgentTests } from '../evaluation/test-cases/action-agent-tests.js';
 import { webTaskAgentTests } from '../evaluation/test-cases/web-task-agent-tests.js';
@@ -33,8 +34,11 @@ const TOOL_TEST_MAPPING: Record<string, { tests: any[], displayName: string }> =
     tests: streamlinedSchemaExtractorTests,
     displayName: 'Streamlined Schema Extractor'
   },
+  'html_to_markdown': {
+    tests: htmlToMarkdownTests,
+    displayName: 'HTML to Markdown'
+  },
   // Future tools can be added here:
-  // 'html_to_markdown': { tests: htmlToMarkdownTests, displayName: 'HTML to Markdown' },
   // 'fetcher_tool': { tests: fetcherToolTests, displayName: 'Fetcher Tool' },
 };
 
