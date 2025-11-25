@@ -116,25 +116,29 @@ export class LLMProviderRegistry {
    * Create a temporary provider instance for utility operations
    * Used when provider isn't registered yet (e.g., during setup/validation)
    */
-  private static createTemporaryProvider(providerType: LLMProvider): LLMProviderInterface | null {
+  private static createTemporaryProvider(
+    providerType: LLMProvider,
+    apiKey: string = '',
+    endpoint?: string
+  ): LLMProviderInterface | null {
     try {
       switch (providerType) {
         case 'openai':
-          return new OpenAIProvider('');
+          return new OpenAIProvider(apiKey);
         case 'litellm':
-          return new LiteLLMProvider('', '');
+          return new LiteLLMProvider(apiKey, endpoint || '');
         case 'groq':
-          return new GroqProvider('');
+          return new GroqProvider(apiKey);
         case 'openrouter':
-          return new OpenRouterProvider('');
+          return new OpenRouterProvider(apiKey);
         case 'browseroperator':
-          return new BrowserOperatorProvider(null, '');
+          return new BrowserOperatorProvider(null, apiKey);
         case 'cerebras':
-          return new CerebrasProvider('');
+          return new CerebrasProvider(apiKey);
         case 'anthropic':
-          return new AnthropicProvider('');
+          return new AnthropicProvider(apiKey);
         case 'googleai':
-          return new GoogleAIProvider('');
+          return new GoogleAIProvider(apiKey);
         default:
           logger.warn(`Unknown provider type: ${providerType}`);
           return null;
@@ -148,16 +152,23 @@ export class LLMProviderRegistry {
   /**
    * Get or create a provider instance for utility operations
    * Prefers registered instance, falls back to temporary instance
+   * @param providerType The type of provider to get/create
+   * @param apiKey Optional API key for temporary provider creation
+   * @param endpoint Optional endpoint for temporary provider creation
    */
-  private static getOrCreateProvider(providerType: LLMProvider): LLMProviderInterface | null {
+  private static getOrCreateProvider(
+    providerType: LLMProvider,
+    apiKey?: string,
+    endpoint?: string
+  ): LLMProviderInterface | null {
     // Try to get registered provider first
     const registered = this.getProvider(providerType);
     if (registered) {
       return registered;
     }
 
-    // Fall back to creating temporary instance
-    return this.createTemporaryProvider(providerType);
+    // Fall back to creating temporary instance with provided credentials
+    return this.createTemporaryProvider(providerType, apiKey || '', endpoint);
   }
 
   /**
@@ -296,19 +307,16 @@ export class LLMProviderRegistry {
     apiKey: string,
     endpoint?: string
   ): Promise<ModelInfo[]> {
-    const provider = this.getOrCreateProvider(providerType);
+    // Get or create provider with provided credentials
+    const provider = this.getOrCreateProvider(providerType, apiKey, endpoint);
     if (!provider) {
       logger.warn(`Provider ${providerType} not available`);
       return [];
     }
 
     try {
-      // Use the provider's fetchModels method if available
-      if ('fetchModels' in provider && typeof provider.fetchModels === 'function') {
-        return await provider.fetchModels(apiKey, endpoint);
-      }
-
-      // Fallback to getModels
+      // Use getModels() which returns standardized ModelInfo[] with 'id' property
+      // The provider was created with the provided apiKey, so getModels() will use it
       return await provider.getModels();
     } catch (error) {
       logger.error(`Failed to fetch models for ${providerType}:`, error);

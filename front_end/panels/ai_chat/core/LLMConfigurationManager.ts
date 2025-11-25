@@ -77,6 +77,7 @@ export class LLMConfigurationManager {
 
   /**
    * Get the main model with override fallback
+   * Note: For default fallback, ensure models are fetched and selected in the UI
    */
   getMainModel(): string {
     if (this.overrideConfig?.mainModel) {

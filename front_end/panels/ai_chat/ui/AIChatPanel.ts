@@ -1231,53 +1231,60 @@ export class AIChatPanel extends UI.Panel.Panel {
   }
 
   /**
-   * Refreshes Groq models from the API
+   * Generic method to refresh models for any provider
+   * @param providerId The provider to refresh models for (e.g., 'groq', 'anthropic', 'googleai')
    */
-  async #refreshGroqModels(): Promise<void> {
+  async #refreshProviderModels(providerId: ProviderType): Promise<void> {
     try {
-      const groqApiKey = localStorage.getItem('ai_chat_groq_api_key');
-      
-      if (!groqApiKey) {
-        logger.info('No Groq API key configured, skipping model refresh');
+      // Import provider configs dynamically to avoid circular dependencies
+      const { GENERIC_PROVIDERS } = await import('./settings/providerConfigs.js');
+
+      // Get provider config
+      const config = GENERIC_PROVIDERS.find(p => p.id === providerId);
+      if (!config || !config.hasFetchButton) {
+        logger.debug(`Provider ${providerId} does not support model fetching`);
+        this.#updateModelOptions([], false);
+        this.performUpdate();
         return;
       }
-      
-      const { models: groqModels } = await this.#fetchGroqModels(groqApiKey);
-      this.#updateModelOptions(groqModels, false);
-      
-      // Update MODEL_OPTIONS to reflect the fetched models
-      this.performUpdate();
-    } catch (error) {
-      logger.error('Failed to refresh Groq models:', error);
-      // Clear Groq models on error
-      AIChatPanel.updateModelOptions([], false);
-      this.performUpdate();
-    }
-  }
 
-  /**
-   * Fetches Groq models from the API
-   * @param apiKey API key to use for the request
-   * @returns Object containing models
-   */
-  async #fetchGroqModels(apiKey: string): Promise<{models: ModelOption[]}> {
-    try {
-      // Fetch models from Groq
-      const models = await LLMClient.fetchGroqModels(apiKey);
+      // Get API key
+      const apiKey = localStorage.getItem(config.apiKeyStorageKey);
+      if (!apiKey && !config.apiKeyOptional) {
+        logger.info(`No API key configured for ${providerId}, skipping model refresh`);
+        this.#updateModelOptions([], false);
+        this.performUpdate();
+        return;
+      }
 
-      // Transform the models to the format we need
-      const groqModels = models.map(model => ({
+      // Get endpoint (only relevant for some providers like LiteLLM)
+      const endpoint = LLMProviderRegistry.getProviderEndpoint(providerId as LLMProvider);
+
+      // Fetch models using the generic registry method
+      const models = await LLMProviderRegistry.fetchProviderModels(
+        providerId as LLMProvider,
+        apiKey ?? '',
+        endpoint ?? undefined
+      );
+
+      // Convert to ModelOption format
+      const modelOptions: ModelOption[] = models.map(model => ({
         value: model.id,
-        label: `Groq: ${model.id}`,
-        type: 'groq' as const
+        label: config.useNameAsLabel ? (model.name || model.id) : model.id,
+        type: providerId
       }));
 
-      logger.info(`Fetched ${groqModels.length} Groq models`);
-      return { models: groqModels };
+      logger.info(`Fetched ${modelOptions.length} ${providerId} models`);
+
+      // Update model options
+      this.#updateModelOptions(modelOptions, false);
+      this.performUpdate();
+
     } catch (error) {
-      logger.error('Failed to fetch Groq models:', error);
-      // Return empty array on error
-      return { models: [] };
+      logger.error(`Failed to refresh ${providerId} models:`, error);
+      // Clear models on error
+      this.#updateModelOptions([], false);
+      this.performUpdate();
     }
   }
 
@@ -2506,39 +2513,35 @@ export class AIChatPanel extends UI.Panel.Panel {
     // Get the selected provider
     const prevProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
     const newProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    
+
     logger.info(`Provider changing from ${prevProvider} to ${newProvider}`);
-    
+
     // Load saved settings
     this.#apiKey = localStorage.getItem('ai_chat_api_key');
     this.#liteLLMApiKey = localStorage.getItem(LITELLM_API_KEY_STORAGE_KEY);
     this.#liteLLMEndpoint = localStorage.getItem(LITELLM_ENDPOINT_KEY);
-    
-    // Reset model options based on the new provider
+
+    // Import provider configs to check if provider supports model fetching
+    const { GENERIC_PROVIDERS } = await import('./settings/providerConfigs.js');
+    const config = GENERIC_PROVIDERS.find(p => p.id === newProvider);
+
+    // Reset model options
+    this.#updateModelOptions([], false);
+
+    // Refresh models based on provider type
     if (newProvider === 'litellm') {
-      // First update model options with empty models
-      this.#updateModelOptions([], false);
-      
-      // Then refresh LiteLLM models
+      // LiteLLM has special handling for wildcard flag
       await this.#refreshLiteLLMModels();
-    } else if (newProvider === 'groq') {
-      // For Groq, update model options and refresh models if API key exists
-      this.#updateModelOptions([], false);
-      
-      const groqApiKey = localStorage.getItem('ai_chat_groq_api_key');
-      if (groqApiKey) {
-        await this.#refreshGroqModels();
-      }
-    } else {
-      // For OpenAI, just update model options with empty LiteLLM models
-      this.#updateModelOptions([], false);
+    } else if (config?.hasFetchButton) {
+      // For all other providers with fetch capability, use generic method
+      await this.#refreshProviderModels(newProvider as ProviderType);
     }
-    
+
     this.#updateModelSelections();
-    
+
     // Validate models after updating selections
     this.#validateAndFixModelSelections();
-    
+
     this.#initializeAgentService();
     // Re-initialize MCP based on latest settings
     try {
@@ -2588,15 +2591,21 @@ export class AIChatPanel extends UI.Panel.Panel {
     
     // Check if the current selected model is valid for the new provider
     const selectedModelOption = MODEL_OPTIONS.find(opt => opt.value === this.#selectedModel);
-    if (!selectedModelOption || selectedModelOption.type !== currentProvider) {
-      logger.info(`Selected model ${this.#selectedModel} is not valid for provider ${currentProvider}`);
-      
+    if (!this.#selectedModel || !selectedModelOption || selectedModelOption.type !== currentProvider) {
+      logger.info(`Selected model ${this.#selectedModel} is not valid for provider ${currentProvider}, selecting default`);
+
       // Try to use provider default main model first
       if (providerDefaults.main && MODEL_OPTIONS.some(option => option.value === providerDefaults.main)) {
         this.#selectedModel = providerDefaults.main;
+        logger.info(`Set main model to provider default: ${providerDefaults.main}`);
       } else if (MODEL_OPTIONS.length > 0) {
         // Otherwise, use the first available model
         this.#selectedModel = MODEL_OPTIONS[0].value;
+        logger.info(`Set main model to first available: ${this.#selectedModel}`);
+      } else {
+        // No models available
+        this.#selectedModel = '';
+        logger.warn(`No models available for provider ${currentProvider}`);
       }
       localStorage.setItem(MODEL_SELECTION_KEY, this.#selectedModel);
     }
