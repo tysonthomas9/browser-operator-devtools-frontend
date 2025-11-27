@@ -177,7 +177,9 @@ export interface Props {
 @customElement('devtools-chat-view')
 export class ChatView extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`devtools-chat-view`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
+  // readonly #shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM for accessibility/automation
+  readonly #shadow = this;
   readonly #boundRender = this.#render.bind(this);
 
   #messages: ChatMessage[] = [];
@@ -235,10 +237,6 @@ export class ChatView extends HTMLElement {
   #isVersionBannerDismissed = false;
 
   connectedCallback(): void {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(chatViewStyles);
-    this.#shadow.adoptedStyleSheets = [sheet];
-
     // Initialize the prompt button click handler
     this.#updatePromptButtonClickHandler();
 
@@ -779,6 +777,9 @@ export class ChatView extends HTMLElement {
     // All messages are rendered directly now, including AgentSessionMessage
     let messagesToRender = this.#messages;
 
+    const cssText = (chatViewStyles as any).cssText || chatViewStyles.toString();
+    const stylesTemplate = html`<style>${cssText.replace(/:host/g, 'devtools-chat-view')}</style>`;
+
     // Build a set of nested child session IDs present in the current message set.
     // Include both nestedSessions[].sessionId and any handoff anchors in messages that
     // have a concrete nestedSessionId (ignore pending-* placeholders). Also build
@@ -865,6 +866,7 @@ export class ChatView extends HTMLElement {
 
       const suggestions = this.#renderExampleSuggestions();
       Lit.render(html`
+        ${stylesTemplate}
         <div class="chat-view-container centered-view">
           ${this.#renderVersionBanner()}
           <div class="centered-content">
@@ -886,6 +888,7 @@ export class ChatView extends HTMLElement {
     } else {
       // Render normal expanded view for conversation
       Lit.render(html`
+        ${stylesTemplate}
         <div class="chat-view-container expanded-view">
           ${this.#renderVersionBanner()}
           <ai-message-list .messages=${[]} .state=${this.#state} .agentViewMode=${this.#agentViewMode}>

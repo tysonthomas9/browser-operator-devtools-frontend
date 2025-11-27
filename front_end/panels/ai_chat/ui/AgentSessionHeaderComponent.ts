@@ -14,7 +14,9 @@ export type SessionStatus = 'running' | 'completed' | 'error';
 @customElement('agent-session-header')
 export class AgentSessionHeaderComponent extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`agent-session-header`;
-  private readonly shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // private readonly shadow = this.attachShadow({mode: 'open'});
+  private readonly shadow = this;
   
   private session: AgentSession | null = null;
   private isExpanded = true;
@@ -80,7 +82,7 @@ export class AgentSessionHeaderComponent extends HTMLElement {
 
     Lit.render(html`
       <style>
-        :host {
+        agent-session-header {
           display: block;
         }
 

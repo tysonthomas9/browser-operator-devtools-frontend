@@ -24,7 +24,9 @@ interface ParsedTodos {
 @customElement('ai-todo-list')
 export class TodoListDisplay extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`ai-todo-list`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // readonly #shadow = this.attachShadow({mode: 'open'});
+  readonly #shadow = this;
 
   #collapsed = false;
   #todos = '';
@@ -100,7 +102,7 @@ export class TodoListDisplay extends HTMLElement {
 
     render(html`
       <style>
-        :host {
+        ai-todo-list {
           display: block;
         }
 

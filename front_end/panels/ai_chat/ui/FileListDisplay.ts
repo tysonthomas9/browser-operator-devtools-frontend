@@ -17,7 +17,9 @@ const {html, nothing} = Lit;
  */
 export class FileListDisplay extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`ai-file-list-display`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // readonly #shadow = this.attachShadow({mode: 'open'});
+  readonly #shadow = this;
   readonly #boundRender = this.#render.bind(this);
 
   #files: FileSummary[] = [];
@@ -212,7 +214,7 @@ export class FileListDisplay extends HTMLElement {
 
     Lit.render(html`
       <style>
-        :host {
+        ai-file-list-display {
           display: block;
         }
 

@@ -11,7 +11,9 @@ const {customElement} = Decorators as any;
 @customElement('ai-message-list')
 export class MessageList extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`ai-message-list`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // readonly #shadow = this.attachShadow({mode: 'open'});
+  readonly #shadow = this;
 
   // Public API properties (no decorators; manual setters trigger render)
   #messages: ChatMessage[] = [];
@@ -27,11 +29,18 @@ export class MessageList extends HTMLElement {
 
   // Internal state
   #pinToBottom = true;
-  #container?: HTMLElement;
   #resizeObserver = new ResizeObserver(() => { if (this.#pinToBottom) this.#scrollToBottom(); });
 
-  connectedCallback(): void { this.#render(); }
-  disconnectedCallback(): void { this.#resizeObserver.disconnect(); }
+  connectedCallback(): void {
+    this.#render();
+    this.addEventListener('scroll', this.#onScroll);
+    this.#resizeObserver.observe(this);
+  }
+  
+  disconnectedCallback(): void {
+    this.#resizeObserver.disconnect();
+    this.removeEventListener('scroll', this.#onScroll);
+  }
 
   #onScroll = (e: Event) => {
     const el = e.target as HTMLElement;
@@ -39,27 +48,27 @@ export class MessageList extends HTMLElement {
     this.#pinToBottom = el.scrollTop + el.clientHeight + SCROLL_ROUNDING_OFFSET >= el.scrollHeight;
   };
 
-  #scrollToBottom(): void { if (this.#container) this.#container.scrollTop = this.#container.scrollHeight; }
+  #scrollToBottom(): void { this.scrollTop = this.scrollHeight; }
 
   #render(): void {
-    const refFn = (el?: Element) => {
-      if (this.#container) { this.#resizeObserver.unobserve(this.#container); }
-      this.#container = el as HTMLElement | undefined;
-      if (this.#container) {
-        this.#resizeObserver.observe(this.#container);
-        this.#scrollToBottom();
-      } else {
-        this.#pinToBottom = true;
-      }
-    };
-
-    // Container mode: project messages via slot from parent.
-    Lit.render(html`
-      <style>
-        :host { display: block; height: 100%; flex: 1 1 auto; position: relative; z-index: 0; }
-        .container {
-          overflow-y: auto;
+    // In Light DOM, we don't want to overwrite children projected by the parent (ChatView).
+    // We only need to ensure styles are applied. 
+    // ChatView renders <ai-message-list> ... children ... </ai-message-list>
+    // So we don't need to Lit.render() content here, as it would wipe the children.
+    
+    // We just inject styles once if needed, or rely on global styles.
+    // But to ensure self-contained behavior, we can inject a style tag if not present.
+    if (!this.querySelector('style[data-message-list-styles]')) {
+      const style = document.createElement('style');
+      style.setAttribute('data-message-list-styles', '');
+      style.textContent = `
+        ai-message-list {
+          display: block;
           height: 100%;
+          flex: 1 1 auto;
+          position: relative;
+          z-index: 0;
+          overflow-y: auto;
           display: flex;
           flex-direction: column;
           scroll-behavior: smooth;
@@ -67,17 +76,13 @@ export class MessageList extends HTMLElement {
           background-color: var(--color-background);
           padding-bottom: 12px;
           min-height: 100px;
-          position: relative;
-          z-index: 0;
         }
-        .container::-webkit-scrollbar { width: 4px; }
-        .container::-webkit-scrollbar-track { background: transparent; }
-        .container::-webkit-scrollbar-thumb { background-color: var(--color-scrollbar); border-radius: 4px; }
-      </style>
-      <div class="container" @scroll=${this.#onScroll} ${Lit.Directives.ref(refFn)}>
-        <slot></slot>
-      </div>
-    `, this.#shadow, {host: this});
+        ai-message-list::-webkit-scrollbar { width: 4px; }
+        ai-message-list::-webkit-scrollbar-track { background: transparent; }
+        ai-message-list::-webkit-scrollbar-thumb { background-color: var(--color-scrollbar); border-radius: 4px; }
+      `;
+      this.prepend(style);
+    }
   }
 }
 

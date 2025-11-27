@@ -18,7 +18,9 @@ const {unsafeHTML} = Directives;
  */
 export class ConversationHistoryList extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`ai-conversation-history-list`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // readonly #shadow = this.attachShadow({mode: 'open'});
+  readonly #shadow = this;
   readonly #boundRender = this.#render.bind(this);
 
   #conversations: ConversationMetadata[] = [];
@@ -119,7 +121,7 @@ export class ConversationHistoryList extends HTMLElement {
     Lit.render(
       html`
         <style>
-          ${unsafeHTML(getConversationHistoryStyles())}
+          ${unsafeHTML(getConversationHistoryStyles().replace(/:host/g, 'ai-conversation-history-list'))}
         </style>
 
         <div class="history-content">
