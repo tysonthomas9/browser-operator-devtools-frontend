@@ -4,6 +4,7 @@
 
 import { DEFAULT_PROVIDER_MODELS } from '../../AIChatPanel.js';
 import type { ModelOption, ProviderType, ModelTier } from '../types.js';
+import { findClosestModel } from '../../../LLM/FuzzyModelMatcher.js';
 
 /**
  * Get a valid model for a specific provider, falling back to defaults if needed
@@ -14,21 +15,31 @@ export function getValidModelForProvider(
   provider: ProviderType,
   modelType: ModelTier,
 ): string {
-  // Check if current model is valid for this provider
+  const availableValues = providerModels.map(m => m.value);
+
+  // 1. Check if current model is valid (exact match only)
   if (providerModels.some(model => model.value === currentModel)) {
     return currentModel;
   }
 
-  // Get defaults from AIChatPanel's DEFAULT_PROVIDER_MODELS
+  // 2. Get defaults from AIChatPanel's DEFAULT_PROVIDER_MODELS
   const defaults = DEFAULT_PROVIDER_MODELS[provider] || DEFAULT_PROVIDER_MODELS.openai;
   const defaultModel = modelType === 'mini' ? defaults.mini : defaults.nano;
 
-  // Return default if it exists in provider models
+  // 3. Check exact match for default
   if (defaultModel && providerModels.some(model => model.value === defaultModel)) {
     return defaultModel;
   }
 
-  // If no valid model found, return empty string to indicate no selection
+  // 4. Try fuzzy match for default only
+  if (defaultModel) {
+    const fuzzyDefault = findClosestModel(defaultModel, availableValues);
+    if (fuzzyDefault) {
+      return fuzzyDefault;
+    }
+  }
+
+  // 5. If no valid model found, return empty string to indicate no selection
   // The UI should handle this by showing a placeholder or the first available option
   return '';
 }

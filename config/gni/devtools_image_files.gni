@@ -20,6 +20,7 @@ devtools_image_files = [
   "touchCursor.png",
   "gdp-logo-light.png",
   "gdp-logo-dark.png",
+  "browser-operator-logo.png",
 ]
 
 devtools_svg_sources = [

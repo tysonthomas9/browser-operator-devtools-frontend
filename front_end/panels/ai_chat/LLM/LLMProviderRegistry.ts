@@ -5,6 +5,7 @@
 import { createLogger } from '../core/Logger.js';
 import type { LLMProviderInterface } from './LLMProvider.js';
 import type { LLMProvider, ModelInfo } from './LLMTypes.js';
+import { isCustomProvider } from './LLMTypes.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
 import { LiteLLMProvider } from './LiteLLMProvider.js';
 import { GroqProvider } from './GroqProvider.js';
@@ -13,6 +14,8 @@ import { BrowserOperatorProvider } from './BrowserOperatorProvider.js';
 import { CerebrasProvider } from './CerebrasProvider.js';
 import { AnthropicProvider } from './AnthropicProvider.js';
 import { GoogleAIProvider } from './GoogleAIProvider.js';
+import { GenericOpenAIProvider } from './GenericOpenAIProvider.js';
+import { CustomProviderManager } from '../core/CustomProviderManager.js';
 
 const logger = createLogger('LLMProviderRegistry');
 
@@ -122,6 +125,16 @@ export class LLMProviderRegistry {
     endpoint?: string
   ): LLMProviderInterface | null {
     try {
+      // Handle custom providers - create GenericOpenAIProvider with config from CustomProviderManager
+      if (isCustomProvider(providerType)) {
+        const config = CustomProviderManager.getProvider(providerType);
+        if (!config) {
+          logger.warn(`Custom provider ${providerType} not found in CustomProviderManager`);
+          return null;
+        }
+        return new GenericOpenAIProvider(config, apiKey || undefined);
+      }
+
       switch (providerType) {
         case 'openai':
           return new OpenAIProvider(apiKey);
@@ -176,6 +189,13 @@ export class LLMProviderRegistry {
    * Returns the localStorage keys used by the provider for credentials
    */
   static getProviderStorageKeys(providerType: LLMProvider): {apiKey?: string; endpoint?: string; [key: string]: string | undefined} {
+    // Handle custom providers - they use CustomProviderManager for storage
+    if (isCustomProvider(providerType)) {
+      return {
+        apiKey: CustomProviderManager.getApiKeyStorageKey(providerType),
+      };
+    }
+
     const provider = this.getOrCreateProvider(providerType);
     if (!provider) {
       logger.warn(`Provider ${providerType} not available`);
@@ -188,6 +208,11 @@ export class LLMProviderRegistry {
    * Get API key from localStorage for a provider
    */
   static getProviderApiKey(providerType: LLMProvider): string {
+    // Handle custom providers - they use CustomProviderManager for API key storage
+    if (isCustomProvider(providerType)) {
+      return CustomProviderManager.getApiKey(providerType) || '';
+    }
+
     const keys = this.getProviderStorageKeys(providerType);
     if (!keys.apiKey) {
       return '';
@@ -307,16 +332,65 @@ export class LLMProviderRegistry {
     apiKey: string,
     endpoint?: string
   ): Promise<ModelInfo[]> {
-    // Get or create provider with provided credentials
-    const provider = this.getOrCreateProvider(providerType, apiKey, endpoint);
+    // Handle custom providers - check if models were manually configured
+    if (isCustomProvider(providerType)) {
+      const config = CustomProviderManager.getProvider(providerType);
+      if (!config) {
+        logger.warn(`Custom provider ${providerType} not found`);
+        return [];
+      }
+
+      // If models were manually added by user, return them as-is
+      if (config.modelsManuallyAdded && config.models.length > 0) {
+        logger.debug(`Returning ${config.models.length} manually configured models for ${providerType}`);
+        return config.models.map(modelId => ({
+          id: modelId,
+          name: modelId,
+          provider: providerType,
+        }));
+      }
+
+      // Otherwise, fetch from the custom provider's API (OpenAI-compatible)
+      logger.debug(`Fetching models from API for custom provider ${providerType}`);
+      const provider = new GenericOpenAIProvider(config, apiKey || undefined);
+      try {
+        if (typeof provider.fetchModels === 'function') {
+          const models = await provider.fetchModels();
+          return models.map((m: any) => ({
+            id: m.id || m.name,
+            name: m.name || m.id,
+            provider: providerType,
+            ...(m.capabilities ? { capabilities: m.capabilities } : {}),
+          }));
+        }
+        return await provider.getModels();
+      } catch (error) {
+        logger.error(`Failed to fetch models for custom provider ${providerType}:`, error);
+        throw error;
+      }
+    }
+
+    // Built-in providers: always create a fresh provider instance with the provided credentials for testing
+    // Don't use getOrCreateProvider() which returns the registered instance with old/no API key
+    const provider = this.createTemporaryProvider(providerType, apiKey, endpoint);
     if (!provider) {
       logger.warn(`Provider ${providerType} not available`);
       return [];
     }
 
     try {
-      // Use getModels() which returns standardized ModelInfo[] with 'id' property
-      // The provider was created with the provided apiKey, so getModels() will use it
+      // Use fetchModels() if available - it throws on API errors (good for validation)
+      // Fall back to getModels() which may swallow errors and return defaults
+      if (typeof (provider as any).fetchModels === 'function') {
+        const models = await (provider as any).fetchModels();
+        // Convert to ModelInfo format if needed
+        return models.map((m: any) => ({
+          id: m.id || m.name,
+          name: m.name || m.id,
+          provider: providerType,
+          ...(m.capabilities ? { capabilities: m.capabilities } : {}),
+        }));
+      }
       return await provider.getModels();
     } catch (error) {
       logger.error(`Failed to fetch models for ${providerType}:`, error);
