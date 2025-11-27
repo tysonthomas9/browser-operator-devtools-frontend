@@ -35,6 +35,7 @@ import {
   ListFilesTool,
   type Tool
 } from '../tools/Tools.js';
+import { SaveResearchReportTool } from '../tools/SaveResearchReportTool.js';
 // Imports from their own files
 
 // Initialize configured agents
@@ -187,19 +188,14 @@ Present findings in a comprehensive, detailed markdown report with these expande
 - Maintain objectivity and distinguish facts from speculation
 - For multiple independent tasks, deploy research agents in parallel for efficiency
 
-## CRITICAL: Final Output Format
+## CRITICAL: Final Output
 
-When calling 'finalize_with_critique', structure your response exactly as:
+When your research is complete, use the 'save_research_report' tool to save and display your findings:
+- **reasoning**: 2-3 sentences explaining your research approach, key insights, and how you organized the findings
+- **report**: Your comprehensive markdown report (aim for 5000+ words for complex topics)
+- **filename**: A descriptive filename like "topic_research_report.md"
 
-<reasoning>
-[2-3 sentences explaining your research approach, key insights, and organization method]
-</reasoning>
-
-<markdown_report>
-[Your comprehensive markdown report - will be displayed in enhanced document viewer]
-</markdown_report>
-
-The markdown report will be extracted and shown via an enhanced document viewer button while only the reasoning appears in chat.`,
+The report will be automatically saved to session files and displayed to the user in an enhanced document viewer. The reasoning text will appear in the chat.`,
 
   [BaseOrchestratorAgentType.SHOPPING]: `You are a **Shopping Browser Agent**. Your mission is to help users find and compare products tailored to their specific needs and budget, providing up-to-date, unbiased, and well-cited recommendations.
 
@@ -338,7 +334,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
       ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
       ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
-      new FinalizeWithCritiqueTool(),
+      new SaveResearchReportTool(),
       new RenderWebAppTool(),
       new GetWebAppDataTool(),
       new RemoveWebAppTool(),

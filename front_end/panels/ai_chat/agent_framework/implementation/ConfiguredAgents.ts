@@ -15,6 +15,7 @@ import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ReadabilityExtractorTool } from '../../tools/ReadabilityExtractorTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
+import { SaveResearchReportTool } from '../../tools/SaveResearchReportTool.js';
 import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
 import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigatorAgent.js';
 import { createResearchAgentConfig } from './agents/ResearchAgent.js';
@@ -69,6 +70,9 @@ export function initializeConfiguredAgents(): void {
   // Register bookmark and document search tools
   ToolRegistry.registerToolFactory('bookmark_store', () => new BookmarkStoreTool());
   ToolRegistry.registerToolFactory('document_search', () => new DocumentSearchTool());
+
+  // Register research report tool
+  ToolRegistry.registerToolFactory('save_research_report', () => new SaveResearchReportTool());
   
   // Create and register Direct URL Navigator Agent
   const directURLNavigatorAgentConfig = createDirectURLNavigatorAgentConfig();
