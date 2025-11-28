@@ -43,6 +43,25 @@ initializeConfiguredAgents();
 const logger = createLogger('BaseOrchestratorAgent');
 const DEFAULT_ORCHESTRATOR_VERSION = '2025-09-17';
 
+// Memory instructions prepended to orchestrator prompts
+const MEMORY_INSTRUCTIONS = `<memory>
+You have a persistent memory system that remembers information across conversations.
+
+Memory is organized into blocks:
+- **user**: Information about the user (name, preferences, working style)
+- **facts**: Important facts learned from past conversations
+- **project_***: Project-specific context (tech stack, goals, current work)
+
+**To access memory, use the 'search_memory_agent' tool.** Call it when:
+- The user asks about something you might have discussed before
+- You need to recall user preferences or past context
+- The conversation involves a project you may have worked on
+
+Memory is updated automatically after conversations end.
+</memory>
+
+`;
+
 // Define available agent types
 export enum BaseOrchestratorAgentType {
   SEARCH = 'search',
@@ -52,7 +71,7 @@ export enum BaseOrchestratorAgentType {
 
 // System prompts for each agent type
 export const SYSTEM_PROMPTS = {
-  [BaseOrchestratorAgentType.SEARCH]: `You are an search browser agent specialized in pinpoint web fact-finding.
+  [BaseOrchestratorAgentType.SEARCH]: MEMORY_INSTRUCTIONS + `You are an search browser agent specialized in pinpoint web fact-finding.
 Always delegate investigative work to the 'search_agent' tool so it can gather verified, structured results (emails, team rosters, niche professionals, etc.).
 
 - Launch search_agent with a clear objective, attribute list, filters, and quantity requirement.
@@ -63,7 +82,7 @@ Always delegate investigative work to the 'search_agent' tool so it can gather v
 
 Clarify ambiguous requests before delegating.`,
 
-  [BaseOrchestratorAgentType.DEEP_RESEARCH]: `You are an expert research browser agent focused on high-level research strategy, planning, efficient delegation to sub-research agents, and final report synthesis. Your core goal is to provide maximally helpful, comprehensive research reports by orchestrating an effective research process.
+  [BaseOrchestratorAgentType.DEEP_RESEARCH]: MEMORY_INSTRUCTIONS + `You are an expert research browser agent focused on high-level research strategy, planning, efficient delegation to sub-research agents, and final report synthesis. Your core goal is to provide maximally helpful, comprehensive research reports by orchestrating an effective research process.
 
 ## Research Process
 
@@ -201,7 +220,7 @@ When calling 'finalize_with_critique', structure your response exactly as:
 
 The markdown report will be extracted and shown via an enhanced document viewer button while only the reasoning appears in chat.`,
 
-  [BaseOrchestratorAgentType.SHOPPING]: `You are a **Shopping Browser Agent**. Your mission is to help users find and compare products tailored to their specific needs and budget, providing up-to-date, unbiased, and well-cited recommendations.
+  [BaseOrchestratorAgentType.SHOPPING]: MEMORY_INSTRUCTIONS + `You are a **Shopping Browser Agent**. Your mission is to help users find and compare products tailored to their specific needs and budget, providing up-to-date, unbiased, and well-cited recommendations.
 
 ---
 
@@ -323,6 +342,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
     ]
   },
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: {
@@ -347,6 +367,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
     ]
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {
@@ -540,6 +561,7 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     new DeleteFileTool(),
     new ReadFileTool(),
     new ListFilesTool(),
+    ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
   ];
 }
 

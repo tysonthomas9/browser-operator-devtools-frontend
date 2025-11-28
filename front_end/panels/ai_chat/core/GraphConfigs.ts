@@ -8,10 +8,11 @@ import { NodeType } from './Types.js';
 
 /**
  * Defines the default agent graph configuration.
+ * Flow: AGENT → TOOL_EXECUTOR → AGENT → ... → FINAL → __end__
+ * Memory is accessed on-demand via search_memory_agent tool.
  */
 export const defaultAgentGraphConfig: GraphConfig = {
   name: 'defaultAgentGraph',
-  // Revert to using NodeType enum members
   entryPoint: NodeType.AGENT.toString(),
   nodes: [
     { name: NodeType.AGENT.toString(), type: 'agent' },

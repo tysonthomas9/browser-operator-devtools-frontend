@@ -8,6 +8,9 @@ import { SchemaBasedExtractorTool } from '../../tools/SchemaBasedExtractorTool.j
 import { StreamlinedSchemaExtractorTool } from '../../tools/StreamlinedSchemaExtractorTool.js';
 import { BookmarkStoreTool } from '../../tools/BookmarkStoreTool.js';
 import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
+import { SearchMemoryTool } from '../../tools/SearchMemoryTool.js';
+import { UpdateMemoryTool } from '../../tools/UpdateMemoryTool.js';
+import { ListMemoryBlocksTool } from '../../tools/ListMemoryBlocksTool.js';
 import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool, RenderWebAppTool, GetWebAppDataTool, RemoveWebAppTool, CreateFileTool, UpdateFileTool, DeleteFileTool, ReadFileTool, ListFilesTool } from '../../tools/Tools.js';
 import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
 import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
@@ -29,6 +32,8 @@ import { createScrollActionAgentConfig } from './agents/ScrollActionAgent.js';
 import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
+import { createMemoryAgentConfig } from './agents/MemoryAgent.js';
+import { createSearchMemoryAgentConfig } from './agents/SearchMemoryAgent.js';
 
 /**
  * Initialize all configured agents
@@ -69,6 +74,11 @@ export function initializeConfiguredAgents(): void {
   // Register bookmark and document search tools
   ToolRegistry.registerToolFactory('bookmark_store', () => new BookmarkStoreTool());
   ToolRegistry.registerToolFactory('document_search', () => new DocumentSearchTool());
+
+  // Register memory tools
+  ToolRegistry.registerToolFactory('search_memory', () => new SearchMemoryTool());
+  ToolRegistry.registerToolFactory('update_memory', () => new UpdateMemoryTool());
+  ToolRegistry.registerToolFactory('list_memory_blocks', () => new ListMemoryBlocksTool());
   
   // Create and register Direct URL Navigator Agent
   const directURLNavigatorAgentConfig = createDirectURLNavigatorAgentConfig();
@@ -130,5 +140,15 @@ export function initializeConfiguredAgents(): void {
   const ecommerceProductInfoAgentConfig = createEcommerceProductInfoAgentConfig();
   const ecommerceProductInfoAgent = new ConfigurableAgentTool(ecommerceProductInfoAgentConfig);
   ToolRegistry.registerToolFactory('ecommerce_product_info_fetcher_tool', () => ecommerceProductInfoAgent);
+
+  // Create and register Memory Agent (background memory consolidation)
+  const memoryAgentConfig = createMemoryAgentConfig();
+  const memoryAgent = new ConfigurableAgentTool(memoryAgentConfig);
+  ToolRegistry.registerToolFactory('memory_agent', () => memoryAgent);
+
+  // Create and register Search Memory Agent (read-only memory search for orchestrators)
+  const searchMemoryAgentConfig = createSearchMemoryAgentConfig();
+  const searchMemoryAgent = new ConfigurableAgentTool(searchMemoryAgentConfig);
+  ToolRegistry.registerToolFactory('search_memory_agent', () => searchMemoryAgent);
 
 }

@@ -27,6 +27,9 @@ export class ConversationManager {
   private static instance: ConversationManager|null = null;
   private storageManager: ConversationStorageManager;
 
+  // 30 minutes timeout for stale 'processing' status
+  private static readonly PROCESSING_TIMEOUT_MS = 30 * 60 * 1000;
+
   private constructor() {
     this.storageManager = ConversationStorageManager.getInstance();
     logger.info('Initialized ConversationManager');
@@ -180,5 +183,104 @@ export class ConversationManager {
   async clearAllConversations(): Promise<void> {
     await this.storageManager.clearAllConversations();
     logger.info('Cleared all conversations');
+  }
+
+  // ==================== Memory Processing Methods ====================
+
+  /**
+   * Attempts to claim a conversation for memory processing.
+   * Returns true if claimed successfully, false if already processing.
+   * Uses 'processing' status as a lock to prevent concurrent processing.
+   *
+   * Will re-claim if:
+   * - Status is 'failed' (retry)
+   * - Status is 'processing' but started > 30 min ago (stale/crashed)
+   */
+  async tryClaimForMemoryProcessing(conversationId: string): Promise<boolean> {
+    const conversation = await this.storageManager.loadConversation(conversationId);
+    if (!conversation) {
+      return false;
+    }
+
+    // Already completed - don't reprocess
+    if (conversation.memoryStatus === 'completed') {
+      return false;
+    }
+
+    // Currently processing - check if stale (> 30 min)
+    if (conversation.memoryStatus === 'processing') {
+      const startedAt = conversation.memoryProcessingStartedAt || 0;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < ConversationManager.PROCESSING_TIMEOUT_MS) {
+        // Still within timeout, don't re-claim
+        return false;
+      }
+      // Stale processing - allow re-claim
+      logger.warn('Re-claiming stale processing conversation', {
+        conversationId,
+        elapsedMs: elapsed,
+      });
+    }
+
+    // Claim it by setting to 'processing' with timestamp
+    conversation.memoryStatus = 'processing';
+    conversation.memoryProcessingStartedAt = Date.now();
+    await this.storageManager.saveConversation(conversation);
+    logger.info('Claimed conversation for memory processing', {conversationId});
+    return true;
+  }
+
+  /**
+   * Marks memory processing as completed.
+   */
+  async markMemoryCompleted(conversationId: string): Promise<void> {
+    const conversation = await this.storageManager.loadConversation(conversationId);
+    if (conversation) {
+      conversation.memoryStatus = 'completed';
+      conversation.memoryProcessedAt = Date.now();
+      await this.storageManager.saveConversation(conversation);
+      logger.info('Marked memory as completed', {conversationId});
+    }
+  }
+
+  /**
+   * Marks memory processing as failed (can be retried later).
+   */
+  async markMemoryFailed(conversationId: string): Promise<void> {
+    const conversation = await this.storageManager.loadConversation(conversationId);
+    if (conversation) {
+      conversation.memoryStatus = 'failed';
+      await this.storageManager.saveConversation(conversation);
+      logger.warn('Marked memory as failed', {conversationId});
+    }
+  }
+
+  /**
+   * Returns conversations that need memory processing.
+   * Includes:
+   * - pending, failed, or undefined status (old conversations)
+   * - 'processing' that started > 30 min ago (stale/crashed)
+   */
+  async getConversationsNeedingMemoryProcessing(): Promise<ConversationMetadata[]> {
+    const all = await this.listConversations();
+    const now = Date.now();
+
+    return all.filter(c => {
+      // Not started, pending, or failed - needs processing
+      if (!c.memoryStatus ||
+          c.memoryStatus === 'pending' ||
+          c.memoryStatus === 'failed') {
+        return true;
+      }
+
+      // Stale processing (> 30 min) - needs retry
+      if (c.memoryStatus === 'processing') {
+        const startedAt = c.memoryProcessingStartedAt || 0;
+        const elapsed = now - startedAt;
+        return elapsed >= ConversationManager.PROCESSING_TIMEOUT_MS;
+      }
+
+      return false;
+    });
   }
 }
