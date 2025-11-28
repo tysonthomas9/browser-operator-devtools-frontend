@@ -36,10 +36,14 @@ import {
   type Tool
 } from '../tools/Tools.js';
 import { SaveResearchReportTool } from '../tools/SaveResearchReportTool.js';
+import { SearchCustomAgentsTool } from '../tools/SearchCustomAgentsTool.js';
+import { CallCustomAgentTool } from '../tools/CallCustomAgentTool.js';
 // Imports from their own files
 
-// Initialize configured agents
-initializeConfiguredAgents();
+// Initialize configured agents (including custom agents from Agent Studio)
+// Note: This is async but we don't await here to avoid blocking module load.
+// Custom agents will be loaded asynchronously and available after initial load.
+void initializeConfiguredAgents();
 
 const logger = createLogger('BaseOrchestratorAgent');
 const DEFAULT_ORCHESTRATOR_VERSION = '2025-09-17';
@@ -319,6 +323,8 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      new SearchCustomAgentsTool(),
+      new CallCustomAgentTool(),
     ]
   },
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: {
@@ -343,6 +349,8 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      new SearchCustomAgentsTool(),
+      new CallCustomAgentTool(),
     ]
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {

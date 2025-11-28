@@ -30,11 +30,12 @@ import { createScrollActionAgentConfig } from './agents/ScrollActionAgent.js';
 import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
+import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
 
 /**
  * Initialize all configured agents
  */
-export function initializeConfiguredAgents(): void {
+export async function initializeConfiguredAgents(): Promise<void> {
   // Ensure MCP meta-tools are available regardless of mode; selection logic decides if they are surfaced
   registerMCPMetaTools();
   // Register core tools
@@ -135,4 +136,6 @@ export function initializeConfiguredAgents(): void {
   const ecommerceProductInfoAgent = new ConfigurableAgentTool(ecommerceProductInfoAgentConfig);
   ToolRegistry.registerToolFactory('ecommerce_product_info_fetcher_tool', () => ecommerceProductInfoAgent);
 
+  // Initialize custom agents from Agent Studio
+  await AgentStudioIntegration.initialize();
 }

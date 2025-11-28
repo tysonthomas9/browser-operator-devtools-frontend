@@ -90,6 +90,8 @@ import { onMCPConfigChange } from '../mcp/MCPConfig.js';
 import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js';
 // Conversation history
 import { ConversationHistoryList } from './ConversationHistoryList.js';
+// Agent Studio
+import { AgentStudioView } from './AgentStudioView.js';
 
 
 // Model type definition
@@ -665,6 +667,7 @@ export class AIChatPanel extends UI.Panel.Panel {
   #evaluationAgent: EvaluationAgent | null = null; // Evaluation agent for this tab
   #mcpUnsubscribe: (() => void) | null = null;
   #configManager: LLMConfigurationManager;
+  #agentStudioView: AgentStudioView | null = null; // Agent Studio view
 
   // Store bound event listeners to properly add/remove without duplications
   #boundOnMessagesChanged?: (e: Common.EventTarget.EventTargetEvent<ChatMessage[]>) => void;
@@ -2028,6 +2031,11 @@ export class AIChatPanel extends UI.Panel.Panel {
           () => this.#onMCPConnectorsClick(),
           {jslogContext: 'connectors'}
         );
+        contextMenu.defaultSection().appendItem(
+          'Agent Studio',
+          () => this.#onAgentStudioClick(),
+          {jslogContext: 'agent-studio'}
+        );
       },
       true,  // isIconDropdown
       true,  // useSoftMenu
@@ -2300,6 +2308,16 @@ export class AIChatPanel extends UI.Panel.Panel {
         }
       }
     });
+  }
+
+  /**
+   * Handles the Agent Studio button click event and shows the Agent Studio
+   */
+  #onAgentStudioClick(): void {
+    if (!this.#agentStudioView) {
+      this.#agentStudioView = new AgentStudioView();
+    }
+    void this.#agentStudioView.show();
   }
 
   /**
