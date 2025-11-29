@@ -1837,10 +1837,11 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#isProcessing = false;
     this.#selectedAgentType = null; // Reset selected agent type
 
-    // Reset file storage session ID to default for new chat
+    // Reset file storage session ID to a new unique ID for new chat
     const {FileStorageManager} = await import('../tools/FileStorageManager.js');
-    FileStorageManager.getInstance().setSessionId('default');
-    logger.info('Reset file storage sessionId to default for new chat');
+    const newSessionId = `temp-${crypto.randomUUID()}`;
+    FileStorageManager.getInstance().setSessionId(newSessionId);
+    logger.info('Set file storage sessionId for new chat', { sessionId: newSessionId });
 
     // Create new EvaluationAgent for new chat session
     this.#createEvaluationAgentIfNeeded();
