@@ -544,6 +544,8 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     new DeleteFileTool(),
     new ReadFileTool(),
     new ListFilesTool(),
+    new SearchCustomAgentsTool(),
+    new CallCustomAgentTool(),
   ];
 }
 

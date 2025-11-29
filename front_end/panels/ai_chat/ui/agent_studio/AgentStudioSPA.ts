@@ -6,9 +6,10 @@
  * Agent Studio SPA - Bundled HTML, CSS, and JS for the Agent Studio web app
  *
  * This file exports the complete SPA as strings that can be injected via RenderWebAppTool.
- * The SPA communicates with DevTools via:
- * - SPA → DevTools: window.__agentStudioBridge(payload) (via Runtime.addBinding)
- * - DevTools → SPA: window.agentStudio.dispatch(action) (via Runtime.evaluate)
+ * The SPA communicates with DevTools via the Mini App protocol:
+ * - SPA → DevTools: window.__miniAppBridge_agent_studio(payload) (via Runtime.addBinding)
+ * - DevTools → SPA: window.miniApp.dispatch(action) (via Runtime.evaluate)
+ * - State access: window.miniApp.getState() returns current state
  */
 
 export const AgentStudioSPA = {
@@ -775,23 +776,34 @@ function getJS(): string {
     };
 
     // ==========================================
-    // Bridge Communication
+    // Bridge Communication (Mini App Protocol)
     // ==========================================
 
     // Send action to DevTools (via Runtime.addBinding)
     function sendToDevTools(action) {
-      if (typeof window.__agentStudioBridge === 'function') {
-        window.__agentStudioBridge(JSON.stringify(action));
+      if (typeof window.__miniAppBridge_agent_studio === 'function') {
+        window.__miniAppBridge_agent_studio(JSON.stringify(action));
       } else {
         console.error('Bridge not available');
       }
     }
 
-    // Receive actions from DevTools
-    window.agentStudio = {
+    // Mini App interface - Receive actions from DevTools
+    window.miniApp = {
+      // Dispatch action from DevTools to SPA
       dispatch: function(message) {
+        // Handle both string and object messages
+        if (typeof message === 'string') {
+          try {
+            message = JSON.parse(message);
+          } catch (e) {
+            console.error('[MiniApp] Failed to parse message:', e);
+            return;
+          }
+        }
+
         const { action, payload } = message;
-        console.log('Received from DevTools:', action);
+        console.log('[MiniApp] Received from DevTools:', action);
 
         switch (action) {
           case 'init':
@@ -809,7 +821,52 @@ function getJS(): string {
           case 'test-result':
             handleTestResult(payload);
             break;
+          // Standard mini app protocol actions
+          case 'get-state':
+            // State is returned via getState() method
+            break;
+          case 'set-state':
+            state = payload || {};
+            renderAgentLists();
+            if (state.selectedAgent) {
+              renderAgentForm(state.selectedAgent);
+            }
+            break;
+          case 'update-state':
+            state = { ...state, ...(payload || {}) };
+            renderAgentLists();
+            if (state.selectedAgent) {
+              renderAgentForm(state.selectedAgent);
+            }
+            break;
         }
+      },
+
+      // Get current state (called by DevTools)
+      getState: function() {
+        return state;
+      },
+
+      // Set entire state
+      setState: function(newState) {
+        state = newState;
+        sendToDevTools({ type: 'state-changed', state: state });
+      },
+
+      // Update state partially
+      updateState: function(updates) {
+        state = { ...state, ...updates };
+        sendToDevTools({ type: 'state-changed', state: state });
+      },
+
+      // Send action to DevTools
+      sendAction: function(type, payload) {
+        sendToDevTools({ type, payload });
+      },
+
+      // Close the mini app
+      close: function() {
+        sendToDevTools({ type: 'close' });
       }
     };
 
@@ -942,7 +999,7 @@ function getJS(): string {
                 <input type="text" id="agent-name" name="name"
                        value="\${escapeHTML(agent.name || '')}"
                        placeholder="my_custom_agent"
-                       pattern="[a-z][a-z0-9_-]*"
+                       pattern="[a-z][-a-z0-9_]*"
                        \${isBuiltIn ? 'disabled' : ''}
                        required>
                 <span class="field-hint">Lowercase letters, numbers, underscores, and hyphens</span>

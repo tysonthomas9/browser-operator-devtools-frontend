@@ -16,6 +16,8 @@ import { ReadabilityExtractorTool } from '../../tools/ReadabilityExtractorTool.j
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
 import { SaveResearchReportTool } from '../../tools/SaveResearchReportTool.js';
+import { SearchCustomAgentsTool } from '../../tools/SearchCustomAgentsTool.js';
+import { CallCustomAgentTool } from '../../tools/CallCustomAgentTool.js';
 import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
 import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigatorAgent.js';
 import { createResearchAgentConfig } from './agents/ResearchAgent.js';
@@ -31,6 +33,7 @@ import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
 import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
+import { initializeMiniApps } from '../../mini_apps/MiniAppInitialization.js';
 
 /**
  * Initialize all configured agents
@@ -38,6 +41,9 @@ import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
 export async function initializeConfiguredAgents(): Promise<void> {
   // Ensure MCP meta-tools are available regardless of mode; selection logic decides if they are surfaced
   registerMCPMetaTools();
+
+  // Initialize mini app system (registers mini apps and mini app tools)
+  initializeMiniApps();
   // Register core tools
   ToolRegistry.registerToolFactory('navigate_url', () => new NavigateURLTool());
   ToolRegistry.registerToolFactory('navigate_back', () => new NavigateBackTool());
@@ -74,7 +80,11 @@ export async function initializeConfiguredAgents(): Promise<void> {
 
   // Register research report tool
   ToolRegistry.registerToolFactory('save_research_report', () => new SaveResearchReportTool());
-  
+
+  // Register custom agent tools (for calling agents created in Agent Studio)
+  ToolRegistry.registerToolFactory('search_custom_agents', () => new SearchCustomAgentsTool());
+  ToolRegistry.registerToolFactory('call_custom_agent', () => new CallCustomAgentTool());
+
   // Create and register Direct URL Navigator Agent
   const directURLNavigatorAgentConfig = createDirectURLNavigatorAgentConfig();
   const directURLNavigatorAgent = new ConfigurableAgentTool(directURLNavigatorAgentConfig);
