@@ -199,11 +199,20 @@ export class ConversationManager {
   async tryClaimForMemoryProcessing(conversationId: string): Promise<boolean> {
     const conversation = await this.storageManager.loadConversation(conversationId);
     if (!conversation) {
+      logger.info('[Memory] Claim failed - conversation not found', { conversationId });
       return false;
     }
 
+    logger.info('[Memory] Current memory status', {
+      conversationId,
+      memoryStatus: conversation.memoryStatus,
+      memoryProcessedAt: conversation.memoryProcessedAt,
+      memoryProcessingStartedAt: conversation.memoryProcessingStartedAt,
+    });
+
     // Already completed - don't reprocess
     if (conversation.memoryStatus === 'completed') {
+      logger.info('[Memory] Claim failed - already completed', { conversationId });
       return false;
     }
 

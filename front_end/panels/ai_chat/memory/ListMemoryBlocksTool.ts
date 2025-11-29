@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 import { createLogger } from '../core/Logger.js';
-import type { Tool, LLMContext } from './Tools.js';
-import { MemoryBlockManager } from '../persistence/MemoryBlockManager.js';
+import type { Tool, LLMContext } from '../tools/Tools.js';
+import { MemoryBlockManager } from './MemoryBlockManager.js';
 
 const logger = createLogger('Tool:ListMemoryBlocks');
 

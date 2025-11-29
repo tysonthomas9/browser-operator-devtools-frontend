@@ -430,12 +430,13 @@ export class AgentRunner {
     hooks: AgentRunnerHooks,
     executingAgent: ConfigurableAgentTool | null,
     parentSession?: AgentSession, // For natural nesting
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string; background?: boolean },
     abortSignal?: AbortSignal
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
     const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
+    const isBackground = overrides?.background === true;
     const { prepareInitialMessages, createSuccessResult, createErrorResult, afterExecute } = hooks;
 
 
@@ -463,8 +464,8 @@ export class AgentRunner {
     // Use local session variable instead of static
     let currentSession = agentSession;
     
-    // Emit session started event
-    if (AgentRunner.eventBus) {
+    // Emit session started event (skip for background agents)
+    if (AgentRunner.eventBus && !isBackground) {
       AgentRunner.eventBus.emitProgress({
         type: 'session_started',
         sessionId: agentSession.sessionId,
@@ -485,20 +486,20 @@ export class AgentRunner {
       
       currentSession.messages.push(fullMessage);
       
-      // Emit progress events based on message type
-      if (AgentRunner.eventBus && fullMessage.type === 'tool_call') {
+      // Emit progress events based on message type (skip for background agents)
+      if (AgentRunner.eventBus && !isBackground && fullMessage.type === 'tool_call') {
         AgentRunner.eventBus.emitProgress({
           type: 'tool_started',
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName: currentSession.agentName,
           timestamp: new Date(),
-          data: { 
+          data: {
             session: currentSession,
             toolCall: fullMessage
           }
         });
-      } else if (AgentRunner.eventBus && fullMessage.type === 'tool_result') {
+      } else if (AgentRunner.eventBus && !isBackground && fullMessage.type === 'tool_result') {
         AgentRunner.eventBus.emitProgress({
           type: 'tool_completed',
           sessionId: currentSession.sessionId,
@@ -591,8 +592,8 @@ export class AgentRunner {
         currentSession.endTime = new Date();
         currentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
+        // Emit session completed event (skip for background agents)
+        if (AgentRunner.eventBus && !isBackground) {
           AgentRunner.eventBus.emitProgress({
             type: 'session_completed',
             sessionId: currentSession.sessionId,
@@ -836,8 +837,8 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
+        // Emit session completed event (skip for background agents)
+        if (AgentRunner.eventBus && !isBackground) {
           AgentRunner.eventBus.emitProgress({
             type: 'session_completed',
             sessionId: agentSession.sessionId,
@@ -1017,8 +1018,8 @@ export class AgentRunner {
               agentSession.endTime = new Date();
               agentSession.terminationReason = 'handed_off';
 
-              // Emit session completed event
-              if (AgentRunner.eventBus) {
+              // Emit session completed event (skip for background agents)
+              if (AgentRunner.eventBus && !isBackground) {
                 AgentRunner.eventBus.emitProgress({
                   type: 'session_completed',
                   sessionId: agentSession.sessionId,
@@ -1104,8 +1105,8 @@ export class AgentRunner {
                  }
                });
                
-               // Emit child agent starting
-               if (AgentRunner.eventBus) {
+               // Emit child agent starting (skip for background agents)
+               if (AgentRunner.eventBus && !isBackground) {
                 AgentRunner.eventBus.emitProgress({
                   type: 'child_agent_started',
                   sessionId: currentSession.sessionId,
@@ -1326,8 +1327,8 @@ export class AgentRunner {
           agentSession.endTime = new Date();
           agentSession.terminationReason = 'final_answer';
 
-          // Emit session completed event
-          if (AgentRunner.eventBus) {
+          // Emit session completed event (skip for background agents)
+          if (AgentRunner.eventBus && !isBackground) {
             AgentRunner.eventBus.emitProgress({
               type: 'session_completed',
               sessionId: agentSession.sessionId,
@@ -1388,8 +1389,8 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
+        // Emit session completed event (skip for background agents)
+        if (AgentRunner.eventBus && !isBackground) {
           AgentRunner.eventBus.emitProgress({
             type: 'session_completed',
             sessionId: agentSession.sessionId,
@@ -1461,8 +1462,8 @@ export class AgentRunner {
             agentSession.endTime = new Date();
             agentSession.terminationReason = 'handed_off';
 
-            // Emit session completed event
-            if (AgentRunner.eventBus) {
+            // Emit session completed event (skip for background agents)
+            if (AgentRunner.eventBus && !isBackground) {
               AgentRunner.eventBus.emitProgress({
                 type: 'session_completed',
                 sessionId: agentSession.sessionId,
@@ -1485,8 +1486,8 @@ export class AgentRunner {
     agentSession.endTime = new Date();
     agentSession.terminationReason = 'max_iterations';
 
-    // Emit session completed event
-    if (AgentRunner.eventBus) {
+    // Emit session completed event (skip for background agents)
+    if (AgentRunner.eventBus && !isBackground) {
       AgentRunner.eventBus.emitProgress({
         type: 'session_completed',
         sessionId: agentSession.sessionId,

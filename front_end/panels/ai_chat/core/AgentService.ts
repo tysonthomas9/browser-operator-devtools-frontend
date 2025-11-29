@@ -30,6 +30,7 @@ import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
 import { ConversationManager } from '../persistence/ConversationManager.js';
 import type { ConversationMetadata } from '../persistence/ConversationTypes.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import { MemoryModule } from '../memory/index.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -936,6 +937,13 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    * concurrent processing of the same conversation.
    */
   async #processConversationMemory(conversationId: string): Promise<void> {
+    logger.info('[Memory] Starting processing for conversation', {conversationId});
+    // Check if memory is enabled in settings
+    if (!MemoryModule.getInstance().isEnabled()) {
+      logger.info('[Memory] Skipping - memory disabled in settings');
+      return;
+    }
+
     // Try to claim - if another instance is processing, skip
     const claimed = await this.#conversationManager.tryClaimForMemoryProcessing(conversationId);
     if (!claimed) {
@@ -991,15 +999,18 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         model: config.mainModel,
         miniModel: config.miniModel,
         nanoModel: config.nanoModel,
+        background: true,  // Don't show in UI
       });
 
       logger.info('[Memory] Agent execution result', {
         conversationId,
         success: result.success,
         outputLength: result.output?.length || 0,
-        outputPreview: result.output?.substring(0, 200),
+        outputPreview: result.output?.substring(0, 500),
         error: result.error,
-        terminationReason: result.terminationReason
+        terminationReason: result.terminationReason,
+        toolCallsCount: result.toolCalls?.length || 0,
+        toolCalls: result.toolCalls?.map((tc: any) => ({ name: tc.name, args: tc.args })) || [],
       });
 
       await this.#conversationManager.markMemoryCompleted(conversationId);
@@ -1262,8 +1273,6 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
 
           // Schedule auto-save after session completion
           void this.#scheduleAutoSave();
-
-          // Note: Memory extraction is now handled by MemoryNode in the graph flow
 
           // Clean up after a short delay (5 seconds) to allow UI to finish rendering
           this.#cleanupCompletedSession(progressEvent.sessionId);

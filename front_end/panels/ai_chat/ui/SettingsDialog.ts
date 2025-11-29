@@ -32,6 +32,7 @@ import { BrowsingHistorySettings } from './settings/advanced/BrowsingHistorySett
 import { VectorDBSettings } from './settings/advanced/VectorDBSettings.js';
 import { TracingSettings } from './settings/advanced/TracingSettings.js';
 import { EvaluationSettings } from './settings/advanced/EvaluationSettings.js';
+import { MemorySettings } from './settings/advanced/MemorySettings.js';
 
 import './model_selector/ModelSelector.js';
 
@@ -463,6 +464,10 @@ export class SettingsDialog {
     advancedToggleContainer.appendChild(advancedToggleLabel);
 
     // Create advanced feature sections
+    const memorySection = document.createElement('div');
+    memorySection.className = 'settings-section memory-section';
+    contentDiv.appendChild(memorySection);
+
     const historySection = document.createElement('div');
     historySection.className = 'settings-section history-section';
     contentDiv.appendChild(historySection);
@@ -480,12 +485,14 @@ export class SettingsDialog {
     contentDiv.appendChild(evaluationSection);
 
     // Instantiate advanced feature settings classes
+    const memorySettings = new MemorySettings(memorySection);
     const browsingHistorySettings = new BrowsingHistorySettings(historySection);
     const vectorDBSettings = new VectorDBSettings(vectorDBSection);
     const tracingSettings = new TracingSettings(tracingSection);
     const evaluationSettings = new EvaluationSettings(evaluationSection);
 
     // Render advanced features
+    memorySettings.render();
     browsingHistorySettings.render();
     vectorDBSettings.render();
     tracingSettings.render();
@@ -493,6 +500,7 @@ export class SettingsDialog {
 
     // Store advanced features for cleanup
     const advancedFeatures = [
+      memorySettings,
       browsingHistorySettings,
       vectorDBSettings,
       tracingSettings,
@@ -503,6 +511,7 @@ export class SettingsDialog {
     // Advanced Settings Toggle Logic
     function toggleAdvancedSections(show: boolean): void {
       const display = show ? 'block' : 'none';
+      memorySection.style.display = display;
       historySection.style.display = display;
       vectorDBSection.style.display = display;
       tracingSection.style.display = display;

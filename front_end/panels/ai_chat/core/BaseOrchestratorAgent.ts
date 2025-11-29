@@ -35,32 +35,13 @@ import {
   ListFilesTool,
   type Tool
 } from '../tools/Tools.js';
-// Imports from their own files
+import { MemoryModule } from '../memory/index.js';
 
 // Initialize configured agents
 initializeConfiguredAgents();
 
 const logger = createLogger('BaseOrchestratorAgent');
 const DEFAULT_ORCHESTRATOR_VERSION = '2025-09-17';
-
-// Memory instructions prepended to orchestrator prompts
-const MEMORY_INSTRUCTIONS = `<memory>
-You have a persistent memory system that remembers information across conversations.
-
-Memory is organized into blocks:
-- **user**: Information about the user (name, preferences, working style)
-- **facts**: Important facts learned from past conversations
-- **project_***: Project-specific context (tech stack, goals, current work)
-
-**To access memory, use the 'search_memory_agent' tool.** Call it when:
-- The user asks about something you might have discussed before
-- You need to recall user preferences or past context
-- The conversation involves a project you may have worked on
-
-Memory is updated automatically after conversations end.
-</memory>
-
-`;
 
 // Define available agent types
 export enum BaseOrchestratorAgentType {
@@ -69,9 +50,9 @@ export enum BaseOrchestratorAgentType {
   SHOPPING = 'shopping'
 }
 
-// System prompts for each agent type
+// System prompts for each agent type (WITHOUT memory instructions - added dynamically)
 export const SYSTEM_PROMPTS = {
-  [BaseOrchestratorAgentType.SEARCH]: MEMORY_INSTRUCTIONS + `You are an search browser agent specialized in pinpoint web fact-finding.
+  [BaseOrchestratorAgentType.SEARCH]: `You are an search browser agent specialized in pinpoint web fact-finding.
 Always delegate investigative work to the 'search_agent' tool so it can gather verified, structured results (emails, team rosters, niche professionals, etc.).
 
 - Launch search_agent with a clear objective, attribute list, filters, and quantity requirement.
@@ -82,7 +63,7 @@ Always delegate investigative work to the 'search_agent' tool so it can gather v
 
 Clarify ambiguous requests before delegating.`,
 
-  [BaseOrchestratorAgentType.DEEP_RESEARCH]: MEMORY_INSTRUCTIONS + `You are an expert research browser agent focused on high-level research strategy, planning, efficient delegation to sub-research agents, and final report synthesis. Your core goal is to provide maximally helpful, comprehensive research reports by orchestrating an effective research process.
+  [BaseOrchestratorAgentType.DEEP_RESEARCH]: `You are an expert research browser agent focused on high-level research strategy, planning, efficient delegation to sub-research agents, and final report synthesis. Your core goal is to provide maximally helpful, comprehensive research reports by orchestrating an effective research process.
 
 ## Research Process
 
@@ -220,7 +201,7 @@ When calling 'finalize_with_critique', structure your response exactly as:
 
 The markdown report will be extracted and shown via an enhanced document viewer button while only the reasoning appears in chat.`,
 
-  [BaseOrchestratorAgentType.SHOPPING]: MEMORY_INSTRUCTIONS + `You are a **Shopping Browser Agent**. Your mission is to help users find and compare products tailored to their specific needs and budget, providing up-to-date, unbiased, and well-cited recommendations.
+  [BaseOrchestratorAgentType.SHOPPING]: `You are a **Shopping Browser Agent**. Your mission is to help users find and compare products tailored to their specific needs and budget, providing up-to-date, unbiased, and well-cited recommendations.
 
 ---
 
@@ -410,14 +391,17 @@ AgentDescriptorRegistry.registerSource({
 
 /**
  * Get the system prompt for a specific agent type
+ * Memory instructions are dynamically prepended if memory is enabled
  */
 export function getSystemPrompt(agentType: string): string {
+  const memoryPrefix = MemoryModule.getInstance().getInstructions();
+
   // Check if there's a custom prompt for this agent type
   if (hasCustomPrompt(agentType)) {
-    return getAgentPrompt(agentType);
+    return memoryPrefix + getAgentPrompt(agentType);
   }
-  
-  return AGENT_CONFIGS[agentType]?.systemPrompt ||
+
+  return memoryPrefix + (AGENT_CONFIGS[agentType]?.systemPrompt ||
     // Default system prompt if agent type not found
   `You are a browser agent for helping users with tasks. And, you are an expert task orchestrator agent focused on high-level task strategy, planning, efficient delegation to specialized web agents, and final result synthesis. Your core goal is to provide maximally helpful task completion by orchestrating an effective execution process.
 
@@ -538,14 +522,18 @@ After specialized agents complete their tasks:
 2. Identify patterns, best options, and key insights
 3. Note any remaining gaps or follow-up needs
 4. Create a comprehensive response following the appropriate format
-`;
+`);
 }
 
 /**
  * Get available tools for a specific agent type
+ * Conditionally includes search_memory_agent if memory is enabled
  */
 export function getAgentTools(agentType: string): Array<Tool<any, any>> {
-  return AGENT_CONFIGS[agentType]?.availableTools || [
+  const memoryModule = MemoryModule.getInstance();
+
+  // Get base tools from config or use default list
+  const baseTools = AGENT_CONFIGS[agentType]?.availableTools || [
     ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
     ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
     ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
@@ -561,8 +549,23 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     new DeleteFileTool(),
     new ReadFileTool(),
     new ListFilesTool(),
-    ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
   ];
+
+  // Filter out search_memory_agent if memory is disabled, or add it if enabled and not present
+  if (memoryModule.shouldIncludeMemoryTool()) {
+    // Check if search_memory_agent is already in the list
+    const hasMemoryAgent = baseTools.some(tool => tool.name === 'search_memory_agent');
+    if (!hasMemoryAgent) {
+      const memoryAgent = ToolRegistry.getToolInstance('search_memory_agent');
+      if (memoryAgent) {
+        return [...baseTools, memoryAgent];
+      }
+    }
+    return baseTools;
+  }
+
+  // Memory disabled - filter out search_memory_agent
+  return baseTools.filter(tool => tool.name !== 'search_memory_agent');
 }
 
 // Custom event for agent type selection

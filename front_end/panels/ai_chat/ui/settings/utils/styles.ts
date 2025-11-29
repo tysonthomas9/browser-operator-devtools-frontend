@@ -501,6 +501,104 @@ export function getSettingsStyles(): string {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+
+    /* Memory blocks styles */
+    .memory-blocks-container {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--color-details-hairline);
+    }
+
+    .memory-blocks-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .memory-blocks-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .memory-block-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background-color: var(--color-background-elevation-1);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .memory-block-delete {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 16px;
+      opacity: 0.4;
+      transition: opacity 0.15s ease;
+      flex-shrink: 0;
+      border-radius: 4px;
+    }
+
+    .memory-block-delete:hover {
+      opacity: 1;
+      background-color: var(--color-background-elevation-2);
+    }
+
+    .memory-block-item:hover {
+      background-color: var(--color-background-elevation-2);
+    }
+
+    .memory-block-item:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: -2px;
+    }
+
+    .memory-block-icon {
+      font-size: 18px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .memory-block-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .memory-block-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .memory-block-meta {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .memory-blocks-empty {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      font-style: italic;
+      padding: 8px 0;
+    }
+
+    .memory-blocks-error {
+      font-size: 13px;
+      color: var(--color-accent-red);
+      padding: 8px 0;
+    }
   `;
 }
 
