@@ -402,19 +402,21 @@ export class AgentRunner {
           ...(actualResult.intermediateSteps || []) // History *from* the recursive call (should exist if flag is true)
       ];
       // Return the result from the target agent, but with combined history
+      // Always use 'handed_off' since this IS a handoff completion
       return {
           ...actualResult,
           intermediateSteps: combinedIntermediateSteps,
-          terminationReason: actualResult.terminationReason || 'handed_off',
+          terminationReason: 'handed_off' as const,
           agentSession: childSession
       };
     }
     // Otherwise (default), omit the target's intermediate steps
     logger.info(`Omitting intermediateSteps from ${targetAgentTool.name} based on its config (default or flag set to false).`);
     // Return result from target, ensuring intermediateSteps are omitted
+    // Always use 'handed_off' since this IS a handoff completion
     const finalResult = {
       ...actualResult,
-      terminationReason: actualResult.terminationReason || 'handed_off',
+      terminationReason: 'handed_off' as const,
       agentSession: childSession
     };
     // Explicitly delete intermediateSteps if they somehow exist on actualResult (shouldn't due to target config)
