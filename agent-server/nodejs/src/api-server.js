@@ -155,6 +155,14 @@ class APIServer {
             result = await this.executeJavaScript(JSON.parse(body));
             break;
 
+          case '/page/dom-snapshot':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.getDOMSnapshot(JSON.parse(body));
+            break;
+
           default:
             this.sendError(res, 404, 'Not found');
             return;
@@ -322,6 +330,49 @@ class APIServer {
     }
 
     return response;
+  }
+
+  async getDOMSnapshot(payload) {
+    const {
+      clientId,
+      tabId,
+      computedStyles = [],
+      includeDOMRects = true,
+      includePaintOrder = false
+    } = payload;
+
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    const baseClientId = clientId.split(':')[0];
+
+    logger.info('Capturing DOM snapshot', {
+      baseClientId,
+      tabId,
+      computedStyleCount: computedStyles.length,
+      includeDOMRects,
+      includePaintOrder
+    });
+
+    // Call the captureDOMSnapshot method from BrowserAgentServer
+    const result = await this.browserAgentServer.captureDOMSnapshot(tabId, {
+      computedStyles,
+      includeDOMRects,
+      includePaintOrder
+    });
+
+    return {
+      clientId: baseClientId,
+      tabId: result.tabId,
+      snapshot: result.snapshot,  // Contains { documents, strings }
+      format: 'dom-snapshot',
+      timestamp: Date.now()
+    };
   }
 
   async getScreenshot(payload) {

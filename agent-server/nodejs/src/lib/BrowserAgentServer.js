@@ -1307,6 +1307,69 @@ export class BrowserAgentServer extends EventEmitter {
   }
 
   /**
+   * Capture DOM snapshot using CDP DOMSnapshot.captureSnapshot
+   * @param {string} tabId - Tab ID (target ID)
+   * @param {Object} options - Snapshot options
+   * @param {string[]} options.computedStyles - Array of computed style properties to capture (default: [])
+   * @param {boolean} options.includeDOMRects - Whether to include bounding boxes (default: true)
+   * @param {boolean} options.includePaintOrder - Whether to include paint order (default: false)
+   * @returns {Promise<Object>} Result with DOM snapshot data
+   */
+  async captureDOMSnapshot(tabId, options = {}) {
+    const {
+      computedStyles = [],
+      includeDOMRects = true,
+      includePaintOrder = false
+    } = options;
+
+    try {
+      logger.info('Capturing DOM snapshot via CDP', {
+        tabId,
+        computedStyleCount: computedStyles.length,
+        includeDOMRects,
+        includePaintOrder
+      });
+
+      // Use DOMSnapshot.captureSnapshot CDP command
+      const result = await this.sendCDPCommandToTarget(tabId, 'DOMSnapshot.captureSnapshot', {
+        computedStyles,
+        includeDOMRects,
+        includePaintOrder
+      });
+
+      // Validate response structure
+      if (!result.documents || !result.strings) {
+        throw new Error('Invalid DOMSnapshot response: missing documents or strings array');
+      }
+
+      logger.info('DOM snapshot captured successfully', {
+        tabId,
+        documentCount: result.documents.length,
+        stringCount: result.strings.length,
+        totalNodes: result.documents.reduce((sum, doc) => sum + (doc.nodes?.nodeType?.length || 0), 0)
+      });
+
+      return {
+        tabId,
+        snapshot: result  // Contains documents[] and strings[]
+      };
+    } catch (error) {
+      logger.error('Failed to capture DOM snapshot via CDP', {
+        tabId,
+        error: error.message,
+        stack: error.stack
+      });
+
+      // Check if DOMSnapshot domain is available
+      if (error.message && error.message.includes('was not found')) {
+        throw new Error('DOMSnapshot domain not available. Requires Chrome 74+ with CDP enabled.');
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Capture page screenshot using CDP
    * @param {string} tabId - Tab ID (target ID)
    * @param {Object} options - Screenshot options
