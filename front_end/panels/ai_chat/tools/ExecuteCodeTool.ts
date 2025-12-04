@@ -67,6 +67,13 @@ Examples:
     required: ['code', 'reasoning']
   };
 
+  // High-risk tool - requires human approval by default
+  approvalConfig = {
+    requiresApproval: true,
+    riskLevel: 'high' as const,
+    approvalMessage: 'This tool will execute JavaScript code on the page. Please review the code before approving.',
+  };
+
   async execute(args: ExecuteCodeArgs, _ctx?: LLMContext): Promise<any> {
     const { code, reasoning } = args;
 

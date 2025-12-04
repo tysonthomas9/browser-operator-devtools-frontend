@@ -7,7 +7,7 @@ import * as Common from '../../../core/common/common.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as SDK from '../../../core/sdk/sdk.js';
 import * as UI from '../../../ui/legacy/legacy.js';
-import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage } from '../models/ChatTypes.js';
+import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage, type ApprovalRequestMessage } from '../models/ChatTypes.js';
 
 import {createAgentGraph} from './Graph.js';
 import { createLogger } from './Logger.js';
@@ -31,6 +31,7 @@ import { ConversationManager } from '../persistence/ConversationManager.js';
 import type { ConversationMetadata } from '../persistence/ConversationTypes.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import { MemoryModule } from '../memory/index.js';
+import { getGuardrailMiddleware, GuardrailEvents, type ApprovalResolvedEvent } from '../guardrails/index.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -48,6 +49,7 @@ export enum Events {
   CHILD_AGENT_STARTED = 'child-agent-started',
   CONVERSATION_CHANGED = 'conversation-changed',
   CONVERSATION_SAVED = 'conversation-saved',
+  APPROVAL_REQUESTED = 'approval-requested',
 }
 
 /**
@@ -63,6 +65,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   [Events.CHILD_AGENT_STARTED]: { parentSession: AgentSession, childAgentName: string, childSessionId: string },
   [Events.CONVERSATION_CHANGED]: string | null,
   [Events.CONVERSATION_SAVED]: string,
+  [Events.APPROVAL_REQUESTED]: ApprovalRequestMessage,
 }> {
   static instance: AgentService;
 
@@ -161,6 +164,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
 
     // Subscribe to AgentRunner events
     AgentRunnerEventBus.getInstance().addEventListener('agent-progress', this.#handleAgentProgress.bind(this));
+
+    // Subscribe to GuardrailMiddleware events for UI updates after user action
+    getGuardrailMiddleware().addEventListener(
+      GuardrailEvents.APPROVAL_RESOLVED,
+      this.#handleApprovalResolved.bind(this)
+    );
 
     // Initialize visual indicator system with reference to AgentService
     VisualIndicatorManager.getInstance().initialize(this);
@@ -1244,6 +1253,26 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           }
         }
         break;
+      case 'approval_requested':
+        // NOTE: Approval requests are now added directly to AgentSession.messages
+        // in AgentRunner for correct timeline ordering. This case is kept for
+        // backwards compatibility and logging only.
+        {
+          const approvalData = progressEvent.data as {
+            approvalId: string;
+            toolName: string;
+            toolArgs: Record<string, unknown>;
+            guardrailDecision: import('../guardrails/types.js').GuardrailDecision;
+          };
+
+          logger.info('[AgentService] Approval requested (handled in session timeline):', {
+            approvalId: approvalData.approvalId,
+            toolName: approvalData.toolName,
+            riskLevel: approvalData.guardrailDecision.riskLevel,
+          });
+        }
+        break;
+
       case 'session_completed':
         // Get the completed session from the event data or active sessions
         const completedSession = progressEvent.data?.session ||
@@ -1281,6 +1310,22 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         }
         break;
     }
+  }
+
+  /**
+   * Handle approval resolution events from ApprovalManager.
+   * NOTE: The actual UI update now happens via session_updated events from AgentRunner,
+   * since approval messages are stored in AgentSession.messages for correct timeline ordering.
+   * This handler is kept for logging and potential future use.
+   */
+  #handleApprovalResolved(event: Common.EventTarget.EventTargetEvent<ApprovalResolvedEvent>): void {
+    const { approvalId, result } = event.data;
+
+    logger.info('[AgentService] Approval resolved (UI handled via session_updated):', {
+      approvalId,
+      approved: result.approved,
+      feedback: result.feedback,
+    });
   }
 
   // Upsert helper: ensures the chat transcript reflects the latest AgentSession state in real-time

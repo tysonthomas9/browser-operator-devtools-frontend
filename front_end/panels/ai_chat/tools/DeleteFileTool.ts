@@ -38,6 +38,13 @@ export class DeleteFileTool implements Tool<DeleteFileArgs, DeleteFileResult> {
     required: ['fileName', 'reasoning']
   };
 
+  // Destructive action - requires human approval by default
+  approvalConfig = {
+    requiresApproval: true,
+    riskLevel: 'high' as const,
+    approvalMessage: 'This tool will permanently delete a file. Please confirm before proceeding.',
+  };
+
   async execute(args: DeleteFileArgs, _ctx?: LLMContext): Promise<DeleteFileResult> {
     logger.info('Executing delete file', { fileName: args.fileName });
     const manager = FileStorageManager.getInstance();

@@ -3,6 +3,18 @@
 import '../ChatView.js';
 import {raf} from '../../../../testing/DOMHelpers.js';
 
+// Use global sinon provided by Karma framework
+declare const sinon: typeof import('sinon');
+
+// Helper to stub fetch for VersionChecker network calls
+function stubFetch(): sinon.SinonStub {
+  return sinon.stub(globalThis, 'fetch').resolves(new Response(JSON.stringify({
+    tag_name: 'v1.0.0',
+    html_url: 'https://example.com/release',
+    body: 'Test release',
+  }), { status: 200 }));
+}
+
 // Minimal local enum constants to avoid importing TS enums in tests
 const ChatMessageEntity = {
   USER: 'user',
@@ -22,6 +34,10 @@ function makeAgentSessionMessage(sessionId: string): any {
 }
 
 describe('ChatView pruneLiveAgentSessions', () => {
+  let fetchStub: sinon.SinonStub;
+  beforeEach(() => { fetchStub = stubFetch(); });
+  afterEach(() => { fetchStub.restore(); });
+
   it('prunes cached sessions when they disappear from messages', async () => {
     const view = document.createElement('devtools-chat-view') as any;
     document.body.appendChild(view);

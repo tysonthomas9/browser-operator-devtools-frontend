@@ -38,6 +38,23 @@ import { GetWebAppDataTool, type GetWebAppDataArgs, type GetWebAppDataResult } f
 import { RemoveWebAppTool, type RemoveWebAppArgs, type RemoveWebAppResult } from './RemoveWebAppTool.js';
 
 /**
+ * Risk levels for tool approval (shared with GuardrailEvaluator)
+ */
+export type ToolRiskLevel = 'none' | 'low' | 'medium' | 'high' | 'critical';
+
+/**
+ * Approval configuration for tools
+ */
+export interface ToolApprovalConfig {
+  /** Whether this tool requires human approval by default */
+  requiresApproval?: boolean;
+  /** Default risk level for this tool */
+  riskLevel?: ToolRiskLevel;
+  /** Custom approval message shown to user */
+  approvalMessage?: string;
+}
+
+/**
  * Base interface for all tools
  */
 export interface Tool<TArgs = Record<string, unknown>, TResult = unknown> {
@@ -49,6 +66,8 @@ export interface Tool<TArgs = Record<string, unknown>, TResult = unknown> {
     properties: Record<string, unknown>,
     required?: string[],
   };
+  /** Optional approval configuration - if set, tool may require human approval */
+  approvalConfig?: ToolApprovalConfig;
 }
 
 /**

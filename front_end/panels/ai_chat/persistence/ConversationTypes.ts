@@ -133,7 +133,7 @@ export interface SerializableAgentSession {
 export interface SerializableAgentMessage {
   id: string;
   timestamp: number; // Unix timestamp
-  type: 'reasoning' | 'tool_call' | 'tool_result' | 'handoff' | 'final_answer';
+  type: 'reasoning' | 'tool_call' | 'tool_result' | 'handoff' | 'final_answer' | 'approval_request';
   content: any; // Keep the content structure as-is
 }
 

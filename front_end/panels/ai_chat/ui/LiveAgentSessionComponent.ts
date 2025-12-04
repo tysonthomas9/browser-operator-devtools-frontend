@@ -4,8 +4,9 @@
 
 import * as Lit from '../../../ui/lit/lit.js';
 import { createLogger } from '../core/Logger.js';
-import type { AgentSession, AgentMessage } from '../agent_framework/AgentSessionTypes.js';
+import type { AgentSession, AgentMessage, ApprovalRequestContent } from '../agent_framework/AgentSessionTypes.js';
 import { getAgentUIConfig } from '../agent_framework/AgentSessionTypes.js';
+import { getGuardrailMiddleware } from '../guardrails/index.js';
 import { ToolCallComponent } from './ToolCallComponent.js';
 import { AgentSessionHeaderComponent } from './AgentSessionHeaderComponent.js';
 import { ToolDescriptionFormatter } from './ToolDescriptionFormatter.js';
@@ -385,6 +386,107 @@ export class LiveAgentSessionComponent extends HTMLElement {
           margin-bottom: 8px;
           color: var(--sys-color-on-surface);
         }
+
+        /* Approval request styles */
+        .tool-status-marker.pending {
+          color: #f5a623;
+          animation: dotPulse 1.5s ease-in-out infinite;
+        }
+        .tool-status-marker.approved {
+          color: var(--sys-color-green-bright);
+        }
+        .tool-status-marker.rejected {
+          color: var(--sys-color-error);
+        }
+
+        .risk-badge {
+          padding: 1px 4px;
+          border-radius: 3px;
+          font-size: 9px;
+          font-weight: 600;
+          text-transform: uppercase;
+          margin-right: 4px;
+        }
+        .risk-none { background: #e8f5e9; color: #2e7d32; }
+        .risk-low { background: #e3f2fd; color: #1565c0; }
+        .risk-medium { background: #fff3e0; color: #e65100; }
+        .risk-high { background: #ffebee; color: #c62828; }
+        .risk-critical { background: #f3e5f5; color: #6a1b9a; }
+
+        .approval-details {
+          margin-top: 4px;
+          padding-left: 16px;
+        }
+
+        .approval-description {
+          color: var(--sys-color-on-surface-variant);
+          font-size: 12px;
+          margin-bottom: 4px;
+        }
+
+        .approval-tool-info {
+          margin: 4px 0;
+          padding: 4px 6px;
+          background: var(--sys-color-surface);
+          border-radius: 4px;
+          border: 1px solid var(--sys-color-divider);
+        }
+
+        .tool-args-preview {
+          font-family: var(--monospace-font-family);
+          font-size: 10px;
+          max-height: 60px;
+          overflow-y: auto;
+          white-space: pre-wrap;
+          word-break: break-all;
+          color: var(--sys-color-on-surface-variant);
+          margin: 0;
+        }
+
+        .approval-actions {
+          display: flex;
+          gap: 8px;
+          margin-top: 6px;
+          align-items: center;
+        }
+
+        .approve-btn, .reject-btn {
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .approve-btn {
+          background: var(--sys-color-green-bright);
+          color: white;
+          border: none;
+        }
+
+        .approve-btn:hover {
+          filter: brightness(0.9);
+        }
+
+        .reject-btn {
+          background: transparent;
+          color: var(--sys-color-error);
+          border: 1px solid var(--sys-color-error);
+        }
+
+        .reject-btn:hover {
+          background: var(--sys-color-error);
+          color: white;
+        }
+
+        .feedback-display {
+          margin-top: 2px;
+          padding-left: 16px;
+          font-size: 11px;
+          font-style: italic;
+          color: var(--sys-color-on-surface-variant);
+        }
       </style>
       <div class="agent-execution-timeline${isSingleTool ? ' single-tool' : ''}">
         ${reasoningHtml}
@@ -412,6 +514,28 @@ export class LiveAgentSessionComponent extends HTMLElement {
         this.render();
       });
     }
+
+    // Wire approval button clicks to GuardrailMiddleware
+    const approveButtons = this.shadow.querySelectorAll('.approve-btn[data-approval-id]');
+    const rejectButtons = this.shadow.querySelectorAll('.reject-btn[data-approval-id]');
+
+    approveButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const approvalId = btn.getAttribute('data-approval-id');
+        if (approvalId) {
+          getGuardrailMiddleware().approve(approvalId);
+        }
+      });
+    });
+
+    rejectButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const approvalId = btn.getAttribute('data-approval-id');
+        if (approvalId) {
+          getGuardrailMiddleware().reject(approvalId);
+        }
+      });
+    });
 
     // No expand/collapse listeners for reasoning (simplified)
 
@@ -480,9 +604,54 @@ export class LiveAgentSessionComponent extends HTMLElement {
       if (rc?.toolCallId) resultMap.set(rc.toolCallId, rc);
     }
 
-    // Walk messages in order and render tool calls and inline handoff anchors
+    // Walk messages in order and render tool calls, approval requests, and inline handoff anchors
     for (const m of (this._session?.messages || [])) {
-      if (m.type === 'tool_call') {
+      if (m.type === 'approval_request') {
+        // Render approval request inline in timeline
+        const content = m.content as ApprovalRequestContent;
+        const status = content.status;
+        const statusMarkerClass = status === 'pending' ? 'pending' :
+                                  status === 'approved' ? 'approved' : 'rejected';
+        const statusLabel = status === 'pending' ? 'Approval Required' :
+                            status === 'approved' ? 'Approved' : 'Rejected';
+        const riskClass = `risk-${content.riskLevel}`;
+        const riskLabel = content.riskLevel === 'none' ? 'Safe' :
+                          content.riskLevel === 'low' ? 'Low' :
+                          content.riskLevel === 'medium' ? 'Med' :
+                          content.riskLevel === 'high' ? 'High' : 'Crit';
+        const icon = ToolDescriptionFormatter.getToolIcon(content.toolName);
+        const toolNameDisplay = ToolDescriptionFormatter.formatToolName(content.toolName);
+
+        html += `
+          <div class="timeline-item" role="listitem" data-approval-id="${content.approvalId}">
+            <div class="tool-line">
+              <div class="tool-left">
+                <span class="tool-reasoning-inline">${statusLabel}</span>
+                <span class="tool-name-badge">
+                  ${status === 'pending' ? `<span class="risk-badge ${riskClass}">${riskLabel}</span>` : ''}
+                  ${icon} ${toolNameDisplay}
+                </span>
+              </div>
+              <span class="tool-status-marker ${statusMarkerClass}" title="${status}">●</span>
+            </div>
+            ${status === 'pending' ? `
+              <div class="approval-details">
+                <div class="approval-description">${content.description}</div>
+                <div class="approval-tool-info">
+                  <pre class="tool-args-preview">${JSON.stringify(content.toolArgs, null, 2)}</pre>
+                </div>
+                <div class="approval-actions">
+                  <button class="approve-btn" data-approval-id="${content.approvalId}">Approve</button>
+                  <button class="reject-btn" data-approval-id="${content.approvalId}">Reject</button>
+                </div>
+              </div>
+            ` : ''}
+            ${status === 'rejected' && content.feedback ? `
+              <div class="feedback-display">${content.feedback}</div>
+            ` : ''}
+          </div>
+        `;
+      } else if (m.type === 'tool_call') {
         const toolContent = m.content as any;
         const toolName = toolContent.toolName;
         const toolArgs = toolContent.toolArgs || {};

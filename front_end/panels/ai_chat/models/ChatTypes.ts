@@ -10,6 +10,7 @@ export enum ChatMessageEntity {
   MODEL = 'model',
   TOOL_RESULT = 'tool_result',
   AGENT_SESSION = 'agent_session',
+  APPROVAL_REQUEST = 'approval_request',
 }
 
 // Base structure for all chat messages
@@ -71,8 +72,39 @@ export interface AgentSessionMessage extends BaseChatMessage {
   summary?: string;
 }
 
+// Approval status for human-in-the-loop decisions
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+// Risk levels for guardrail evaluation
+export type RiskLevel = 'none' | 'low' | 'medium' | 'high' | 'critical';
+
+// Approval request message for human-in-the-loop approval flow
+export interface ApprovalRequestMessage extends BaseChatMessage {
+  entity: ChatMessageEntity.APPROVAL_REQUEST;
+  /** Unique identifier for this approval request */
+  approvalId: string;
+  /** Name of the tool requesting approval */
+  toolName: string;
+  /** Arguments passed to the tool */
+  toolArgs: Record<string, unknown>;
+  /** Human-readable description of what the tool wants to do */
+  description: string;
+  /** Current approval status */
+  status: ApprovalStatus;
+  /** Risk level from guardrail evaluation */
+  riskLevel: RiskLevel;
+  /** Chain-of-thought reasoning from guardrail */
+  reasoning?: string;
+  /** Policy that triggered this approval request */
+  policyMatched?: string;
+  /** User feedback on rejection */
+  feedback?: string;
+  /** Links to original tool call */
+  toolCallId?: string;
+}
+
 export type ChatMessage =
-    UserChatMessage|ModelChatMessage|ToolResultMessage|AgentSessionMessage;
+    UserChatMessage|ModelChatMessage|ToolResultMessage|AgentSessionMessage|ApprovalRequestMessage;
 
 // View state for the chat container
 export enum State {

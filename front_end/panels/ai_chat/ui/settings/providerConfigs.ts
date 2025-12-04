@@ -13,6 +13,17 @@ import {
   GOOGLEAI_API_KEY_STORAGE_KEY,
 } from './constants.js';
 
+// Lazy i18n helpers to avoid calling i18nString at module load time
+const lazyString = (getter: () => string): string => {
+  // Return a proxy string that evaluates lazily
+  // For now, use fallback strings - i18n will be available when UI renders
+  try {
+    return getter();
+  } catch {
+    return '';
+  }
+};
+
 /**
  * OpenAI provider configuration
  * - API key only
@@ -23,8 +34,8 @@ export const OpenAIConfig: ProviderConfig = {
   id: 'openai',
   displayName: 'OpenAI',
   apiKeyStorageKey: OPENAI_API_KEY_STORAGE_KEY,
-  apiKeyLabel: i18nString(UIStrings.apiKeyLabel),
-  apiKeyHint: i18nString(UIStrings.apiKeyHint),
+  get apiKeyLabel() { return lazyString(() => i18nString(UIStrings.apiKeyLabel)); },
+  get apiKeyHint() { return lazyString(() => i18nString(UIStrings.apiKeyHint)); },
   apiKeyPlaceholder: 'Enter your OpenAI API key',
   hasModelSelectors: true,
   hasFetchButton: false,
@@ -40,8 +51,8 @@ export const BrowserOperatorConfig: ProviderConfig = {
   id: 'browseroperator',
   displayName: 'BrowserOperator',
   apiKeyStorageKey: BROWSEROPERATOR_API_KEY_STORAGE_KEY,
-  apiKeyLabel: i18nString(UIStrings.browseroperatorApiKeyLabel),
-  apiKeyHint: i18nString(UIStrings.browseroperatorApiKeyHint),
+  get apiKeyLabel() { return lazyString(() => i18nString(UIStrings.browseroperatorApiKeyLabel)); },
+  get apiKeyHint() { return lazyString(() => i18nString(UIStrings.browseroperatorApiKeyHint)); },
   apiKeyPlaceholder: 'Enter your BrowserOperator API key (optional)',
   hasModelSelectors: false,
   hasFetchButton: false,
@@ -59,12 +70,12 @@ export const GroqConfig: ProviderConfig = {
   id: 'groq',
   displayName: 'Groq',
   apiKeyStorageKey: GROQ_API_KEY_STORAGE_KEY,
-  apiKeyLabel: i18nString(UIStrings.groqApiKeyLabel),
-  apiKeyHint: i18nString(UIStrings.groqApiKeyHint),
+  get apiKeyLabel() { return lazyString(() => i18nString(UIStrings.groqApiKeyLabel)); },
+  get apiKeyHint() { return lazyString(() => i18nString(UIStrings.groqApiKeyHint)); },
   apiKeyPlaceholder: 'Enter your Groq API key',
   hasModelSelectors: true,
   hasFetchButton: true,
-  fetchButtonLabel: i18nString(UIStrings.fetchGroqModelsButton),
+  get fetchButtonLabel() { return lazyString(() => i18nString(UIStrings.fetchGroqModelsButton)); },
   fetchMethodName: 'fetchGroqModels',
   useNameAsLabel: false,
 };

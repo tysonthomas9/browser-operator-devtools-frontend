@@ -5,7 +5,7 @@
 import * as Common from '../../../core/common/common.js';
 
 export interface AgentRunnerProgressEvent {
-  type: 'session_started' | 'tool_started' | 'tool_completed' | 'session_updated' | 'child_agent_started' | 'session_completed';
+  type: 'session_started' | 'tool_started' | 'tool_completed' | 'session_updated' | 'child_agent_started' | 'session_completed' | 'approval_requested';
   sessionId: string;
   parentSessionId?: string;
   agentName: string;

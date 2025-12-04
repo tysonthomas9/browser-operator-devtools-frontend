@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type { getTools } from '../tools/Tools.js';
+import type { getTools, Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage } from '../models/ChatTypes.js';
 
 import * as BaseOrchestratorAgent from './BaseOrchestratorAgent.js';
@@ -11,6 +11,7 @@ import { LLMConfigurationManager } from './LLMConfigurationManager.js';
 import { enhancePromptWithPageContext } from './PageInfoManager.js';
 import type { AgentState } from './State.js';
 import { NodeType } from './Types.js';
+import { compileGuardrailPrompt, hasGuardrailContent, getGuardrailMiddleware } from '../guardrails/index.js';
 
 const logger = createLogger('GraphHelpers');
 
@@ -29,7 +30,7 @@ export function createSystemPrompt(state: AgentState): string {
 }
 
 // Add a new async version that will be used instead
-export async function createSystemPromptAsync(state: AgentState): Promise<string> {
+export async function createSystemPromptAsync(state: AgentState, tools?: Tool[]): Promise<string> {
   const { selectedAgentType } = state;
 
   // Check if there's a system prompt override from conversation state
@@ -43,7 +44,25 @@ export async function createSystemPromptAsync(state: AgentState): Promise<string
       BaseOrchestratorAgent.getSystemPrompt('default'));
 
   // Use the enhancePromptWithPageContext function to add page info
-  const enhancedPrompt = await enhancePromptWithPageContext(basePrompt);
+  let enhancedPrompt = await enhancePromptWithPageContext(basePrompt);
+
+  // Append guardrail awareness to system prompt
+  // This helps the LLM proactively avoid triggering approvals
+  try {
+    const middleware = getGuardrailMiddleware();
+    const policies = middleware.getEvaluator().getActivePolicies();
+    const toolsToCheck = tools || [];
+
+    if (hasGuardrailContent(policies, toolsToCheck)) {
+      const guardrailPrompt = compileGuardrailPrompt(policies, toolsToCheck);
+      if (guardrailPrompt) {
+        enhancedPrompt = `${enhancedPrompt}\n\n${guardrailPrompt}`;
+      }
+    }
+  } catch (error) {
+    // Non-blocking - if guardrail compilation fails, continue without it
+    logger.warn('Failed to compile guardrail prompt', { error });
+  }
 
   return enhancedPrompt;
 }

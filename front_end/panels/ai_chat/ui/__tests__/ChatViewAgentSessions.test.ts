@@ -3,6 +3,18 @@
 import '../ChatView.js';
 import {raf, doubleRaf} from '../../../../testing/DOMHelpers.js';
 
+// Use global sinon provided by Karma framework
+declare const sinon: typeof import('sinon');
+
+// Helper to stub fetch for VersionChecker network calls
+function stubFetch(): sinon.SinonStub {
+  return sinon.stub(globalThis, 'fetch').resolves(new Response(JSON.stringify({
+    tag_name: 'v1.0.0',
+    html_url: 'https://example.com/release',
+    body: 'Test release',
+  }), { status: 200 }));
+}
+
 // Local enums/types to avoid TS enum imports in strip mode
 const ChatMessageEntity = {
   USER: 'user',
@@ -55,6 +67,10 @@ function queryLive(view: HTMLElement): HTMLElement[] {
 }
 
 describe('ChatView Agent Sessions: nesting & handoffs', () => {
+  let fetchStub: sinon.SinonStub;
+  beforeEach(() => { fetchStub = stubFetch(); });
+  afterEach(() => { fetchStub.restore(); });
+
   it('renders nested child session inside parent timeline', async () => {
     const parent = makeSession('p1', {nestedSessions: [makeSession('c1')]});
     const view = document.createElement('devtools-chat-view') as any;
@@ -282,6 +298,10 @@ describe('ChatView Agent Sessions: nesting & handoffs', () => {
 });
 
 describe('ChatView Agent Sessions: pruning and resilience', () => {
+  let fetchStub: sinon.SinonStub;
+  beforeEach(() => { fetchStub = stubFetch(); });
+  afterEach(() => { fetchStub.restore(); });
+
   it('reorder does not recreate or prune', async () => {
     const s1 = makeSession('s1');
     const s2 = makeSession('s2');
@@ -309,6 +329,10 @@ describe('ChatView Agent Sessions: pruning and resilience', () => {
 });
 
 describe('ChatView visibility rules: agent-managed tool calls/results are hidden', () => {
+  let fetchStub: sinon.SinonStub;
+  beforeEach(() => { fetchStub = stubFetch(); });
+  afterEach(() => { fetchStub.restore(); });
+
   it('hides model tool call + result for configurable agent; live timeline shows instead', async () => {
     const view = document.createElement('devtools-chat-view') as any;
     document.body.appendChild(view);
@@ -383,6 +407,10 @@ describe('ChatView visibility rules: agent-managed tool calls/results are hidden
 });
 
 describe('LiveAgentSessionComponent timeline rendering and interactions', () => {
+  let fetchStub: sinon.SinonStub;
+  beforeEach(() => { fetchStub = stubFetch(); });
+  afterEach(() => { fetchStub.restore(); });
+
   it('single tool session shows single-tool mode and hides spine', async () => {
     const session = makeSession('s1', {messages: [makeToolCall('tc1', 'fetch', {url: 'x'}), makeToolResult('tc1', 'fetch', true, {ok: true})]});
     const view = document.createElement('devtools-chat-view') as any;

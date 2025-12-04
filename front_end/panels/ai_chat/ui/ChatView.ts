@@ -21,6 +21,7 @@ import './message/MessageList.js';
 import { renderUserMessage } from './message/UserMessage.js';
 import { renderModelMessage } from './message/ModelMessage.js';
 import { renderToolResultMessage } from './message/ToolResultMessage.js';
+import { renderApprovalRequestMessage } from './message/ApprovalRequestMessage.js';
 import './version/VersionBanner.js';
 import { renderGlobalActionsRow } from './message/GlobalActionsRow.js';
 import { renderStructuredResponse as renderStructuredResponseUI } from './message/StructuredResponseRender.js';
@@ -34,7 +35,7 @@ import './TodoListDisplay.js';
 import './FileListDisplay.js';
 
 // Shared chat types
-import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData } from '../models/ChatTypes.js';
+import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData, ApprovalRequestMessage as ApprovalRequestMessageType } from '../models/ChatTypes.js';
 import { ChatMessageEntity, State } from '../models/ChatTypes.js';
 
 const logger = createLogger('ChatView');
@@ -746,6 +747,11 @@ export class ChatView extends HTMLElement {
                 ${modelMessage.error ? html`<div class="message-error tool-error-message">Model Error: ${modelMessage.error}</div>` : Lit.nothing}
               </div>
             `;
+          }
+        case ChatMessageEntity.APPROVAL_REQUEST:
+          {
+            const approvalMessage = message as ApprovalRequestMessageType;
+            return renderApprovalRequestMessage(approvalMessage);
           }
         default:
           // Should not happen, but render a fallback

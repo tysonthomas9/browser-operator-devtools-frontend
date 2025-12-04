@@ -3,12 +3,28 @@
 import '../ChatView.js';
 import {raf} from '../../../../testing/DOMHelpers.js';
 
+// Use global sinon provided by Karma framework
+declare const sinon: typeof import('sinon');
+
+// Helper to stub fetch for VersionChecker network calls
+function stubFetch(): sinon.SinonStub {
+  return sinon.stub(globalThis, 'fetch').resolves(new Response(JSON.stringify({
+    tag_name: 'v1.0.0',
+    html_url: 'https://example.com/release',
+    body: 'Test release',
+  }), { status: 200 }));
+}
+
 // Minimal enums
 const ChatMessageEntity = { USER: 'user' } as const;
 
 function makeUser(text: string): any { return { entity: ChatMessageEntity.USER, text } as any; }
 
 describe('ChatView input clearing (expanded view)', () => {
+  let fetchStub: sinon.SinonStub;
+  beforeEach(() => { fetchStub = stubFetch(); });
+  afterEach(() => { fetchStub.restore(); });
+
   function getTextarea(view: HTMLElement): HTMLTextAreaElement {
     const shadow = view.shadowRoot!;
     const bar = shadow.querySelector('ai-input-bar') as HTMLElement;

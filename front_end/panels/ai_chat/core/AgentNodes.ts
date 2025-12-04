@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 import type { getTools } from '../tools/Tools.js';
-import { ChatMessageEntity, type ModelChatMessage, type ToolResultMessage, type ChatMessage, type AgentSessionMessage } from '../models/ChatTypes.js';
+import { ChatMessageEntity, type ModelChatMessage, type ToolResultMessage, type ChatMessage, type AgentSessionMessage, type ApprovalRequestMessage } from '../models/ChatTypes.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import { getGuardrailMiddleware, type ExecutionContext, type ApprovalRequest } from '../guardrails/index.js';
 
 import { LLMClient } from '../LLM/LLMClient.js';
 import type { LLMMessage } from '../LLM/LLMTypes.js';
@@ -712,6 +713,110 @@ export function createToolExecutorNode(state: AgentState, provider: LLMProvider,
         // Returning here makes the last message a TOOL_RESULT so routeNextNode() sends execution back to the AgentNode.
         return newState;
       }
+
+      // ===== GUARDRAIL EVALUATION =====
+      // Use the unified GuardrailMiddleware for evaluation and approval
+      try {
+        const currentUrl = state.currentPageUrl || '';
+        let currentDomain = '';
+        try {
+          if (currentUrl) {
+            currentDomain = new URL(currentUrl).hostname;
+          }
+        } catch {
+          // Ignore URL parsing errors
+        }
+
+        const context: ExecutionContext = {
+          currentUrl,
+          currentDomain,
+          userGoal: state.messages.find(m => m.entity === ChatMessageEntity.USER)
+            ? (state.messages.find(m => m.entity === ChatMessageEntity.USER) as any)?.text
+            : undefined,
+        };
+
+        // Helper to create approval message from middleware request
+        const createApprovalMessage = (request: ApprovalRequest): ApprovalRequestMessage => ({
+          entity: ChatMessageEntity.APPROVAL_REQUEST,
+          approvalId: request.id,
+          toolName,
+          toolArgs,
+          description: request.decision.suggestedMessage,
+          status: request.status,
+          riskLevel: request.decision.riskLevel,
+          reasoning: request.decision.reasoning,
+          policyMatched: request.decision.policyMatched,
+          toolCallId,
+          uiLane: 'chat',
+        });
+
+        // Use middleware gate - handles evaluation, approval request, and waiting
+        const gateResult = await getGuardrailMiddleware().gate(
+          { name: toolName, args: toolArgs, callId: toolCallId || '' },
+          context,
+          (request) => {
+            // Callback when approval is needed - add message to state for UI
+            messages.push(createApprovalMessage(request));
+            logger.info('Tool requires approval, waiting for user decision', {
+              approvalId: request.id,
+              toolName,
+              riskLevel: request.decision.riskLevel,
+            });
+          },
+          selectedTool.approvalConfig
+        );
+
+        // If not approved, create rejection message and return
+        if (!gateResult.proceed) {
+          // Update approval message status if it exists
+          const lastApprovalMsg = messages.findLast(
+            m => m.entity === ChatMessageEntity.APPROVAL_REQUEST
+          ) as ApprovalRequestMessage | undefined;
+          if (lastApprovalMsg) {
+            lastApprovalMsg.status = 'rejected';
+            if (gateResult.feedback) {
+              lastApprovalMsg.feedback = gateResult.feedback;
+            }
+          }
+
+          // Create error result with feedback so agent can adapt
+          const rejectionText = gateResult.feedback
+            ? `REJECTED by user: ${gateResult.feedback}. Please try a different approach.`
+            : 'REJECTED by user. Please try a different approach or ask for clarification.';
+
+          const toolResultMessage: ToolResultMessage = {
+            entity: ChatMessageEntity.TOOL_RESULT,
+            toolName,
+            resultText: rejectionText,
+            isError: true,
+            toolCallId,
+            error: rejectionText,
+            uiLane: 'chat',
+          };
+          messages.push(toolResultMessage);
+
+          logger.info('Tool execution rejected', { toolName, feedback: gateResult.feedback });
+          return { ...state, messages: [...messages] };
+        }
+
+        // If we had an approval message, update its status to approved
+        const approvedMsg = messages.findLast(
+          m => m.entity === ChatMessageEntity.APPROVAL_REQUEST
+        ) as ApprovalRequestMessage | undefined;
+        if (approvedMsg && approvedMsg.status === 'pending') {
+          approvedMsg.status = 'approved';
+        }
+
+        logger.debug('Guardrail gate passed', { toolName, decision: gateResult.decision?.decision });
+      } catch (guardrailError) {
+        // Guardrail evaluation failed - log and continue with execution
+        // We don't want guardrail errors to block tool execution
+        logger.warn('Guardrail evaluation failed, continuing with execution', {
+          toolName,
+          error: guardrailError,
+        });
+      }
+      // ===== END GUARDRAIL EVALUATION =====
 
       // Create span for tool execution
       const tracingContext = state.context?.tracingContext;

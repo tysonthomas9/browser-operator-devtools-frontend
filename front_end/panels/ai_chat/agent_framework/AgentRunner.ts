@@ -16,6 +16,7 @@ import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';
 import { callLLMWithTracing } from '../tools/LLMTracingWrapper.js';
 import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
 import { FileStorageManager } from '../tools/FileStorageManager.js';
+// Note: Guardrails are now handled by GuardrailMiddleware in AgentNodes.ts (single evaluation point)
 
 const logger = createLogger('AgentRunner');
 
@@ -1125,6 +1126,9 @@ export class AgentRunner {
             try {
               logger.info(`${agentName} Executing tool: ${toolToExecute.name}`);
               const execTracingContext = getCurrentTracingContext();
+
+              // Note: Guardrails are now handled at the AgentNodes layer (single evaluation point)
+              // Execute tool directly
               toolResultData = await toolToExecute.execute(toolArgs as any, ({
                 apiKey: config.apiKey,
                 provider: config.provider,

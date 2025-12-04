@@ -4,6 +4,7 @@
 
 import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import type { AgentToolConfig } from './ConfigurableAgentTool.js';
+import type { RiskLevel } from '../models/ChatTypes.js';
 
 /**
  * Agent session represents a complete execution context for an agent
@@ -46,10 +47,10 @@ export interface AgentSession {
 export interface AgentMessage {
   id: string;
   timestamp: Date;
-  type: 'reasoning' | 'tool_call' | 'tool_result' | 'handoff' | 'final_answer';
-  
+  type: 'reasoning' | 'tool_call' | 'tool_result' | 'handoff' | 'final_answer' | 'approval_request';
+
   // Message Content (varies by type)
-  content: ReasoningMessage | ToolCallMessage | ToolResultMessage | HandoffMessage | FinalAnswerMessage;
+  content: ReasoningMessage | ToolCallMessage | ToolResultMessage | HandoffMessage | FinalAnswerMessage | ApprovalRequestContent;
 }
 
 /**
@@ -103,6 +104,22 @@ export interface FinalAnswerMessage {
   type: 'final_answer';
   answer: string;
   summary?: string;
+}
+
+/**
+ * Approval request for human-in-the-loop
+ */
+export interface ApprovalRequestContent {
+  type: 'approval_request';
+  approvalId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  riskLevel: RiskLevel;
+  description: string;
+  reasoning?: string;
+  policyMatched?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  feedback?: string;
 }
 
 /**
