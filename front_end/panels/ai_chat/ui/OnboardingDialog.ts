@@ -118,6 +118,9 @@ export class OnboardingDialog {
   private contentElement: HTMLElement | null = null;
   private stepIndicators: HTMLElement[] = [];
   private apiKeyStatusDiv: HTMLElement | null = null;
+  private backButton: HTMLButtonElement | null = null;
+  private nextButton: HTMLButtonElement | null = null;
+  private skipButton: HTMLButtonElement | null = null;
 
   // OAuth event handler for cleanup
   private handleOAuthSuccess: (() => void) | null = null;
@@ -234,9 +237,9 @@ export class OnboardingDialog {
     footerLeft.appendChild(skipButton);
 
     // Store references
-    (this as any).backButton = backButton;
-    (this as any).nextButton = nextButton;
-    (this as any).skipButton = skipButton;
+    this.backButton = backButton;
+    this.nextButton = nextButton;
+    this.skipButton = skipButton;
 
     this.renderCurrentStep();
   }
@@ -254,37 +257,37 @@ export class OnboardingDialog {
   }
 
   private updateButtons(): void {
-    const backButton = (this as any).backButton as HTMLButtonElement;
-    const nextButton = (this as any).nextButton as HTMLButtonElement;
-    const skipButton = (this as any).skipButton as HTMLButtonElement;
+    if (!this.backButton || !this.nextButton || !this.skipButton) {
+      return;
+    }
 
     // Show/hide back button
-    backButton.style.display = this.currentStep === 'welcome' ? 'none' : 'block';
+    this.backButton.style.display = this.currentStep === 'welcome' ? 'none' : 'block';
 
     // Show/hide skip button (hide on ready step)
-    skipButton.style.display = this.currentStep === 'ready' ? 'none' : 'block';
+    this.skipButton.style.display = this.currentStep === 'ready' ? 'none' : 'block';
 
     // Update next button text
     switch (this.currentStep) {
       case 'welcome':
-        nextButton.textContent = 'Get Started';
-        nextButton.disabled = false;
+        this.nextButton.textContent = 'Get Started';
+        this.nextButton.disabled = false;
         break;
       case 'provider':
-        nextButton.textContent = 'Next';
-        nextButton.disabled = !this.selectedProvider;
+        this.nextButton.textContent = 'Next';
+        this.nextButton.disabled = !this.selectedProvider;
         break;
       case 'apikey':
-        nextButton.textContent = 'Next';
-        nextButton.disabled = false; // Can skip
+        this.nextButton.textContent = 'Next';
+        this.nextButton.disabled = false; // Can skip
         break;
       case 'features':
-        nextButton.textContent = 'Next';
-        nextButton.disabled = false;
+        this.nextButton.textContent = 'Next';
+        this.nextButton.disabled = false;
         break;
       case 'ready':
-        nextButton.textContent = 'Start Chatting';
-        nextButton.disabled = false;
+        this.nextButton.textContent = 'Start Chatting';
+        this.nextButton.disabled = false;
         break;
     }
   }
@@ -679,9 +682,11 @@ export class OnboardingDialog {
         return;
       }
 
-      const nextButton = (this as any).nextButton as HTMLButtonElement;
-      nextButton.disabled = true;
-      nextButton.textContent = 'Testing...';
+      if (!this.nextButton) {
+        return;
+      }
+      this.nextButton.disabled = true;
+      this.nextButton.textContent = 'Testing...';
 
       // Clear any previous error
       if (statusDiv) {
@@ -712,8 +717,8 @@ export class OnboardingDialog {
         return;
       } catch (error) {
         // Failed - show inline error, don't advance
-        nextButton.disabled = false;
-        nextButton.textContent = 'Next';
+        this.nextButton.disabled = false;
+        this.nextButton.textContent = 'Next';
         const errorMsg = error instanceof Error ? error.message : 'Connection failed';
         logger.error('API key validation failed:', error);
         if (statusDiv) {
@@ -727,8 +732,8 @@ export class OnboardingDialog {
         return;
       }
 
-      nextButton.disabled = false;
-      nextButton.textContent = 'Next';
+      this.nextButton.disabled = false;
+      this.nextButton.textContent = 'Next';
     }
 
     if (currentIndex < STEPS.length - 1) {

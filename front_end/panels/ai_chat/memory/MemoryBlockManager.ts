@@ -69,6 +69,10 @@ export class MemoryBlockManager {
    * Update or create a memory block.
    */
   async updateBlock(type: BlockType, content: string, projectName?: string): Promise<void> {
+    if (type === 'project' && (!projectName || !projectName.trim())) {
+      throw new Error('projectName is required for project blocks');
+    }
+
     const limit = this.memoryModule.getBlockLimit(type);
     if (content.length > limit) {
       throw new Error(`Content exceeds ${limit} char limit (got ${content.length})`);
