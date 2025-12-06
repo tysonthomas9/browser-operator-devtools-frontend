@@ -445,6 +445,16 @@ export class SettingsDialog {
     );
     mcpSettings.render();
 
+    // Create Memory section
+    const memorySection = document.createElement('div');
+    memorySection.className = 'settings-section memory-section';
+    memorySection.style.display = 'block';
+    contentDiv.appendChild(memorySection);
+
+    // Instantiate and render Memory settings
+    const memorySettings = new MemorySettings(memorySection);
+    memorySettings.render();
+
     // Add Advanced Settings Toggle
     const advancedToggleContainer = document.createElement('div');
     advancedToggleContainer.className = 'advanced-settings-toggle-container';
@@ -464,10 +474,6 @@ export class SettingsDialog {
     advancedToggleContainer.appendChild(advancedToggleLabel);
 
     // Create advanced feature sections
-    const memorySection = document.createElement('div');
-    memorySection.className = 'settings-section memory-section';
-    contentDiv.appendChild(memorySection);
-
     const historySection = document.createElement('div');
     historySection.className = 'settings-section history-section';
     contentDiv.appendChild(historySection);
@@ -485,14 +491,12 @@ export class SettingsDialog {
     contentDiv.appendChild(evaluationSection);
 
     // Instantiate advanced feature settings classes
-    const memorySettings = new MemorySettings(memorySection);
     const browsingHistorySettings = new BrowsingHistorySettings(historySection);
     const vectorDBSettings = new VectorDBSettings(vectorDBSection);
     const tracingSettings = new TracingSettings(tracingSection);
     const evaluationSettings = new EvaluationSettings(evaluationSection);
 
     // Render advanced features
-    memorySettings.render();
     browsingHistorySettings.render();
     vectorDBSettings.render();
     tracingSettings.render();
@@ -511,7 +515,6 @@ export class SettingsDialog {
     // Advanced Settings Toggle Logic
     function toggleAdvancedSections(show: boolean): void {
       const display = show ? 'block' : 'none';
-      memorySection.style.display = display;
       historySection.style.display = display;
       vectorDBSection.style.display = display;
       tracingSection.style.display = display;

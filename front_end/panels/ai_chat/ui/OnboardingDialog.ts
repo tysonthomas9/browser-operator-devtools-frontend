@@ -731,9 +731,6 @@ export class OnboardingDialog {
         }
         return;
       }
-
-      this.nextButton.disabled = false;
-      this.nextButton.textContent = 'Next';
     }
 
     if (currentIndex < STEPS.length - 1) {
