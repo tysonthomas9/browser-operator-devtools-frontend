@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import type { MemoryConfig } from './types.js';
+import { MemoryBlockManager } from './MemoryBlockManager.js';
 
 /**
  * Memory Module - Central facade for the memory system.
@@ -18,15 +19,18 @@ import type { MemoryConfig } from './types.js';
 const MEMORY_INSTRUCTIONS_TEXT = `<memory>
 You have a persistent memory system that remembers information across conversations.
 
-Memory is organized into blocks:
-- **user**: Information about the user (name, preferences, working style)
-- **facts**: Important facts learned from past conversations
-- **project_***: Project-specific context (tech stack, goals, current work)
+**Already in your context** (in the <Memory> block):
+- User's name, identity, preferences, and working style
+- List of projects the user is working on (names only)
 
-**To access memory, use the 'search_memory_agent' tool.** Call it when:
+**For detailed memory, use 'search_memory_agent':**
+- **facts**: Important facts learned from past conversations
+- **project content**: Full project context (tech stack, goals, current work)
+
+Call search_memory_agent when:
 - The user asks about something you might have discussed before
-- You need to recall user preferences or past context
-- The conversation involves a project you may have worked on
+- You need full context for a specific project
+- You need facts from past interactions
 
 Memory is updated automatically after conversations end.
 </memory>
@@ -94,6 +98,19 @@ export class MemoryModule {
    */
   getInstructions(): string {
     return this.isEnabled() ? MEMORY_INSTRUCTIONS_TEXT : '';
+  }
+
+  /**
+   * Get user memory context for prompt injection.
+   * Only includes user block - other memory requires search_memory_agent.
+   * Returns empty string if memory is disabled.
+   */
+  async getMemoryContext(): Promise<string> {
+    if (!this.isEnabled()) {
+      return '';
+    }
+    const blockManager = new MemoryBlockManager();
+    return blockManager.getUserMemoryContext();
   }
 
   /**

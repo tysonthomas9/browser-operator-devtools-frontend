@@ -215,6 +215,12 @@ export function getSettingsStyles(): string {
       font-style: italic;
     }
 
+    .memory-section {
+      margin-top: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-details-hairline);
+    }
+
     .history-section {
       margin-top: 16px;
       padding: 16px 20px;

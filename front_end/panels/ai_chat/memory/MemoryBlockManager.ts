@@ -245,4 +245,41 @@ export class MemoryBlockManager {
     context += '</Memory>';
     return context;
   }
+
+  /**
+   * Get user memory and project list compiled as XML context.
+   * Used for direct prompt injection (facts and project content require search_memory_agent).
+   */
+  async getUserMemoryContext(): Promise<string> {
+    const userBlock = await this.getBlock('user');
+    const projectBlocks = await this.listProjectBlocks();
+
+    // If no user block and no projects, return empty
+    if ((!userBlock || !userBlock.content.trim()) && projectBlocks.length === 0) {
+      return '';
+    }
+
+    let context = '<Memory>\n';
+
+    // Add user block if exists
+    if (userBlock && userBlock.content.trim()) {
+      context += `<user>
+<description>${userBlock.description}</description>
+<content>
+${userBlock.content}
+</content>
+</user>\n`;
+    }
+
+    // Add project list (names only, not content)
+    if (projectBlocks.length > 0) {
+      context += `<projects>
+<!-- Use search_memory_agent to get full project context -->
+${projectBlocks.map(p => `<project name="${p.label.replace('project:', '')}" />`).join('\n')}
+</projects>\n`;
+    }
+
+    context += '</Memory>';
+    return context;
+  }
 }

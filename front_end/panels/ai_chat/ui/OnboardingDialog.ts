@@ -342,19 +342,24 @@ export class OnboardingDialog {
     demoContainer.className = 'video-placeholder';
     demoContainer.style.cssText = 'border: none; background: transparent; display: flex; flex-direction: column; align-items: center;';
 
+    // Wrap gif in clickable link
+    const gifLink = document.createElement('a');
+    gifLink.href = 'https://docs.browseroperator.io/getting-started/';
+    gifLink.target = '_top';
+    gifLink.className = 'demo-gif-link';
+
     const demoGif = document.createElement('img');
     demoGif.src = '/bundled/Images/demo.gif';
-    demoGif.alt = 'Browser Operator Demo';
-    demoGif.style.cssText = 'width: 100%; max-width: 400px; border-radius: 8px;';
-    demoContainer.appendChild(demoGif);
+    demoGif.alt = 'Browser Operator Demo - Click to view getting started guide';
+    demoGif.className = 'demo-gif';
+    gifLink.appendChild(demoGif);
+    demoContainer.appendChild(gifLink);
 
     const clickLink = document.createElement('a');
     clickLink.href = 'https://docs.browseroperator.io/getting-started/';
     clickLink.target = '_top';
     clickLink.textContent = 'View the getting started guide →';
-    clickLink.style.cssText = 'display: block; margin-top: 12px; color: var(--color-primary); text-decoration: none; font-size: 13px;';
-    clickLink.addEventListener('mouseenter', () => { clickLink.style.textDecoration = 'underline'; });
-    clickLink.addEventListener('mouseleave', () => { clickLink.style.textDecoration = 'none'; });
+    clickLink.className = 'getting-started-link';
     demoContainer.appendChild(clickLink);
 
     content.appendChild(demoContainer);
@@ -430,9 +435,8 @@ export class OnboardingDialog {
       content.appendChild(description);
 
       const oauthButton = document.createElement('button');
-      oauthButton.className = 'btn btn-primary';
+      oauthButton.className = 'btn btn-openrouter';
       oauthButton.textContent = 'Sign in with OpenRouter';
-      oauthButton.style.cssText = 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 100%; max-width: 300px; margin-top: 16px;';
       oauthButton.addEventListener('click', async () => {
         oauthButton.disabled = true;
         oauthButton.textContent = 'Redirecting to OpenRouter...';
@@ -754,26 +758,26 @@ export class OnboardingDialog {
       footer.style.display = 'none';
     }
 
-    // Add loading indicator to content
+    // Add auto-close progress indicator to content
     const content = this.contentElement!;
     const loadingDiv = document.createElement('div');
-    loadingDiv.style.cssText = 'margin-top: 24px; text-align: center; color: var(--color-text-secondary);';
+    loadingDiv.style.cssText = 'margin-top: 24px; text-align: center;';
 
-    const loadingText = document.createElement('div');
-    loadingText.style.marginBottom = '8px';
-    loadingText.textContent = 'Starting Browser Operator Agent...';
-    loadingDiv.appendChild(loadingText);
+    // Progress bar container
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'auto-close-progress';
+    loadingDiv.appendChild(progressContainer);
 
-    const spinner = document.createElement('div');
-    spinner.className = 'loading-spinner';
-    // Inline styles as fallback in case CSS class doesn't load
-    spinner.style.cssText = 'width: 24px; height: 24px; border: 3px solid rgba(128, 128, 128, 0.3); border-top-color: var(--color-primary, #00a4fe); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;';
-    loadingDiv.appendChild(spinner);
+    // Animated progress bar
+    const progressBar = document.createElement('div');
+    progressBar.className = 'auto-close-progress-bar';
+    progressContainer.appendChild(progressBar);
 
-    // Add keyframes animation inline
-    const styleEl = document.createElement('style');
-    styleEl.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
-    loadingDiv.appendChild(styleEl);
+    // Text below progress
+    const progressText = document.createElement('div');
+    progressText.className = 'auto-close-text';
+    progressText.textContent = 'Starting Browser Operator Agent...';
+    loadingDiv.appendChild(progressText);
 
     content.appendChild(loadingDiv);
 
