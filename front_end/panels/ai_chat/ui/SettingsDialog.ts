@@ -32,6 +32,7 @@ import { BrowsingHistorySettings } from './settings/advanced/BrowsingHistorySett
 import { VectorDBSettings } from './settings/advanced/VectorDBSettings.js';
 import { TracingSettings } from './settings/advanced/TracingSettings.js';
 import { EvaluationSettings } from './settings/advanced/EvaluationSettings.js';
+import { MemorySettings } from './settings/advanced/MemorySettings.js';
 
 import './model_selector/ModelSelector.js';
 
@@ -444,6 +445,16 @@ export class SettingsDialog {
     );
     mcpSettings.render();
 
+    // Create Memory section
+    const memorySection = document.createElement('div');
+    memorySection.className = 'settings-section memory-section';
+    memorySection.style.display = 'block';
+    contentDiv.appendChild(memorySection);
+
+    // Instantiate and render Memory settings
+    const memorySettings = new MemorySettings(memorySection);
+    memorySettings.render();
+
     // Add Advanced Settings Toggle
     const advancedToggleContainer = document.createElement('div');
     advancedToggleContainer.className = 'advanced-settings-toggle-container';
@@ -497,7 +508,12 @@ export class SettingsDialog {
       vectorDBSettings,
       tracingSettings,
       evaluationSettings,
-      mcpSettings
+    ];
+
+    // Store basic features for cleanup (MCP and Memory are not toggled)
+    const basicFeatures = [
+      mcpSettings,
+      memorySettings,
     ];
 
     // Advanced Settings Toggle Logic
@@ -657,6 +673,13 @@ export class SettingsDialog {
     dialog.contentElement.addEventListener('DOMNodeRemovedFromDocument', () => {
       // Cleanup all advanced features that have cleanup methods
       advancedFeatures.forEach(feature => {
+        if (feature.cleanup) {
+          feature.cleanup();
+        }
+      });
+
+      // Cleanup basic features (MCP and Memory)
+      basicFeatures.forEach(feature => {
         if (feature.cleanup) {
           feature.cleanup();
         }

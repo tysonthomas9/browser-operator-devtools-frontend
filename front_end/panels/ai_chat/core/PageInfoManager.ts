@@ -6,6 +6,7 @@ import * as SDK from '../../../core/sdk/sdk.js';
 import * as Utils from '../common/utils.js'; // Path relative to core/ assuming utils.ts will be in common/ later, this will be common/utils.js
 import { VisitHistoryManager } from '../tools/VisitHistoryManager.js'; // Path relative to core/ assuming VisitHistoryManager.ts will be in core/
 import { FileStorageManager } from '../tools/FileStorageManager.js';
+import { MemoryBlockManager } from '../memory/index.js';
 import { createLogger } from './Logger.js';
 
 const logger = createLogger('PageInfoManager');
@@ -199,6 +200,15 @@ export async function enhancePromptWithPageContext(basePrompt: string): Promise<
     logger.warn('Failed to fetch files for context:', error);
   }
 
+  // Get memory context (global across sessions)
+  let memoryContext = '';
+  try {
+    const memoryManager = new MemoryBlockManager();
+    memoryContext = await memoryManager.compileMemoryContext();
+  } catch (error) {
+    logger.warn('Failed to fetch memory context:', error);
+  }
+
   // If no page info is available, return the original prompt
   if (!pageInfo) {
     return basePrompt;
@@ -213,6 +223,7 @@ export async function enhancePromptWithPageContext(basePrompt: string): Promise<
   <User>
     <Date>${new Date().toLocaleDateString()}</Date>
   </User>
+  ${memoryContext}
   <Page>
     <Title>${pageInfo.title}</Title>
     <PartialAccessibility>

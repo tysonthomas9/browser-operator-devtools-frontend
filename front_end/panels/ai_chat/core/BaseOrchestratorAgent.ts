@@ -35,7 +35,7 @@ import {
   ListFilesTool,
   type Tool
 } from '../tools/Tools.js';
-// Imports from their own files
+import { MemoryModule } from '../memory/index.js';
 
 // Initialize configured agents
 initializeConfiguredAgents();
@@ -50,7 +50,7 @@ export enum BaseOrchestratorAgentType {
   SHOPPING = 'shopping'
 }
 
-// System prompts for each agent type
+// System prompts for each agent type (WITHOUT memory instructions - added dynamically)
 export const SYSTEM_PROMPTS = {
   [BaseOrchestratorAgentType.SEARCH]: `You are an search browser agent specialized in pinpoint web fact-finding.
 Always delegate investigative work to the 'search_agent' tool so it can gather verified, structured results (emails, team rosters, niche professionals, etc.).
@@ -323,6 +323,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
     ]
   },
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: {
@@ -347,6 +348,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
     ]
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {
@@ -389,14 +391,17 @@ AgentDescriptorRegistry.registerSource({
 
 /**
  * Get the system prompt for a specific agent type
+ * Memory instructions are dynamically prepended if memory is enabled
  */
 export function getSystemPrompt(agentType: string): string {
+  const memoryPrefix = MemoryModule.getInstance().getInstructions();
+
   // Check if there's a custom prompt for this agent type
   if (hasCustomPrompt(agentType)) {
-    return getAgentPrompt(agentType);
+    return memoryPrefix + getAgentPrompt(agentType);
   }
-  
-  return AGENT_CONFIGS[agentType]?.systemPrompt ||
+
+  return memoryPrefix + (AGENT_CONFIGS[agentType]?.systemPrompt ||
     // Default system prompt if agent type not found
   `You are a browser agent for helping users with tasks. And, you are an expert task orchestrator agent focused on high-level task strategy, planning, efficient delegation to specialized web agents, and final result synthesis. Your core goal is to provide maximally helpful task completion by orchestrating an effective execution process.
 
@@ -517,14 +522,18 @@ After specialized agents complete their tasks:
 2. Identify patterns, best options, and key insights
 3. Note any remaining gaps or follow-up needs
 4. Create a comprehensive response following the appropriate format
-`;
+`);
 }
 
 /**
  * Get available tools for a specific agent type
+ * Conditionally includes search_memory_agent if memory is enabled
  */
 export function getAgentTools(agentType: string): Array<Tool<any, any>> {
-  return AGENT_CONFIGS[agentType]?.availableTools || [
+  const memoryModule = MemoryModule.getInstance();
+
+  // Get base tools from config or use default list
+  const baseTools = AGENT_CONFIGS[agentType]?.availableTools || [
     ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
     ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
     ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
@@ -541,6 +550,22 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     new ReadFileTool(),
     new ListFilesTool(),
   ];
+
+  // Filter out search_memory_agent if memory is disabled, or add it if enabled and not present
+  if (memoryModule.shouldIncludeMemoryTool()) {
+    // Check if search_memory_agent is already in the list
+    const hasMemoryAgent = baseTools.some(tool => tool.name === 'search_memory_agent');
+    if (!hasMemoryAgent) {
+      const memoryAgent = ToolRegistry.getToolInstance('search_memory_agent');
+      if (memoryAgent) {
+        return [...baseTools, memoryAgent];
+      }
+    }
+    return baseTools;
+  }
+
+  // Memory disabled - filter out search_memory_agent
+  return baseTools.filter(tool => tool.name !== 'search_memory_agent');
 }
 
 // Custom event for agent type selection
