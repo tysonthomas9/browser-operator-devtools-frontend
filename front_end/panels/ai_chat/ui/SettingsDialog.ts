@@ -504,12 +504,16 @@ export class SettingsDialog {
 
     // Store advanced features for cleanup
     const advancedFeatures = [
-      memorySettings,
       browsingHistorySettings,
       vectorDBSettings,
       tracingSettings,
       evaluationSettings,
-      mcpSettings
+    ];
+
+    // Store basic features for cleanup (MCP and Memory are not toggled)
+    const basicFeatures = [
+      mcpSettings,
+      memorySettings,
     ];
 
     // Advanced Settings Toggle Logic
@@ -669,6 +673,13 @@ export class SettingsDialog {
     dialog.contentElement.addEventListener('DOMNodeRemovedFromDocument', () => {
       // Cleanup all advanced features that have cleanup methods
       advancedFeatures.forEach(feature => {
+        if (feature.cleanup) {
+          feature.cleanup();
+        }
+      });
+
+      // Cleanup basic features (MCP and Memory)
+      basicFeatures.forEach(feature => {
         if (feature.cleanup) {
           feature.cleanup();
         }
