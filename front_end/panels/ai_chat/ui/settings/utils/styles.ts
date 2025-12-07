@@ -373,6 +373,12 @@ export function getSettingsStyles(): string {
       border-bottom: 1px solid var(--color-details-hairline);
     }
 
+    .panel-filter-section {
+      margin-top: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-details-hairline);
+    }
+
     .settings-section-title {
       font-size: 16px;
       font-weight: 500;
