@@ -232,6 +232,35 @@ export class MiniAppRegistry {
   }
 
   /**
+   * Reset the registry state
+   *
+   * This clears all tracked instances without attempting to clean up webapps.
+   * Use this when DevTools is refreshed and the previous session's state is stale.
+   */
+  static reset(): void {
+    const count = this.instances.size;
+    if (count > 0) {
+      logger.info(`Resetting registry: clearing ${count} stale instance(s)`);
+      this.instances.clear();
+    }
+  }
+
+  /**
+   * Force close and relaunch an app
+   *
+   * Use this when an app appears stuck in "running" state but the actual
+   * webapp no longer exists (e.g., after a page refresh).
+   */
+  static async forceRelaunch(appId: string): Promise<MiniAppInstance> {
+    // Clear any stale instance without trying to clean up (it's already gone)
+    if (this.instances.has(appId)) {
+      logger.info(`Force clearing stale instance of "${appId}"`);
+      this.instances.delete(appId);
+    }
+    return this.launch(appId);
+  }
+
+  /**
    * Wrap SPA JavaScript with the standard mini app protocol
    *
    * This adds the window.miniApp interface that all SPAs must implement:

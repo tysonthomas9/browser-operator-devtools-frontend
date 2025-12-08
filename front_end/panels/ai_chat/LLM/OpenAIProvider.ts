@@ -382,6 +382,21 @@ export class OpenAIProvider extends LLMBaseProvider {
         };
       }
 
+      // Add structured output schema if provided (forces JSON response conforming to schema)
+      if (options?.outputSchema) {
+        payloadBody.text = {
+          format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'agent_response',
+              strict: true,
+              schema: options.outputSchema
+            }
+          }
+        };
+        logger.debug('Using structured output with schema:', options.outputSchema);
+      }
+
       logger.info('Request payload:', payloadBody);
 
       const data = await this.makeAPIRequest(payloadBody);

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type { LLMMessage, LLMResponse, LLMCallOptions, LLMProvider, ModelInfo, RetryConfig } from './LLMTypes.js';
+import type { LLMMessage, LLMResponse, LLMCallOptions, LLMProvider, ModelInfo, RetryConfig, OutputSchema } from './LLMTypes.js';
 import { isCustomProvider } from './LLMTypes.js';
 import { LLMProviderRegistry } from './LLMProviderRegistry.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
@@ -48,6 +48,8 @@ export interface LLMCallRequest {
   temperature?: number;
   retryConfig?: Partial<RetryConfig>;
   agentName?: string; // Name of the calling agent for provider-specific routing
+  /** JSON Schema for structured LLM output (uses native LLM response_format) */
+  outputSchema?: OutputSchema;
 }
 
 /**
@@ -205,6 +207,10 @@ export class LLMClient {
     // Forward agent name for provider-specific routing
     if ((request as any).agentName) {
       options.agentName = (request as any).agentName;
+    }
+    // Forward structured output schema for native LLM response_format
+    if (request.outputSchema) {
+      options.outputSchema = request.outputSchema;
     }
 
     return provider.callWithMessages(request.model, messages, options);

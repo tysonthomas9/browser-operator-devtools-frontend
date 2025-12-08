@@ -5,7 +5,7 @@
 import { enhancePromptWithPageContext } from '../core/PageInfoManager.js';
 import type { AgentDescriptor } from '../core/AgentDescriptorRegistry.js';
 import { LLMClient } from '../LLM/LLMClient.js';
-import type { LLMResponse, LLMMessage, LLMProvider } from '../LLM/LLMTypes.js';
+import type { LLMResponse, LLMMessage, LLMProvider, OutputSchema } from '../LLM/LLMTypes.js';
 import type { Tool } from '../tools/Tools.js';
 import { ChatMessageEntity, type ChatMessage, type ModelChatMessage, type ToolResultMessage } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
@@ -42,6 +42,8 @@ export interface AgentRunnerConfig {
   nanoModel?: string;
   /** Descriptor describing this agent configuration */
   agentDescriptor?: AgentDescriptor;
+  /** JSON Schema for structured LLM output (uses native LLM response_format) */
+  outputSchema?: OutputSchema;
 }
 
 /**
@@ -752,6 +754,7 @@ export class AgentRunner {
           tools: toolSchemas,
           temperature: temperature ?? 0,
           agentName: agentName,  // Pass agent identity for provider-specific routing
+          outputSchema: config.outputSchema,  // Pass structured output schema if configured
         });
 
         // Complete the generation observation

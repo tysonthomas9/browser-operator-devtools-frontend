@@ -192,6 +192,16 @@ export interface LLMMessage {
 }
 
 /**
+ * JSON Schema for structured output
+ */
+export interface OutputSchema {
+  type: string;
+  properties: Record<string, unknown>;
+  required?: string[];
+  additionalProperties?: boolean;
+}
+
+/**
  * Options for LLM calls
  */
 export interface LLMCallOptions {
@@ -201,6 +211,12 @@ export interface LLMCallOptions {
   reasoningLevel?: 'low' | 'medium' | 'high'; // For O-series models
   retryConfig?: Partial<RetryConfig>;
   agentName?: string; // Name of the calling agent for provider-specific routing
+  /**
+   * JSON Schema for structured LLM output (uses native LLM response_format).
+   * When provided, the LLM will use constrained decoding to guarantee
+   * responses conform to this schema at the token generation level.
+   */
+  outputSchema?: OutputSchema;
 }
 
 /**

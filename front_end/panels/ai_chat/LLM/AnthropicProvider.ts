@@ -286,6 +286,15 @@ export class AnthropicProvider extends LLMBaseProvider {
       if (options?.reasoningLevel) {
         betaHeaders.push('interleaved-thinking-2025-05-14');
       }
+      // Add structured outputs beta if outputSchema is provided
+      if (options?.outputSchema) {
+        betaHeaders.push('structured-outputs-2025-11-13');
+        payloadBody.output_format = {
+          type: 'json_schema',
+          schema: options.outputSchema
+        };
+        logger.debug('Using structured output with schema:', options.outputSchema);
+      }
 
       logger.info('Request payload:', payloadBody);
 

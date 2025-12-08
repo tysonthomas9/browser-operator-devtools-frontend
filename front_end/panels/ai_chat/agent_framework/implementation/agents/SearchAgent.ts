@@ -185,6 +185,55 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
     },
     handoffs: [],
     includeIntermediateStepsOnReturn: false,
+    // Structured output schema to force JSON compliance via native LLM response_format
+    outputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['complete', 'partial', 'failed']
+        },
+        objective: { type: 'string' },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              entity: { type: 'string' },
+              confidence: { type: 'number' },
+              attributes: { type: 'object' },
+              sources: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    url: { type: 'string' },
+                    last_verified: { type: 'string' }
+                  },
+                  required: ['title', 'url', 'last_verified']
+                }
+              },
+              notes: {
+                type: 'array',
+                items: { type: 'string' }
+              }
+            },
+            required: ['entity', 'confidence', 'attributes', 'sources']
+          }
+        },
+        gaps: {
+          type: 'array',
+          items: { type: 'string' }
+        },
+        next_actions: {
+          type: 'array',
+          items: { type: 'string' }
+        }
+      },
+      required: ['status', 'objective', 'results'],
+      additionalProperties: false
+    },
     createErrorResult: (error: string, steps: ChatMessage[], reason: any) => {
       // If we hit max iterations, synthesize a partial JSON payload from what we gathered
       if (reason === 'max_iterations') {

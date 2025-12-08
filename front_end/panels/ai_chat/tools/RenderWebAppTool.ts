@@ -62,27 +62,44 @@ export class RenderWebAppTool implements Tool<RenderWebAppArgs, RenderWebAppResu
       return { error: 'No page target available' };
     }
 
-    // Navigate to blank page first for clean canvas
-    logger.info('Navigating to blank page before rendering webapp');
+    // Navigate to blank page for clean CSP environment
+    // We save and restore the hash to preserve it for page refresh restoration
     const pageAgent = target.pageAgent();
+    const runtimeAgent = target.runtimeAgent();
+
     if (pageAgent) {
       try {
+        // Get current URL hash before navigating (for restoration)
+        const hashResult = await runtimeAgent.invoke_evaluate({
+          expression: 'window.location.hash',
+          returnByValue: true,
+        });
+        const currentHash = hashResult.result?.value as string || '';
+
+        logger.info('Navigating to blank page, preserving hash:', currentHash);
+
         const navResult = await pageAgent.invoke_navigate({ url: 'about:blank' });
         if (navResult.getError()) {
           logger.warn(`Navigation to blank page failed: ${navResult.getError()}, continuing anyway`);
         } else {
-          // Wait briefly for blank page to load (should be instant)
+          // Wait briefly for blank page to load
           await new Promise(resolve => setTimeout(resolve, 300));
-          logger.info('Navigated to blank page successfully');
+
+          // Restore the hash after navigation
+          if (currentHash) {
+            await runtimeAgent.invoke_evaluate({
+              expression: `window.location.hash = ${JSON.stringify(currentHash)}`,
+              returnByValue: true,
+            });
+            logger.info('Restored hash after navigation:', currentHash);
+          }
         }
       } catch (navError) {
-        logger.warn('Error navigating to blank page, continuing anyway:', navError);
+        logger.warn('Error during navigation/hash restoration, continuing anyway:', navError);
       }
     }
 
     try {
-      const runtimeAgent = target.runtimeAgent();
-
       // Execute webapp rendering script in page context
       const result = await runtimeAgent.invoke_evaluate({
         expression: `

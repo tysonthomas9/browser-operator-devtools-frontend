@@ -92,6 +92,8 @@ import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js'
 import { ConversationHistoryList } from './ConversationHistoryList.js';
 // Agent Studio
 import { AgentStudioView } from './AgentStudioView.js';
+// Mini Apps Launcher
+import { MiniAppsLauncherView } from './MiniAppsLauncherView.js';
 
 
 // Model type definition
@@ -2032,9 +2034,9 @@ export class AIChatPanel extends UI.Panel.Panel {
           {jslogContext: 'connectors'}
         );
         contextMenu.defaultSection().appendItem(
-          'Agent Studio',
-          () => this.#onAgentStudioClick(),
-          {jslogContext: 'agent-studio'}
+          'Apps',
+          () => this.#showMiniAppsLauncher(),
+          {jslogContext: 'apps'}
         );
       },
       true,  // isIconDropdown
@@ -2318,6 +2320,14 @@ export class AIChatPanel extends UI.Panel.Panel {
       this.#agentStudioView = new AgentStudioView();
     }
     void this.#agentStudioView.show();
+  }
+
+  /**
+   * Shows the Mini Apps launcher
+   */
+  #showMiniAppsLauncher(): void {
+    const launcher = new MiniAppsLauncherView();
+    void launcher.show();
   }
 
   /**

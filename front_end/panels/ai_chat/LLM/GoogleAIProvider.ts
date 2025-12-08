@@ -286,6 +286,12 @@ export class GoogleAIProvider extends LLMBaseProvider {
       if (options?.temperature !== undefined) {
         generationConfig.temperature = options.temperature;
       }
+      // Add structured output schema if provided (forces JSON response conforming to schema)
+      if (options?.outputSchema) {
+        generationConfig.responseMimeType = 'application/json';
+        generationConfig.responseJsonSchema = options.outputSchema;
+        logger.debug('Using structured output with schema:', options.outputSchema);
+      }
       if (Object.keys(generationConfig).length > 0) {
         payloadBody.generationConfig = generationConfig;
       }

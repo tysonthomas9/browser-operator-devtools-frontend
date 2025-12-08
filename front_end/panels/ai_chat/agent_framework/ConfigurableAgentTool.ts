@@ -152,6 +152,19 @@ export interface AgentToolConfig {
   };
 
   /**
+   * JSON Schema for structured LLM output (uses native LLM response_format).
+   * When provided, the LLM will use constrained decoding to guarantee
+   * responses conform to this schema at the token generation level.
+   * Supported by OpenAI, Anthropic, and LiteLLM providers.
+   */
+  outputSchema?: {
+    type: string,
+    properties: Record<string, unknown>,
+    required?: string[],
+    additionalProperties?: boolean,
+  };
+
+  /**
    * UI display configuration for the agent
    */
   ui?: AgentUIConfig;
@@ -560,6 +573,7 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
       getVisionCapability: callCtx.getVisionCapability ?? (() => false),
       miniModel: callCtx.miniModel,
       nanoModel: callCtx.nanoModel,
+      outputSchema: this.config.outputSchema,  // Pass structured output schema if configured
     };
 
     const descriptor = await AgentDescriptorRegistry.getDescriptor(this.name);

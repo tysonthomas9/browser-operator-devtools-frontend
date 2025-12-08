@@ -5,9 +5,11 @@
 import { createLogger } from '../core/Logger.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import { MiniAppRegistry } from './MiniAppRegistry.js';
+import { MiniAppPageMonitor } from './MiniAppPageMonitor.js';
 
 // Import mini apps
 import { AgentStudioMiniApp } from './apps/agent_studio/AgentStudioMiniApp.js';
+import { DataStudioMiniApp } from './apps/data_studio/DataStudioMiniApp.js';
 
 // Import mini app tools
 import { ListMiniAppsTool } from '../tools/mini_app/ListMiniAppsTool.js';
@@ -35,11 +37,17 @@ export function initializeMiniApps(): void {
 
   logger.info('Initializing mini app system...');
 
+  // Clear any stale instances from previous session (e.g., after DevTools refresh)
+  MiniAppRegistry.reset();
+
   // Register mini apps
   registerMiniApps();
 
   // Register mini app tools
   registerMiniAppTools();
+
+  // Initialize page refresh monitor (handles URL hash restoration)
+  MiniAppPageMonitor.getInstance().initialize();
 
   initialized = true;
   logger.info('Mini app system initialized successfully');
@@ -52,9 +60,8 @@ function registerMiniApps(): void {
   // Register Agent Studio as a mini app
   MiniAppRegistry.register(new AgentStudioMiniApp());
 
-  // Future mini apps will be registered here:
-  // MiniAppRegistry.register(new DataVisualizerMiniApp());
-  // MiniAppRegistry.register(new FormBuilderMiniApp());
+  // Register Data Studio mini app
+  MiniAppRegistry.register(new DataStudioMiniApp());
 
   logger.info(`Registered ${MiniAppRegistry.getAllApps().length} mini apps`);
 }

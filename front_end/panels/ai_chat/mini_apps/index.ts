@@ -56,3 +56,4 @@ export { initializeMiniApps, isMiniAppSystemInitialized, resetMiniAppSystem } fr
 
 // Apps
 export { AgentStudioMiniApp } from './apps/agent_studio/AgentStudioMiniApp.js';
+export { DataStudioMiniApp } from './apps/data_studio/DataStudioMiniApp.js';
