@@ -1680,11 +1680,11 @@ export class AIChatPanel extends UI.Panel.Panel {
           () => this.#onMCPConnectorsClick(),
           {jslogContext: 'connectors'}
         );
-        contextMenu.defaultSection().appendItem(
-          'Agent Studio',
-          () => this.#onAgentStudioClick(),
-          {jslogContext: 'agent-studio'}
-        );
+        // contextMenu.defaultSection().appendItem(
+        //   'Agent Studio',
+        //   () => this.#onAgentStudioClick(),
+        //   {jslogContext: 'agent-studio'}
+        // );
       },
       true,  // isIconDropdown
       true,  // useSoftMenu
