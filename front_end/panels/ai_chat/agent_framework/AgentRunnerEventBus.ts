@@ -25,7 +25,10 @@ export class AgentRunnerEventBus extends Common.ObjectWrapper.ObjectWrapper<{
     return this.instance;
   }
   
-  emitProgress(event: AgentRunnerProgressEvent): void {
+  emitProgress(event: AgentRunnerProgressEvent, isBackground?: boolean): void {
+    if (isBackground) {
+      return;
+    }
     this.dispatchEventToListeners('agent-progress', event);
   }
 }

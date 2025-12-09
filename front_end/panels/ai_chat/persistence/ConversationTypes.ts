@@ -8,6 +8,15 @@ import {ChatMessageEntity} from '../models/ChatTypes.js';
 import type {AgentSession} from '../agent_framework/AgentSessionTypes.js';
 
 /**
+ * Memory processing status for conversation
+ */
+export type MemoryProcessingStatus =
+  | 'pending'      // Not yet processed
+  | 'processing'   // Currently being processed (prevents concurrent runs)
+  | 'completed'    // Successfully processed
+  | 'failed';      // Failed (can retry)
+
+/**
  * Represents a fully stored conversation with all state and metadata
  */
 export interface StoredConversation {
@@ -32,6 +41,11 @@ export interface StoredConversation {
 
   // Total number of messages in the conversation
   messageCount: number;
+
+  // Memory extraction status
+  memoryStatus?: MemoryProcessingStatus;
+  memoryProcessedAt?: number;           // Unix timestamp when completed
+  memoryProcessingStartedAt?: number;   // Unix timestamp when processing started (for timeout detection)
 }
 
 /**
@@ -44,6 +58,8 @@ export interface ConversationMetadata {
   updatedAt: number;
   preview?: string;
   messageCount: number;
+  memoryStatus?: MemoryProcessingStatus;
+  memoryProcessingStartedAt?: number;  // Needed to detect stale processing
 }
 
 /**
@@ -284,5 +300,7 @@ export function extractMetadata(conversation: StoredConversation): ConversationM
     updatedAt: conversation.updatedAt,
     preview: conversation.preview,
     messageCount: conversation.messageCount,
+    memoryStatus: conversation.memoryStatus,
+    memoryProcessingStartedAt: conversation.memoryProcessingStartedAt,
   };
 }

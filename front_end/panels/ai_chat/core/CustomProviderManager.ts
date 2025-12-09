@@ -14,6 +14,7 @@ export interface CustomProviderConfig {
   name: string;         // Display name (e.g., "Z.AI")
   baseURL: string;      // Base URL (e.g., "https://api.z.ai/api/coding/paas/v4")
   models: string[];     // Available models
+  modelsManuallyAdded: boolean; // True if user manually configured models, false if fetched from API
   enabled: boolean;     // Whether the provider is enabled
   createdAt: number;    // Timestamp when created
   updatedAt: number;    // Timestamp when last updated
@@ -62,8 +63,10 @@ export class CustomProviderManager {
       }
     }
 
-    if (!config.models || config.models.length === 0) {
-      errors.push('At least one model is required');
+    // Models are optional - they can be fetched from the API if not manually specified
+    // Only validate if modelsManuallyAdded is true and models are empty
+    if (config.modelsManuallyAdded && (!config.models || config.models.length === 0)) {
+      errors.push('At least one model is required when manually adding models');
     }
 
     return {
@@ -145,10 +148,19 @@ export class CustomProviderManager {
 
   /**
    * Add a new custom provider
+   * @param config Provider configuration (modelsManuallyAdded defaults to true if models are provided)
    */
-  static addProvider(config: Omit<CustomProviderConfig, 'id' | 'createdAt' | 'updatedAt'>): CustomProviderConfig {
+  static addProvider(config: Omit<CustomProviderConfig, 'id' | 'createdAt' | 'updatedAt' | 'modelsManuallyAdded'> & { modelsManuallyAdded?: boolean }): CustomProviderConfig {
+    // Determine if models were manually added (default to true if models are provided)
+    const modelsManuallyAdded = config.modelsManuallyAdded ?? (config.models && config.models.length > 0);
+
+    const fullConfig = {
+      ...config,
+      modelsManuallyAdded,
+    };
+
     // Validate config
-    const validation = CustomProviderManager.validateConfig(config);
+    const validation = CustomProviderManager.validateConfig(fullConfig);
     if (!validation.valid) {
       throw new Error(`Invalid provider configuration: ${validation.errors.join(', ')}`);
     }
@@ -163,7 +175,7 @@ export class CustomProviderManager {
     const now = Date.now();
 
     const newProvider: CustomProviderConfig = {
-      ...config,
+      ...fullConfig,
       id,
       createdAt: now,
       updatedAt: now,

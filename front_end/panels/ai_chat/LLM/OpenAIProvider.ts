@@ -416,10 +416,88 @@ export class OpenAIProvider extends LLMBaseProvider {
   }
 
   /**
+   * Fetch available models from OpenAI API
+   * This method makes an actual API call and throws on error (good for validation)
+   */
+  async fetchModels(): Promise<Array<{id: string; name: string}>> {
+    const response = await fetch('https://api.openai.com/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      throw new Error(`OpenAI API error: ${response.statusText} - ${errorData?.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+
+    // Models to include (chat/reasoning models that work with Responses API)
+    const SUPPORTED_PREFIXES = ['gpt-4.1', 'gpt-4o', 'gpt-5', 'o1', 'o3', 'o4'];
+
+    // Models to exclude (non-chat models like TTS, STT, embeddings, etc.)
+    const EXCLUDED_PATTERNS = ['transcribe', 'tts', 'audio', 'image', 'embedding', 'moderation', 'whisper', 'dall-e', 'realtime', 'codex', 'chat', 'search'];
+
+    return data.data
+      .filter((model: any) => {
+        const id = model.id.toLowerCase();
+        // Must start with a supported prefix
+        const hasPrefix = SUPPORTED_PREFIXES.some(prefix => id.startsWith(prefix));
+        // Must not contain excluded patterns
+        const isExcluded = EXCLUDED_PATTERNS.some(pattern => id.includes(pattern));
+        return hasPrefix && !isExcluded;
+      })
+      .map((model: any) => ({
+        id: model.id,
+        name: model.id
+      }));
+  }
+
+  /**
    * Get all OpenAI models supported by this provider
    */
   async getModels(): Promise<ModelInfo[]> {
-    // Return hardcoded OpenAI models with their capabilities
+    try {
+      const models = await this.fetchModels();
+
+      return models.map(model => ({
+        id: model.id,
+        name: model.name,
+        provider: 'openai' as LLMProvider,
+        capabilities: {
+          functionCalling: true,
+          reasoning: this.modelSupportsReasoning(model.id),
+          vision: this.modelSupportsVision(model.id),
+          structured: true
+        }
+      }));
+    } catch (error) {
+      logger.warn('Failed to fetch models from OpenAI API, using default list:', error);
+      return this.getDefaultModels();
+    }
+  }
+
+  /**
+   * Check if model supports reasoning (O-series and GPT-5)
+   */
+  private modelSupportsReasoning(modelId: string): boolean {
+    return modelId.startsWith('o') || modelId.includes('gpt-5');
+  }
+
+  /**
+   * Check if model supports vision
+   */
+  private modelSupportsVision(modelId: string): boolean {
+    // O3-mini doesn't support vision, most others do
+    return !modelId.includes('o3-mini');
+  }
+
+  /**
+   * Get default list of known OpenAI models (fallback)
+   */
+  private getDefaultModels(): ModelInfo[] {
     return [
       {
         id: 'gpt-4.1-2025-04-14',

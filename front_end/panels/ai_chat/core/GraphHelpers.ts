@@ -43,7 +43,9 @@ export async function createSystemPromptAsync(state: AgentState): Promise<string
       BaseOrchestratorAgent.getSystemPrompt('default'));
 
   // Use the enhancePromptWithPageContext function to add page info
-  return await enhancePromptWithPageContext(basePrompt);
+  const enhancedPrompt = await enhancePromptWithPageContext(basePrompt);
+
+  return enhancedPrompt;
 }
 
 // Create the appropriate tools for the agent based on agent type
