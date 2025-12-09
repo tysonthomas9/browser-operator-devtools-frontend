@@ -5,10 +5,29 @@
 import { createLogger } from '../core/Logger.js';
 import type { FileSummary } from '../tools/FileStorageManager.js';
 import * as Marked from '../../../third_party/marked/marked.js';
+import * as SDK from '../../../core/sdk/sdk.js';
 
 const logger = createLogger('FileContentViewer');
 
 type FileType = 'code' | 'json' | 'markdown' | 'text' | 'html' | 'css';
+
+/**
+ * Options for FileContentViewer
+ */
+export interface FileContentViewerOptions {
+  /** Whether the content can be edited */
+  editable?: boolean;
+  /** Callback when content is saved (only used if editable is true) */
+  onSave?: (newContent: string) => Promise<void>;
+}
+
+/**
+ * Result returned from FileContentViewer.show()
+ */
+export interface FileContentViewerResult {
+  /** The unique ID of the webapp iframe for CDP operations */
+  webappId: string;
+}
 
 /**
  * FileContentViewer - Full-screen file viewer using RenderWebAppTool
@@ -17,20 +36,24 @@ type FileType = 'code' | 'json' | 'markdown' | 'text' | 'html' | 'css';
  * - Syntax-aware formatting
  * - Copy and download functionality
  * - Clean, modern design
+ * - Optional edit mode with save callback
  */
 export class FileContentViewer {
   /**
    * Display file content in full-screen view
+   * @returns The webappId for CDP operations (e.g., polling for saves)
    */
-  static async show(file: FileSummary, content: string): Promise<void> {
+  static async show(file: FileSummary, content: string, options?: FileContentViewerOptions): Promise<FileContentViewerResult | null> {
     try {
       // Import RenderWebAppTool
       const { RenderWebAppTool } = await import('../tools/RenderWebAppTool.js');
 
+      const editable = options?.editable ?? false;
+
       // Build viewer components
-      const viewerHTML = await FileContentViewer.buildHTML(file, content);
-      const viewerCSS = FileContentViewer.buildCSS();
-      const viewerJS = FileContentViewer.buildJS(file.fileName, content);
+      const viewerHTML = await FileContentViewer.buildHTML(file, content, editable);
+      const viewerCSS = FileContentViewer.buildCSS(editable);
+      const viewerJS = FileContentViewer.buildJS(file.fileName, content, editable);
 
       // Use RenderWebAppTool to display full-screen viewer
       const tool = new RenderWebAppTool();
@@ -43,12 +66,61 @@ export class FileContentViewer {
 
       if ('error' in result) {
         logger.error('Failed to open file viewer:', result.error);
-      } else {
-        logger.info('File viewer opened successfully', { fileName: file.fileName });
+        return null;
       }
+
+      logger.info('File viewer opened successfully', { fileName: file.fileName, editable, webappId: result.webappId });
+      return { webappId: result.webappId };
     } catch (error) {
       logger.error('Error opening file viewer:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Poll for saved content from an editable viewer iframe
+   * Uses CDP to read data attributes from the iframe's body
+   * @param webappId The ID of the webapp iframe
+   * @returns The saved content if available, null otherwise
+   */
+  static async checkForSavedContent(webappId: string): Promise<string | null> {
+    try {
+      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      if (!target) {
+        return null;
+      }
+
+      const runtimeAgent = target.runtimeAgent();
+
+      // Check for data-memory-saved attribute and retrieve content
+      const result = await runtimeAgent.invoke_evaluate({
+        expression: `
+          (() => {
+            const iframe = document.getElementById('${webappId}');
+            if (!iframe) return null;
+            try {
+              const doc = iframe.contentDocument || iframe.contentWindow.document;
+              if (doc.body.getAttribute('data-memory-saved') === 'true') {
+                const encoded = doc.body.getAttribute('data-memory-content');
+                if (encoded) {
+                  // Decode base64 with Unicode support
+                  return decodeURIComponent(escape(atob(encoded)));
+                }
+              }
+            } catch (e) {
+              // Cross-origin access denied
+              return null;
+            }
+            return null;
+          })()
+        `,
+        returnByValue: true,
+      });
+
+      return result.result?.value || null;
+    } catch (error) {
+      logger.error('Error checking for saved content:', error);
+      return null;
     }
   }
 
@@ -240,7 +312,7 @@ export class FileContentViewer {
   /**
    * Build HTML structure
    */
-  private static async buildHTML(file: FileSummary, content: string): Promise<string> {
+  private static async buildHTML(file: FileSummary, content: string, editable: boolean = false): Promise<string> {
     const fileType = FileContentViewer.detectFileType(file.fileName);
     const icon = FileContentViewer.getFileIcon(fileType);
     const typeLabel = FileContentViewer.getFileTypeLabel(fileType);
@@ -257,7 +329,7 @@ export class FileContentViewer {
       // For markdown: hidden div with original source + visible rendered HTML
       contentHTML = `
         <div id="file-content" style="display: none;">${FileContentViewer.escapeHTML(formattedContent)}</div>
-        <div class="markdown-content">${sanitizedHTML}</div>
+        <div class="markdown-content" id="markdown-view">${sanitizedHTML}</div>
       `;
     } else {
       // For code files: use escapeHTML helper and add id
@@ -265,8 +337,12 @@ export class FileContentViewer {
       contentHTML = `<pre class="file-content" id="file-content" data-file-type="${fileType}"><code>${safeContent}</code></pre>`;
     }
 
+    // Content click handler for editable mode
+    const contentClickHandler = editable ? 'onclick="enterEditMode()"' : '';
+    const contentCursor = editable ? 'cursor: pointer;' : '';
+
     return `
-<div class="file-viewer" data-file-type="${fileType}">
+<div class="file-viewer" data-file-type="${fileType}" data-editable="${editable}">
   <!-- Header -->
   <header class="viewer-header">
     <div class="file-info">
@@ -298,11 +374,18 @@ export class FileContentViewer {
         </svg>
         <span class="btn-text">Download</span>
       </button>
+      <button class="action-btn close-btn" onclick="closeViewer(event)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+        <span class="btn-text">Close</span>
+      </button>
     </div>
   </header>
 
   <!-- Content -->
-  <main class="content-container" id="content-main">
+  <main class="content-container" id="content-main" ${contentClickHandler} style="${contentCursor}">
     ${contentHTML}
   </main>
 </div>
@@ -312,7 +395,76 @@ export class FileContentViewer {
   /**
    * Build CSS styles
    */
-  private static buildCSS(): string {
+  private static buildCSS(editable: boolean = false): string {
+    const editStyles = editable ? `
+      /* Click-to-edit styles */
+      .content-container {
+        transition: background-color 0.2s ease;
+      }
+
+      .content-container:hover .markdown-content,
+      .content-container:hover .file-content {
+        background: rgba(25, 118, 210, 0.04);
+      }
+
+      /* Saved indicator */
+      .save-indicator {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #4caf50;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .save-indicator.visible {
+        opacity: 1;
+      }
+
+      .edit-textarea {
+        width: calc(100% - 48px);
+        height: calc(100vh - 140px);
+        padding: 32px;
+        font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #202124;
+        border: 2px solid #1976d2;
+        resize: none;
+        background: rgba(255, 255, 255, 0.98);
+        margin: 24px;
+        border-radius: 16px;
+        box-sizing: border-box;
+        outline: none;
+      }
+
+      .edit-textarea:focus {
+        border-color: #1565c0;
+        box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.2);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .content-container:hover .markdown-content,
+        .content-container:hover .file-content {
+          background: rgba(100, 181, 246, 0.08);
+        }
+
+        .edit-textarea {
+          background: rgba(41, 42, 45, 0.98);
+          color: #e8eaed;
+          border-color: #1976d2;
+        }
+
+        .edit-textarea:focus {
+          border-color: #64b5f6;
+          box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.2);
+        }
+      }
+    ` : '';
+
     return `
       * {
         margin: 0;
@@ -449,6 +601,19 @@ export class FileContentViewer {
       .download-btn:hover {
         background: linear-gradient(135deg, #1565c0, #0d47a1);
         box-shadow: 0 6px 16px rgba(25, 118, 210, 0.4);
+      }
+
+      .close-btn {
+        background: rgba(244, 67, 54, 0.1);
+        border-color: rgba(244, 67, 54, 0.3);
+        color: #f44336;
+      }
+
+      .close-btn:hover {
+        background: #f44336;
+        border-color: #f44336;
+        color: white;
+        box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
       }
 
       /* Content */
@@ -681,6 +846,18 @@ export class FileContentViewer {
           background: linear-gradient(135deg, #1565c0, #0d47a1);
         }
 
+        .close-btn {
+          background: rgba(244, 67, 54, 0.15);
+          border-color: rgba(244, 67, 54, 0.4);
+          color: #ef5350;
+        }
+
+        .close-btn:hover {
+          background: #f44336;
+          border-color: #f44336;
+          color: white;
+        }
+
         .content-container {
           background: transparent;
         }
@@ -776,13 +953,15 @@ export class FileContentViewer {
           background: rgba(255, 255, 255, 0.3);
         }
       }
+
+      ${editStyles}
     `;
   }
 
   /**
    * Build JavaScript functionality
    */
-  private static buildJS(fileName: string, content: string): string {
+  private static buildJS(fileName: string, content: string, editable: boolean = false): string {
     return `
       const FILE_NAME = ${JSON.stringify(fileName)};
 
@@ -794,7 +973,9 @@ export class FileContentViewer {
         const originalText = textSpan.textContent;
 
         try {
-          const content = document.getElementById('file-content').textContent;
+          // If in edit mode, use textarea value; otherwise use file-content
+          const editTextarea = document.getElementById('edit-textarea');
+          const content = editTextarea ? editTextarea.value : document.getElementById('file-content').textContent;
 
           // Try modern Clipboard API first
           if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -838,7 +1019,9 @@ export class FileContentViewer {
       window.downloadFile = function(event) {
         event.preventDefault();
         try {
-          const content = document.getElementById('file-content').textContent;
+          // If in edit mode, use textarea value; otherwise use file-content
+          const editTextarea = document.getElementById('edit-textarea');
+          const content = editTextarea ? editTextarea.value : document.getElementById('file-content').textContent;
           const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -854,9 +1037,83 @@ export class FileContentViewer {
         }
       };
 
+      window.closeViewer = function(event) {
+        event.preventDefault();
+        // Remove the iframe from the page
+        const iframe = window.frameElement;
+        if (iframe) {
+          iframe.remove();
+        }
+      };
+
       // Prevent default drag and drop
       document.addEventListener('dragover', (e) => e.preventDefault());
       document.addEventListener('drop', (e) => e.preventDefault());
-    `;
+    ` + (editable ? `
+      // Click-to-edit functionality with auto-save
+      let isEditing = false;
+
+      window.enterEditMode = function() {
+        if (isEditing) return; // Already in edit mode
+        isEditing = true;
+
+        const contentMain = document.getElementById('content-main');
+        const markdownView = document.getElementById('markdown-view');
+        const fileContent = document.getElementById('file-content');
+        const originalContent = fileContent ? fileContent.textContent : '';
+
+        // Hide rendered markdown/code view
+        if (markdownView) {
+          markdownView.style.display = 'none';
+        }
+        if (fileContent && fileContent.tagName === 'PRE') {
+          fileContent.style.display = 'none';
+        }
+
+        // Create and show textarea
+        const textarea = document.createElement('textarea');
+        textarea.id = 'edit-textarea';
+        textarea.className = 'edit-textarea';
+        textarea.value = originalContent;
+        contentMain.appendChild(textarea);
+        textarea.focus();
+
+        // Remove click handler and cursor style
+        contentMain.onclick = null;
+        contentMain.style.cursor = 'default';
+
+        // Auto-save on input (debounced 500ms)
+        let saveTimeout = null;
+        textarea.addEventListener('input', function() {
+          if (saveTimeout) clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(() => {
+            try {
+              // Store in data attribute for CDP retrieval
+              document.body.setAttribute('data-memory-saved', 'true');
+              document.body.setAttribute('data-memory-content', btoa(unescape(encodeURIComponent(textarea.value))));
+              // Show saved indicator
+              showSavedIndicator();
+            } catch (error) {
+              console.error('Auto-save failed:', error);
+            }
+          }, 500);
+        });
+      };
+
+      // Show "Saved" indicator in header
+      function showSavedIndicator() {
+        let indicator = document.getElementById('save-indicator');
+        if (!indicator) {
+          indicator = document.createElement('div');
+          indicator.id = 'save-indicator';
+          indicator.className = 'save-indicator';
+          indicator.innerHTML = '✓ Saved';
+          const headerActions = document.querySelector('.header-actions');
+          if (headerActions) headerActions.prepend(indicator);
+        }
+        indicator.classList.add('visible');
+        setTimeout(() => indicator.classList.remove('visible'), 1500);
+      }
+    ` : '');
   }
 }

@@ -49,8 +49,8 @@ export class FileStorageManager {
   private dbInitializationPromise: Promise<IDBDatabase> | null = null;
 
   private constructor() {
-    this.sessionId = 'default'; // Will be set to conversation ID when conversation is created/loaded
-    logger.info('Initialized FileStorageManager with default session');
+    this.sessionId = `temp-${this.generateUUID()}`; // Unique per session, will be set to conversation ID when conversation is created/loaded
+    logger.info('Initialized FileStorageManager with session', { sessionId: this.sessionId });
   }
 
   static getInstance(): FileStorageManager {

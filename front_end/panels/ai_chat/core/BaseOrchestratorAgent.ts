@@ -35,10 +35,15 @@ import {
   ListFilesTool,
   type Tool
 } from '../tools/Tools.js';
-// Imports from their own files
+import { SaveResearchReportTool } from '../tools/SaveResearchReportTool.js';
+import { SearchCustomAgentsTool } from '../tools/SearchCustomAgentsTool.js';
+import { CallCustomAgentTool } from '../tools/CallCustomAgentTool.js';
+import { MemoryModule } from '../memory/index.js';
 
-// Initialize configured agents
-initializeConfiguredAgents();
+// Initialize configured agents (including custom agents from Agent Studio)
+// Note: This is async but we don't await here to avoid blocking module load.
+// Custom agents will be loaded asynchronously and available after initial load.
+void initializeConfiguredAgents();
 
 const logger = createLogger('BaseOrchestratorAgent');
 const DEFAULT_ORCHESTRATOR_VERSION = '2025-09-17';
@@ -50,7 +55,7 @@ export enum BaseOrchestratorAgentType {
   SHOPPING = 'shopping'
 }
 
-// System prompts for each agent type
+// System prompts for each agent type (WITHOUT memory instructions - added dynamically)
 export const SYSTEM_PROMPTS = {
   [BaseOrchestratorAgentType.SEARCH]: `You are an search browser agent specialized in pinpoint web fact-finding.
 Always delegate investigative work to the 'search_agent' tool so it can gather verified, structured results (emails, team rosters, niche professionals, etc.).
@@ -187,19 +192,14 @@ Present findings in a comprehensive, detailed markdown report with these expande
 - Maintain objectivity and distinguish facts from speculation
 - For multiple independent tasks, deploy research agents in parallel for efficiency
 
-## CRITICAL: Final Output Format
+## CRITICAL: Final Output
 
-When calling 'finalize_with_critique', structure your response exactly as:
+When your research is complete, use the 'save_research_report' tool to save and display your findings:
+- **reasoning**: 2-3 sentences explaining your research approach, key insights, and how you organized the findings
+- **report**: Your comprehensive markdown report (aim for 5000+ words for complex topics)
+- **filename**: A descriptive filename like "topic_research_report.md"
 
-<reasoning>
-[2-3 sentences explaining your research approach, key insights, and organization method]
-</reasoning>
-
-<markdown_report>
-[Your comprehensive markdown report - will be displayed in enhanced document viewer]
-</markdown_report>
-
-The markdown report will be extracted and shown via an enhanced document viewer button while only the reasoning appears in chat.`,
+The report will be automatically saved to session files and displayed to the user in an enhanced document viewer. The reasoning text will appear in the chat.`,
 
   [BaseOrchestratorAgentType.SHOPPING]: `You are a **Shopping Browser Agent**. Your mission is to help users find and compare products tailored to their specific needs and budget, providing up-to-date, unbiased, and well-cited recommendations.
 
@@ -323,6 +323,9 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      new SearchCustomAgentsTool(),
+      new CallCustomAgentTool(),
+      ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
     ]
   },
   [BaseOrchestratorAgentType.DEEP_RESEARCH]: {
@@ -338,7 +341,7 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
       ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
       ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
-      new FinalizeWithCritiqueTool(),
+      new SaveResearchReportTool(),
       new RenderWebAppTool(),
       new GetWebAppDataTool(),
       new RemoveWebAppTool(),
@@ -347,6 +350,9 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new DeleteFileTool(),
       new ReadFileTool(),
       new ListFilesTool(),
+      new SearchCustomAgentsTool(),
+      new CallCustomAgentTool(),
+      ToolRegistry.getToolInstance('search_memory_agent') || (() => { throw new Error('search_memory_agent tool not found'); })(),
     ]
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {
@@ -389,14 +395,17 @@ AgentDescriptorRegistry.registerSource({
 
 /**
  * Get the system prompt for a specific agent type
+ * Memory instructions are dynamically prepended if memory is enabled
  */
 export function getSystemPrompt(agentType: string): string {
+  const memoryPrefix = MemoryModule.getInstance().getInstructions();
+
   // Check if there's a custom prompt for this agent type
   if (hasCustomPrompt(agentType)) {
-    return getAgentPrompt(agentType);
+    return memoryPrefix + getAgentPrompt(agentType);
   }
-  
-  return AGENT_CONFIGS[agentType]?.systemPrompt ||
+
+  return memoryPrefix + (AGENT_CONFIGS[agentType]?.systemPrompt ||
     // Default system prompt if agent type not found
   `You are a browser agent for helping users with tasks. And, you are an expert task orchestrator agent focused on high-level task strategy, planning, efficient delegation to specialized web agents, and final result synthesis. Your core goal is to provide maximally helpful task completion by orchestrating an effective execution process.
 
@@ -517,14 +526,18 @@ After specialized agents complete their tasks:
 2. Identify patterns, best options, and key insights
 3. Note any remaining gaps or follow-up needs
 4. Create a comprehensive response following the appropriate format
-`;
+`);
 }
 
 /**
  * Get available tools for a specific agent type
+ * Conditionally includes search_memory_agent if memory is enabled
  */
 export function getAgentTools(agentType: string): Array<Tool<any, any>> {
-  return AGENT_CONFIGS[agentType]?.availableTools || [
+  const memoryModule = MemoryModule.getInstance();
+
+  // Get base tools from config or use default list
+  const baseTools = AGENT_CONFIGS[agentType]?.availableTools || [
     ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
     ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
     ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
@@ -540,7 +553,25 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     new DeleteFileTool(),
     new ReadFileTool(),
     new ListFilesTool(),
+    new SearchCustomAgentsTool(),
+    new CallCustomAgentTool(),
   ];
+
+  // Filter out search_memory_agent if memory is disabled, or add it if enabled and not present
+  if (memoryModule.shouldIncludeMemoryTool()) {
+    // Check if search_memory_agent is already in the list
+    const hasMemoryAgent = baseTools.some(tool => tool.name === 'search_memory_agent');
+    if (!hasMemoryAgent) {
+      const memoryAgent = ToolRegistry.getToolInstance('search_memory_agent');
+      if (memoryAgent) {
+        return [...baseTools, memoryAgent];
+      }
+    }
+    return baseTools;
+  }
+
+  // Memory disabled - filter out search_memory_agent
+  return baseTools.filter(tool => tool.name !== 'search_memory_agent');
 }
 
 // Custom event for agent type selection

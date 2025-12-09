@@ -30,6 +30,8 @@ export interface CallCtx {
   overrideTraceId?: string,
   abortSignal?: AbortSignal,
   agentDescriptor?: AgentDescriptor,
+  /** If true, don't emit UI progress events (for background agents) */
+  background?: boolean,
 }
 
 /**
@@ -595,6 +597,7 @@ export class ConfigurableAgentTool implements Tool<ConfigurableAgentArgs, Config
         sessionId: ctx.overrideSessionId,
         parentSessionId: ctx.overrideParentSessionId,
         traceId: ctx.overrideTraceId,
+        background: ctx.background,
       },
       callCtx.abortSignal
     );

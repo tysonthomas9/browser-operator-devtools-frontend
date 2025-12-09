@@ -45,3 +45,13 @@ export const MILVUS_OPENAI_KEY = 'ai_chat_milvus_openai_key';
  * Advanced settings toggle key
  */
 export const ADVANCED_SETTINGS_ENABLED_KEY = 'ai_chat_advanced_settings_enabled';
+
+/**
+ * Memory system toggle key
+ */
+export const MEMORY_ENABLED_KEY = 'ai_chat_memory_enabled';
+
+/**
+ * Panel filter toggle key - controls whether only AI Chat panel is shown
+ */
+export const PANEL_FILTER_ENABLED_KEY = 'ai_chat_panel_filter_enabled';

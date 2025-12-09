@@ -29,6 +29,8 @@ import { BUILD_CONFIG } from './BuildConfig.js';
 import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
 import { ConversationManager } from '../persistence/ConversationManager.js';
 import type { ConversationMetadata } from '../persistence/ConversationTypes.js';
+import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import { MemoryModule } from '../memory/index.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -165,6 +167,12 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
 
     // Subscribe to configuration changes
     this.#configManager.addChangeListener(this.#handleConfigurationChange.bind(this));
+
+    // Process any old conversations that missed memory extraction
+    // Delay to avoid blocking startup and ensure tools are registered
+    setTimeout(() => {
+      this.processUnprocessedConversations();
+    }, 5000);
   }
 
   /**
@@ -889,6 +897,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    * Starts a new conversation
    */
   async newConversation(): Promise<void> {
+    // Capture conversation ID BEFORE clearing (for async memory extraction)
+    const endingConversationId = this.#currentConversationId;
+
     // Abort any running execution
     this.cancelRun();
 
@@ -914,6 +925,126 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     this.dispatchEventToListeners(Events.CONVERSATION_CHANGED, null);
 
     logger.info('Started new conversation');
+
+    // Fire off memory extraction in background (non-blocking)
+    if (endingConversationId) {
+      this.#processConversationMemory(endingConversationId);
+    }
+  }
+
+  /**
+   * Processes memory for a conversation. Uses claim mechanism to prevent
+   * concurrent processing of the same conversation.
+   */
+  async #processConversationMemory(conversationId: string): Promise<void> {
+    logger.info('[Memory] Starting processing for conversation', {conversationId});
+    // Check if memory is enabled in settings
+    if (!MemoryModule.getInstance().isEnabled()) {
+      logger.info('[Memory] Skipping - memory disabled in settings');
+      return;
+    }
+
+    // Try to claim - if another instance is processing, skip
+    const claimed = await this.#conversationManager.tryClaimForMemoryProcessing(conversationId);
+    if (!claimed) {
+      logger.info('[Memory] Skipping - already processing or completed', {conversationId});
+      return;
+    }
+
+    try {
+      // Load the conversation to get messages
+      const loaded = await this.#conversationManager.loadConversation(conversationId);
+      if (!loaded || loaded.state.messages.length < 4) {
+        // Mark as completed (nothing to extract)
+        await this.#conversationManager.markMemoryCompleted(conversationId);
+        logger.info('[Memory] Skipping - conversation too short', {conversationId, messageCount: loaded?.state.messages.length || 0});
+        return;
+      }
+
+      // Format conversation summary
+      const conversationSummary = loaded.state.messages
+        .filter(m => m.entity === ChatMessageEntity.USER || m.entity === ChatMessageEntity.MODEL)
+        .slice(-20)
+        .map(m => {
+          const role = m.entity === ChatMessageEntity.USER ? 'User' : 'Assistant';
+          const text = m.entity === ChatMessageEntity.USER
+            ? (m as {text: string}).text
+            : ((m as ModelChatMessage).answer || '');
+          return `${role}: ${text}`;
+        })
+        .join('\n');
+
+      const memoryAgent = ToolRegistry.getToolInstance('memory_agent');
+      if (!memoryAgent) {
+        await this.#conversationManager.markMemoryFailed(conversationId);
+        logger.warn('[Memory] memory_agent not found in registry');
+        return;
+      }
+
+      const config = this.#configManager.getConfiguration();
+      logger.info('[Memory] Processing conversation', {
+        conversationId,
+        provider: config.provider,
+        model: config.mainModel,
+        miniModel: config.miniModel,
+        summaryLength: conversationSummary.length
+      });
+
+      const result = await memoryAgent.execute({
+        conversation_summary: conversationSummary,
+        reasoning: 'Extracting facts from conversation',
+      }, {
+        apiKey: config.apiKey,
+        provider: config.provider,
+        model: config.mainModel,
+        miniModel: config.miniModel,
+        nanoModel: config.nanoModel,
+        background: true,  // Don't show in UI
+      });
+
+      logger.info('[Memory] Agent execution result', {
+        conversationId,
+        success: result.success,
+        outputLength: result.output?.length || 0,
+        outputPreview: result.output?.substring(0, 500),
+        error: result.error,
+        terminationReason: result.terminationReason,
+        toolCallsCount: result.toolCalls?.length || 0,
+        toolCalls: result.toolCalls?.map((tc: any) => ({ name: tc.name, args: tc.args })) || [],
+      });
+
+      await this.#conversationManager.markMemoryCompleted(conversationId);
+      logger.info('[Memory] Completed', {conversationId});
+
+    } catch (err) {
+      logger.error('[Memory] Failed:', err);
+      await this.#conversationManager.markMemoryFailed(conversationId);
+    }
+  }
+
+  /**
+   * Processes any old conversations that never had memory extracted.
+   * Call this on initialization or periodically.
+   */
+  async processUnprocessedConversations(): Promise<void> {
+    const pending = await this.#conversationManager.getConversationsNeedingMemoryProcessing();
+
+    // Skip the currently active conversation and limit to avoid overload
+    const toProcess = pending
+      .filter(conv => conv.id !== this.#currentConversationId)
+      .slice(0, 3);
+
+    for (const conv of toProcess) {
+      // Don't await - process in parallel
+      this.#processConversationMemory(conv.id);
+    }
+
+    if (pending.length > 0) {
+      logger.info('[Memory] Processing unprocessed conversations', {
+        total: pending.length,
+        processing: toProcess.length,
+      });
+    }
   }
 
   /**
@@ -1216,6 +1347,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       }, 5000);
     }
   }
+
 }
 
 // Define UI strings object to manage i18n strings

@@ -62,6 +62,8 @@ export interface LLMContext {
   miniModel?: string;
   nanoModel?: string;
   abortSignal?: AbortSignal;
+  /** If true, don't emit UI progress events (for background tools/agents) */
+  background?: boolean;
 }
 
 /**

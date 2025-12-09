@@ -9,7 +9,13 @@ import * as SDK from '../../../core/sdk/sdk.js';
 import * as UI from '../../../ui/legacy/legacy.js';
 import {AgentService, Events as AgentEvents} from '../core/AgentService.js';
 import { LLMClient } from '../LLM/LLMClient.js';
-import { LLMConfigurationManager } from '../core/LLMConfigurationManager.js';
+import {
+  LLMConfigurationManager,
+  type ModelOption,
+  DEFAULT_PROVIDER_MODELS,
+  DEFAULT_OPENAI_MODELS,
+  MODEL_PLACEHOLDERS as CONFIG_MODEL_PLACEHOLDERS,
+} from '../core/LLMConfigurationManager.js';
 import { LLMProviderRegistry } from '../LLM/LLMProviderRegistry.js';
 import { createLogger } from '../core/Logger.js';
 import { CustomProviderManager } from '../core/CustomProviderManager.js';
@@ -18,6 +24,7 @@ import type { ProviderType } from './settings/types.js';
 import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationConfig.js';
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
 import { BUILD_CONFIG } from '../core/BuildConfig.js';
+import { OnboardingDialog, createSetupRequiredBanner } from './OnboardingDialog.js';
 // Import of LiveAgentSessionComponent is not required here; the element is
 // registered by ChatView where it is used.
 
@@ -90,75 +97,16 @@ import { onMCPConfigChange } from '../mcp/MCPConfig.js';
 import { MCPConnectorsCatalogDialog } from './mcp/MCPConnectorsCatalogDialog.js';
 // Conversation history
 import { ConversationHistoryList } from './ConversationHistoryList.js';
+// Agent Studio
+import { AgentStudioView } from './AgentStudioView.js';
 
 
-// Model type definition
-export interface ModelOption {
-  value: string;
-  label: string;
-  type: string; // Supports standard providers and custom providers (e.g., 'custom:my-provider')
-}
+// Re-export ModelOption type for backward compatibility
+export type { ModelOption };
+// Re-export DEFAULT_PROVIDER_MODELS for backward compatibility
+export { DEFAULT_PROVIDER_MODELS };
 
-// Add model options constant - these are the default OpenAI models
-const DEFAULT_OPENAI_MODELS: ModelOption[] = [
-  {value: 'o4-mini-2025-04-16', label: 'O4 Mini', type: 'openai'},
-  {value: 'o3-mini-2025-01-31', label: 'O3 Mini', type: 'openai'},
-  {value: 'gpt-5-2025-08-07', label: 'GPT-5', type: 'openai'},
-  {value: 'gpt-5-mini-2025-08-07', label: 'GPT-5 Mini', type: 'openai'},
-  {value: 'gpt-5-nano-2025-08-07', label: 'GPT-5 Nano', type: 'openai'},
-  {value: 'gpt-4.1-2025-04-14', label: 'GPT-4.1', type: 'openai'},
-  {value: 'gpt-4.1-mini-2025-04-14', label: 'GPT-4.1 Mini', type: 'openai'},
-  {value: 'gpt-4.1-nano-2025-04-14', label: 'GPT-4.1 Nano', type: 'openai'},
-];
-
-// Default model selections for each provider
-export const DEFAULT_PROVIDER_MODELS: Record<string, {main: string, mini?: string, nano?: string}> = {
-  openai: {
-    main: 'gpt-4.1-2025-04-14',
-    mini: 'gpt-4.1-mini-2025-04-14',
-    nano: 'gpt-4.1-nano-2025-04-14'
-  },
-  litellm: {
-    main: '', // Will use first available model
-    mini: '',
-    nano: ''
-  },
-  groq: {
-    main: 'meta-llama/llama-4-scout-17b-16e-instruct',
-    mini: 'qwen/qwen3-32b',
-    nano: 'llama-3.1-8b-instant'
-  },
-  openrouter: {
-    main: 'anthropic/claude-sonnet-4',
-    mini: 'google/gemini-2.5-flash',
-    nano: 'google/gemini-2.5-flash-lite-preview-06-17'
-  },
-  browseroperator: {
-    main: 'main',
-    mini: 'mini',
-    nano: 'nano'
-  },
-  cerebras: {
-    main: 'llama-3.3-70b',
-    mini: 'llama-3.3-8b',
-    nano: 'llama-3.3-8b'
-  },
-  anthropic: {
-    main: 'claude-sonnet-4-20250514',
-    mini: 'claude-haiku-3-5-20241022',
-    nano: 'claude-haiku-3-5-20241022'
-  },
-  googleai: {
-    main: 'gemini-2.0-flash-exp',
-    mini: 'gemini-2.0-flash-thinking-exp-01-21',
-    nano: 'gemini-2.0-flash-thinking-exp-01-21'
-  }
-};
-
-// This will hold the current active model options
-let MODEL_OPTIONS: ModelOption[] = [...DEFAULT_OPENAI_MODELS];
-
-// Model selector localStorage keys
+// Model selector localStorage keys (kept for local usage)
 const MODEL_SELECTION_KEY = 'ai_chat_model_selection';
 const MINI_MODEL_STORAGE_KEY = 'ai_chat_mini_model';
 const NANO_MODEL_STORAGE_KEY = 'ai_chat_nano_model';
@@ -167,6 +115,25 @@ const PROVIDER_SELECTION_KEY = 'ai_chat_provider';
 // LiteLLM configuration keys
 const LITELLM_ENDPOINT_KEY = 'ai_chat_litellm_endpoint';
 const LITELLM_API_KEY_STORAGE_KEY = 'ai_chat_litellm_api_key';
+
+// Local MODEL_OPTIONS reference that syncs with LLMConfigurationManager
+// This maintains backward compatibility while delegating to the centralized manager
+let MODEL_OPTIONS: ModelOption[] = [...DEFAULT_OPENAI_MODELS];
+
+// Helper to get MODEL_OPTIONS from LLMConfigurationManager
+function getModelOptions(): ModelOption[] {
+  return LLMConfigurationManager.getInstance().getModelOptionsForCurrentProvider();
+}
+
+// Helper to get all model options across all providers
+function getAllModelOptions(): ModelOption[] {
+  return LLMConfigurationManager.getInstance().getAllModelOptions();
+}
+
+// Sync local MODEL_OPTIONS with LLMConfigurationManager
+function syncModelOptions(): void {
+  MODEL_OPTIONS = LLMConfigurationManager.getInstance().getModelOptionsForCurrentProvider();
+}
 
 const UIStrings = {
   /**
@@ -377,263 +344,82 @@ export class AIChatPanel extends UI.Panel.Panel {
    * @returns Array of model options
    */
   static getModelOptions(provider?: ProviderType): ModelOption[] {
-    // Try to get from all_model_options first (comprehensive list)
-    const allModelOptionsStr = localStorage.getItem('ai_chat_all_model_options');
-    if (allModelOptionsStr) {
-      try {
-        const allModelOptions = JSON.parse(allModelOptionsStr);
-        // If provider is specified, filter by it
-        return provider ? allModelOptions.filter((opt: ModelOption) => opt.type === provider) : allModelOptions;
-      } catch (error) {
-        console.warn('Failed to parse ai_chat_all_model_options from localStorage, removing corrupted data:', error);
-        localStorage.removeItem('ai_chat_all_model_options');
-      }
+    const configManager = LLMConfigurationManager.getInstance();
+    if (provider) {
+      return configManager.getModelOptions(provider);
     }
-    
-    // Fallback to legacy model_options if all_model_options doesn't exist
-    const modelOptionsStr = localStorage.getItem('ai_chat_model_options');
-    if (modelOptionsStr) {
-      try {
-        const modelOptions = JSON.parse(modelOptionsStr);
-        // If we got legacy options, migrate them to all_model_options for future use
-        localStorage.setItem('ai_chat_all_model_options', modelOptionsStr);
-        // Apply provider filter if needed
-        return provider ? modelOptions.filter((opt: ModelOption) => opt.type === provider) : modelOptions;
-      } catch (error) {
-        console.warn('Failed to parse ai_chat_model_options from localStorage, removing corrupted data:', error);
-        localStorage.removeItem('ai_chat_model_options');
-      }
-    }
-    
-    // If nothing is found, return default OpenAI models
-    return provider === 'litellm' ? [] : DEFAULT_OPENAI_MODELS;
+    return configManager.getAllModelOptions();
   }
   
   /**
    * Updates model options with new provider models
+   * Delegates to centralized LLMConfigurationManager
    * @param providerModels Models fetched from any provider (LiteLLM, Groq, etc.)
-   * @param hadWildcard Whether LiteLLM returned a wildcard model
+   * @param _hadWildcard Whether LiteLLM returned a wildcard model (kept for backward compatibility)
    * @returns Updated model options
    */
-  static updateModelOptions(providerModels: ModelOption[] = [], hadWildcard = false): ModelOption[] {
-    // Get the selected provider (for context, but we store all models regardless)
-    const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    
-    // Get existing models from localStorage
-    let existingAllModels: ModelOption[] = [];
-    try {
-      existingAllModels = JSON.parse(localStorage.getItem('ai_chat_all_model_options') || '[]');
-    } catch (error) {
-      console.warn('Failed to parse ai_chat_all_model_options from localStorage, using empty array:', error);
-      localStorage.removeItem('ai_chat_all_model_options');
-    }
-    
-    // Get existing custom models (if any) - these are for LiteLLM only
-    let savedCustomModels: string[] = [];
-    try {
-      savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
-    } catch (error) {
-      console.warn('Failed to parse ai_chat_custom_models from localStorage, using empty array:', error);
-      localStorage.removeItem('ai_chat_custom_models');
-    }
-    const customModels = savedCustomModels.map((model: string) => ({
-      value: model,
-      label: `LiteLLM: ${model}`,
-      type: 'litellm' as const
-    }));
-    
-    // Define standard provider types
-    const STANDARD_PROVIDER_TYPES: ProviderType[] = [
-      'openai', 'litellm', 'groq', 'openrouter', 'browseroperator',
-      'cerebras', 'anthropic', 'googleai'
-    ];
+  static updateModelOptions(providerModels: ModelOption[] = [], _hadWildcard = false): ModelOption[] {
+    const configManager = LLMConfigurationManager.getInstance();
 
-    // Get custom providers dynamically
-    const customProviders = CustomProviderManager.listEnabledProviders().map(p => p.id);
-
-    // Combine standard and custom providers
-    const ALL_PROVIDER_TYPES = [...STANDARD_PROVIDER_TYPES, ...customProviders];
-
-    // Build a map of provider type -> models for generic handling
-    const modelsByProvider = new Map<ProviderType, ModelOption[]>();
-
-    // Initialize with existing models for each provider
-    for (const providerType of ALL_PROVIDER_TYPES) {
-      const existingModels = existingAllModels.filter((m: ModelOption) => m.type === providerType);
-      modelsByProvider.set(providerType, existingModels);
-    }
-
-    // Special case: OpenAI always uses DEFAULT_OPENAI_MODELS to ensure latest hardcoded list
-    modelsByProvider.set('openai', DEFAULT_OPENAI_MODELS);
-
-    // Load models from custom providers
-    for (const customProviderId of customProviders) {
-      const customProvider = CustomProviderManager.getProvider(customProviderId);
-      if (customProvider && customProvider.models && customProvider.models.length > 0) {
-        const customProviderModels = customProvider.models.map(modelId => ({
-          value: modelId,
-          label: `${customProvider.name}: ${modelId}`,
-          type: customProviderId as ProviderType
-        }));
-        modelsByProvider.set(customProviderId as ProviderType, customProviderModels);
-      }
-    }
-
-    // Update models for the provider type we're adding (if any)
+    // Determine provider from the models
     if (providerModels.length > 0) {
-      const firstModelType = providerModels[0].type;
-
-      if (firstModelType === 'litellm') {
-        // Special case: LiteLLM includes custom models
-        modelsByProvider.set('litellm', [...customModels, ...providerModels]);
-      } else {
-        // For all other providers, just replace with new models
-        modelsByProvider.set(firstModelType, providerModels);
-      }
+      const provider = providerModels[0].type;
+      configManager.setModelOptions(provider, providerModels);
     }
 
-    // Create comprehensive model list from all providers
-    const allModels: ModelOption[] = [];
-    for (const providerType of ALL_PROVIDER_TYPES) {
-      const models = modelsByProvider.get(providerType) || [];
-      allModels.push(...models);
-    }
+    // Sync local MODEL_OPTIONS
+    syncModelOptions();
 
-    // Save comprehensive list to localStorage
-    localStorage.setItem('ai_chat_all_model_options', JSON.stringify(allModels));
+    logger.info('Updated model options via configManager:', {
+      provider: configManager.getProvider(),
+      modelCount: MODEL_OPTIONS.length
+    });
 
-    // Set MODEL_OPTIONS based on currently selected provider
-    MODEL_OPTIONS = modelsByProvider.get(selectedProvider as ProviderType) || [];
-
-    // Add placeholder if no models available for the selected provider
-    if (MODEL_OPTIONS.length === 0) {
-      // Special case for LiteLLM with wildcard
-      if (selectedProvider === 'litellm' && hadWildcard) {
-        MODEL_OPTIONS.push({
-          value: MODEL_PLACEHOLDERS.ADD_CUSTOM,
-          label: 'LiteLLM: Please add custom models in settings',
-          type: 'litellm' as const
-        });
-      } else {
-        // Generic placeholder for all other providers
-        const providerLabel = selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1);
-        MODEL_OPTIONS.push({
-          value: MODEL_PLACEHOLDERS.NO_MODELS,
-          label: `${providerLabel}: Please configure in settings`,
-          type: selectedProvider as ProviderType
-        });
-      }
-    }
-
-    // Save MODEL_OPTIONS to localStorage for backwards compatibility
-    localStorage.setItem('ai_chat_model_options', JSON.stringify(MODEL_OPTIONS));
-
-    // Build log info dynamically for all providers
-    const logInfo: Record<string, unknown> = {
-      provider: selectedProvider,
-      totalModelOptions: MODEL_OPTIONS.length,
-      allModelsLength: allModels.length
-    };
-    for (const providerType of ALL_PROVIDER_TYPES) {
-      const models = modelsByProvider.get(providerType) || [];
-      logInfo[`${providerType}Models`] = models.length;
-    }
-
-    logger.info('Updated model options:', logInfo);
-    
-    return allModels;
+    return configManager.getAllModelOptions();
   }
   
   /**
    * Adds a custom model to the options
+   * Delegates to centralized LLMConfigurationManager
    * @param modelName Name of the model to add
    * @param modelType Type of the model ('openai' or 'litellm')
    * @returns Updated model options
    */
   static addCustomModelOption(modelName: string, modelType?: ProviderType): ModelOption[] {
-    // Default to litellm if not specified
-    const finalModelType = modelType || 'litellm';
+    const configManager = LLMConfigurationManager.getInstance();
+    configManager.addCustomModelOption(modelName, modelType);
 
-    // Get existing custom models
-    const savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
-    
-    // Check if the model already exists
-    if (savedCustomModels.includes(modelName)) {
-      logger.info(`Custom model ${modelName} already exists, not adding again`);
-      return AIChatPanel.getModelOptions();
-    }
-    
-    // Add the new model to custom models
-    savedCustomModels.push(modelName);
-    localStorage.setItem('ai_chat_custom_models', JSON.stringify(savedCustomModels));
-    
-    // Create the model option object
-    const newOption: ModelOption = {
-      value: modelName,
-      label: finalModelType === 'litellm' ? `LiteLLM: ${modelName}` :
-             finalModelType === 'groq' ? `Groq: ${modelName}` :
-             finalModelType === 'openrouter' ? `OpenRouter: ${modelName}` :
-             `OpenAI: ${modelName}`,
-      type: finalModelType
-    };
-    
-    // Get all existing model options
-    const allModelOptions = AIChatPanel.getModelOptions();
-    
-    // Add the new option
-    const updatedOptions = [...allModelOptions, newOption];
-    localStorage.setItem('ai_chat_all_model_options', JSON.stringify(updatedOptions));
-    
-    // Update MODEL_OPTIONS for backwards compatibility if provider matches
-    const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    if ((currentProvider === 'openai' && modelType === 'openai') || 
-        (currentProvider === 'litellm' && modelType === 'litellm') ||
-        (currentProvider === 'groq' && modelType === 'groq')) {
-      MODEL_OPTIONS = [...MODEL_OPTIONS, newOption];
-      localStorage.setItem('ai_chat_model_options', JSON.stringify(MODEL_OPTIONS));
-    }
-    
-    return updatedOptions;
+    // Sync local MODEL_OPTIONS
+    syncModelOptions();
+
+    return configManager.getAllModelOptions();
   }
   
   /**
    * Clears cached model data to force refresh from defaults
+   * Delegates to centralized LLMConfigurationManager
    */
   static clearModelCache(): void {
-    localStorage.removeItem('ai_chat_all_model_options');
-    localStorage.removeItem('ai_chat_model_options');
-    logger.info('Cleared model cache - will use DEFAULT_OPENAI_MODELS on next refresh');
+    const configManager = LLMConfigurationManager.getInstance();
+    configManager.clearModelOptions();
+    syncModelOptions();
+    logger.info('Cleared model cache via configManager');
   }
 
   /**
    * Removes a custom model from the options
+   * Delegates to centralized LLMConfigurationManager
    * @param modelName Name of the model to remove
    * @returns Updated model options
    */
   static removeCustomModelOption(modelName: string): ModelOption[] {
-    // Get existing custom models
-    const savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
-    
-    // Check if the model exists
-    if (!savedCustomModels.includes(modelName)) {
-      logger.info(`Custom model ${modelName} not found, nothing to remove`);
-      return AIChatPanel.getModelOptions();
-    }
-    
-    // Remove the model from custom models
-    const updatedCustomModels = savedCustomModels.filter((model: string) => model !== modelName);
-    localStorage.setItem('ai_chat_custom_models', JSON.stringify(updatedCustomModels));
-    
-    // Get all existing model options and remove the specified one
-    const allModelOptions = AIChatPanel.getModelOptions();
-    const updatedOptions = allModelOptions.filter(option => option.value !== modelName);
-    localStorage.setItem('ai_chat_all_model_options', JSON.stringify(updatedOptions));
-    
-    // Update MODEL_OPTIONS for backwards compatibility
-    MODEL_OPTIONS = MODEL_OPTIONS.filter(option => option.value !== modelName);
-    localStorage.setItem('ai_chat_model_options', JSON.stringify(MODEL_OPTIONS));
-    
-    return updatedOptions;
+    const configManager = LLMConfigurationManager.getInstance();
+    configManager.removeCustomModelOption(modelName);
+
+    // Sync local MODEL_OPTIONS
+    syncModelOptions();
+
+    return configManager.getAllModelOptions();
   }
 
   static readonly panelName = 'ai-chat';
@@ -665,6 +451,7 @@ export class AIChatPanel extends UI.Panel.Panel {
   #evaluationAgent: EvaluationAgent | null = null; // Evaluation agent for this tab
   #mcpUnsubscribe: (() => void) | null = null;
   #configManager: LLMConfigurationManager;
+  #agentStudioView: AgentStudioView | null = null; // Agent Studio view
 
   // Store bound event listeners to properly add/remove without duplications
   #boundOnMessagesChanged?: (e: Common.EventTarget.EventTargetEvent<ChatMessage[]>) => void;
@@ -847,94 +634,21 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Sets up model options based on provider and stored preferences
    */
   #setupModelOptions(): void {
-    // Get the selected provider
-    const selectedProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    
-    // Initialize MODEL_OPTIONS based on the selected provider
-    this.#updateModelOptions([], false);
-    
-    // Load custom models
-    const savedCustomModels = JSON.parse(localStorage.getItem('ai_chat_custom_models') || '[]');
-    
-    // If we have custom models and using LiteLLM, add them
-    if (savedCustomModels.length > 0 && selectedProvider === 'litellm') {
-      // Add custom models to MODEL_OPTIONS
-      const customOptions = savedCustomModels.map((model: string) => ({
-        value: model,
-        label: `LiteLLM: ${model}`,
-        type: 'litellm' as const
-      }));
-      MODEL_OPTIONS = [...MODEL_OPTIONS, ...customOptions];
+    const configManager = LLMConfigurationManager.getInstance();
 
-      // Save MODEL_OPTIONS to localStorage
-      localStorage.setItem('ai_chat_model_options', JSON.stringify(MODEL_OPTIONS));
-    }
-    
-    this.#loadModelSelections();
-    
-    // Validate models after loading
-    this.#validateAndFixModelSelections();
-  }
+    // Sync local MODEL_OPTIONS from the centralized manager
+    syncModelOptions();
 
-  /**
-   * Loads model selections from localStorage
-   */
-  #loadModelSelections(): void {
-    // Get the current provider
-    const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    const providerDefaults = DEFAULT_PROVIDER_MODELS[currentProvider] || DEFAULT_PROVIDER_MODELS.openai;
-    
-    // Load the selected model
-    const storedModel = localStorage.getItem(MODEL_SELECTION_KEY);
-    
-    if (MODEL_OPTIONS.length === 0) {
-      logger.warn('No model options available when loading model selections');
-      return;
-    }
-    
-    if (storedModel && MODEL_OPTIONS.some(option => option.value === storedModel)) {
-      this.#selectedModel = storedModel;
-    } else if (MODEL_OPTIONS.length > 0) {
-      // Check if provider default main model is available
-      if (providerDefaults.main && MODEL_OPTIONS.some(option => option.value === providerDefaults.main)) {
-        this.#selectedModel = providerDefaults.main;
-      } else {
-        // Otherwise, use the first available model
-        this.#selectedModel = MODEL_OPTIONS[0].value;
-      }
-      localStorage.setItem(MODEL_SELECTION_KEY, this.#selectedModel);
-    }
-    
-    // Load mini model - check that it belongs to current provider
-    const storedMiniModel = localStorage.getItem(MINI_MODEL_STORAGE_KEY);
-    const storedMiniModelOption = storedMiniModel ? MODEL_OPTIONS.find(option => option.value === storedMiniModel) : null;
-    if (storedMiniModelOption && storedMiniModelOption.type === currentProvider && storedMiniModel) {
-      this.#miniModel = storedMiniModel;
-    } else if (providerDefaults.mini && MODEL_OPTIONS.some(option => option.value === providerDefaults.mini)) {
-      // Use provider default mini model if available
-      this.#miniModel = providerDefaults.mini;
-      localStorage.setItem(MINI_MODEL_STORAGE_KEY, this.#miniModel);
-    } else {
-      this.#miniModel = '';
-      localStorage.removeItem(MINI_MODEL_STORAGE_KEY);
-    }
+    // Validate and fix model selections using centralized manager
+    const corrected = configManager.validateAndFixModelSelections();
 
-    // Load nano model - check that it belongs to current provider
-    const storedNanoModel = localStorage.getItem(NANO_MODEL_STORAGE_KEY);
-    const storedNanoModelOption = storedNanoModel ? MODEL_OPTIONS.find(option => option.value === storedNanoModel) : null;
-    if (storedNanoModelOption && storedNanoModelOption.type === currentProvider && storedNanoModel) {
-      this.#nanoModel = storedNanoModel;
-    } else if (providerDefaults.nano && MODEL_OPTIONS.some(option => option.value === providerDefaults.nano)) {
-      // Use provider default nano model if available
-      this.#nanoModel = providerDefaults.nano;
-      localStorage.setItem(NANO_MODEL_STORAGE_KEY, this.#nanoModel);
-    } else {
-      this.#nanoModel = '';
-      localStorage.removeItem(NANO_MODEL_STORAGE_KEY);
-    }
-    
-    logger.info('Loaded model selections:', {
-      provider: currentProvider,
+    // Apply the corrected values to instance state
+    this.#selectedModel = corrected.main;
+    this.#miniModel = corrected.mini;
+    this.#nanoModel = corrected.nano;
+
+    logger.info('Setup model options:', {
+      provider: configManager.getProvider(),
       selectedModel: this.#selectedModel,
       miniModel: this.#miniModel,
       nanoModel: this.#nanoModel
@@ -952,99 +666,37 @@ export class AIChatPanel extends UI.Panel.Panel {
   /**
    * Validates and fixes model selections to ensure they exist in the current provider
    * Returns true if all models are valid, false if any needed to be fixed
+   * Delegates to centralized LLMConfigurationManager
    */
   #validateAndFixModelSelections(): boolean {
-    logger.info('=== VALIDATING MODEL SELECTIONS ===');
-    
-    const currentProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    const providerDefaults = DEFAULT_PROVIDER_MODELS[currentProvider] || DEFAULT_PROVIDER_MODELS.openai;
-    const availableModels = AIChatPanel.getModelOptions(currentProvider as 'openai' | 'litellm' | 'groq' | 'openrouter' | 'browseroperator');
-    
-    let allValid = true;
-    
-    // Log current state
-    logger.info('Current state:', {
-      provider: currentProvider,
-      selectedModel: this.#selectedModel,
-      miniModel: this.#miniModel,
-      nanoModel: this.#nanoModel,
-      availableModelsCount: availableModels.length
-    });
-    
-    // If no models available for provider, we have a problem
-    if (availableModels.length === 0) {
-      logger.error(`No models available for provider ${currentProvider}`);
-      return false;
+    const configManager = LLMConfigurationManager.getInstance();
+
+    // Track previous values to determine if changes were made
+    const prevMain = this.#selectedModel;
+    const prevMini = this.#miniModel;
+    const prevNano = this.#nanoModel;
+
+    // Delegate to centralized validation
+    const corrected = configManager.validateAndFixModelSelections();
+
+    // Apply corrected values to instance state
+    this.#selectedModel = corrected.main;
+    this.#miniModel = corrected.mini;
+    this.#nanoModel = corrected.nano;
+
+    // Return true if no changes were needed
+    const allValid = prevMain === corrected.main &&
+                     prevMini === corrected.mini &&
+                     prevNano === corrected.nano;
+
+    if (!allValid) {
+      logger.info('Model selections were fixed:', {
+        main: { from: prevMain, to: corrected.main },
+        mini: { from: prevMini, to: corrected.mini },
+        nano: { from: prevNano, to: corrected.nano }
+      });
     }
-    
-    // Validate main model
-    const mainModelValid = availableModels.some(m => m.value === this.#selectedModel);
-    if (!mainModelValid) {
-      logger.warn(`Main model ${this.#selectedModel} not valid for ${currentProvider}, resetting...`);
-      allValid = false;
-      
-      // Try provider default first
-      if (providerDefaults.main && availableModels.some(m => m.value === providerDefaults.main)) {
-        this.#selectedModel = providerDefaults.main;
-        logger.info(`Reset main model to provider default: ${providerDefaults.main}`);
-      } else {
-        // Fall back to first available model
-        this.#selectedModel = availableModels[0].value;
-        logger.info(`Reset main model to first available: ${this.#selectedModel}`);
-      }
-      localStorage.setItem(MODEL_SELECTION_KEY, this.#selectedModel);
-    }
-    
-    // Validate mini model
-    if (this.#miniModel) {
-      const miniModelValid = availableModels.some(m => m.value === this.#miniModel);
-      if (!miniModelValid) {
-        logger.warn(`Mini model ${this.#miniModel} not valid for ${currentProvider}, resetting...`);
-        allValid = false;
-        
-        // Try provider default first
-        if (providerDefaults.mini && availableModels.some(m => m.value === providerDefaults.mini)) {
-          this.#miniModel = providerDefaults.mini;
-          logger.info(`Reset mini model to provider default: ${providerDefaults.mini}`);
-          localStorage.setItem(MINI_MODEL_STORAGE_KEY, this.#miniModel);
-        } else {
-          // Clear mini model to fall back to main model
-          this.#miniModel = '';
-          logger.info('Cleared mini model to fall back to main model');
-          localStorage.removeItem(MINI_MODEL_STORAGE_KEY);
-        }
-      }
-    }
-    
-    // Validate nano model
-    if (this.#nanoModel) {
-      const nanoModelValid = availableModels.some(m => m.value === this.#nanoModel);
-      if (!nanoModelValid) {
-        logger.warn(`Nano model ${this.#nanoModel} not valid for ${currentProvider}, resetting...`);
-        allValid = false;
-        
-        // Try provider default first
-        if (providerDefaults.nano && availableModels.some(m => m.value === providerDefaults.nano)) {
-          this.#nanoModel = providerDefaults.nano;
-          logger.info(`Reset nano model to provider default: ${providerDefaults.nano}`);
-          localStorage.setItem(NANO_MODEL_STORAGE_KEY, this.#nanoModel);
-        } else {
-          // Clear nano model to fall back to mini/main model
-          this.#nanoModel = '';
-          logger.info('Cleared nano model to fall back to mini/main model');
-          localStorage.removeItem(NANO_MODEL_STORAGE_KEY);
-        }
-      }
-    }
-    
-    // Log final state
-    logger.info('Validation complete:', {
-      allValid,
-      finalSelectedModel: this.#selectedModel,
-      finalMiniModel: this.#miniModel,
-      finalNanoModel: this.#nanoModel
-    });
-    
+
     return allValid;
   }
 
@@ -1228,57 +880,6 @@ export class AIChatPanel extends UI.Panel.Panel {
   #updateModelOptions(litellmModels: ModelOption[], hadWildcard = false): void {
     // Call the static method
     AIChatPanel.updateModelOptions(litellmModels, hadWildcard);
-  }
-
-  /**
-   * Refreshes Groq models from the API
-   */
-  async #refreshGroqModels(): Promise<void> {
-    try {
-      const groqApiKey = localStorage.getItem('ai_chat_groq_api_key');
-      
-      if (!groqApiKey) {
-        logger.info('No Groq API key configured, skipping model refresh');
-        return;
-      }
-      
-      const { models: groqModels } = await this.#fetchGroqModels(groqApiKey);
-      this.#updateModelOptions(groqModels, false);
-      
-      // Update MODEL_OPTIONS to reflect the fetched models
-      this.performUpdate();
-    } catch (error) {
-      logger.error('Failed to refresh Groq models:', error);
-      // Clear Groq models on error
-      AIChatPanel.updateModelOptions([], false);
-      this.performUpdate();
-    }
-  }
-
-  /**
-   * Fetches Groq models from the API
-   * @param apiKey API key to use for the request
-   * @returns Object containing models
-   */
-  async #fetchGroqModels(apiKey: string): Promise<{models: ModelOption[]}> {
-    try {
-      // Fetch models from Groq
-      const models = await LLMClient.fetchGroqModels(apiKey);
-
-      // Transform the models to the format we need
-      const groqModels = models.map(model => ({
-        value: model.id,
-        label: `Groq: ${model.id}`,
-        type: 'groq' as const
-      }));
-
-      logger.info(`Fetched ${groqModels.length} Groq models`);
-      return { models: groqModels };
-    } catch (error) {
-      logger.error('Failed to fetch Groq models:', error);
-      // Return empty array on error
-      return { models: [] };
-    }
   }
 
   /**
@@ -1958,6 +1559,57 @@ export class AIChatPanel extends UI.Panel.Panel {
   override wasShown(): void {
     this.performUpdate();
     this.#chatView?.focus();
+
+    // Show onboarding for first-time users
+    if (OnboardingDialog.shouldShowOnboarding()) {
+      OnboardingDialog.show(async () => {
+        // Fetch models for the newly selected provider
+        await this.#refreshModelsForCurrentProvider();
+        // Sync MODEL_OPTIONS and validate model selections
+        this.#setupModelOptions();
+        // Re-initialize agent service with newly selected provider
+        this.#initializeAgentService();
+        // Refresh UI after onboarding completes
+        this.performUpdate();
+      });
+      return;
+    }
+
+    // Refresh models when panel is shown to ensure we have the latest available models
+    void this.#refreshModelsForCurrentProvider();
+  }
+
+  /**
+   * Fetches and caches models for the current provider
+   * Uses LLMProviderRegistry directly (doesn't require LLMClient initialization)
+   */
+  async #refreshModelsForCurrentProvider(): Promise<void> {
+    const configManager = LLMConfigurationManager.getInstance();
+    const provider = configManager.getProvider();
+
+    try {
+      const apiKey = LLMProviderRegistry.getProviderApiKey(provider as LLMProvider);
+      if (!apiKey) {
+        logger.debug(`No API key for provider ${provider}, skipping model refresh`);
+        return;
+      }
+
+      const models = await LLMProviderRegistry.fetchProviderModels(provider as LLMProvider, apiKey);
+
+      // Convert ModelInfo[] to ModelOption[] for UI caching
+      const modelOptions = models.map(m => ({
+        value: m.id,
+        label: m.name || m.id,
+        type: provider
+      }));
+
+      // Store in the configuration manager's cache
+      configManager.setModelOptions(provider, modelOptions);
+      logger.info(`Fetched and cached ${modelOptions.length} models for provider ${provider}`);
+    } catch (error) {
+      logger.error(`Failed to refresh models for provider ${provider}:`, error);
+      // Don't clear cache on error - keep existing cached models if available
+    }
   }
 
   /**
@@ -2028,6 +1680,11 @@ export class AIChatPanel extends UI.Panel.Panel {
           () => this.#onMCPConnectorsClick(),
           {jslogContext: 'connectors'}
         );
+        // contextMenu.defaultSection().appendItem(
+        //   'Agent Studio',
+        //   () => this.#onAgentStudioClick(),
+        //   {jslogContext: 'agent-studio'}
+        // );
       },
       true,  // isIconDropdown
       true,  // useSoftMenu
@@ -2188,10 +1845,11 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#isProcessing = false;
     this.#selectedAgentType = null; // Reset selected agent type
 
-    // Reset file storage session ID to default for new chat
+    // Reset file storage session ID to a new unique ID for new chat
     const {FileStorageManager} = await import('../tools/FileStorageManager.js');
-    FileStorageManager.getInstance().setSessionId('default');
-    logger.info('Reset file storage sessionId to default for new chat');
+    const newSessionId = `temp-${crypto.randomUUID()}`;
+    FileStorageManager.getInstance().setSessionId(newSessionId);
+    logger.info('Set file storage sessionId for new chat', { sessionId: newSessionId });
 
     // Create new EvaluationAgent for new chat session
     this.#createEvaluationAgentIfNeeded();
@@ -2300,6 +1958,16 @@ export class AIChatPanel extends UI.Panel.Panel {
         }
       }
     });
+  }
+
+  /**
+   * Handles the Agent Studio button click event and shows the Agent Studio
+   */
+  #onAgentStudioClick(): void {
+    if (!this.#agentStudioView) {
+      this.#agentStudioView = new AgentStudioView();
+    }
+    void this.#agentStudioView.show();
   }
 
   /**
@@ -2503,43 +2171,34 @@ export class AIChatPanel extends UI.Panel.Panel {
    * Handles changes made in the settings dialog
    */
   async #handleSettingsChanged(): Promise<void> {
-    // Get the selected provider
-    const prevProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    const newProvider = localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai';
-    
-    logger.info(`Provider changing from ${prevProvider} to ${newProvider}`);
-    
-    // Load saved settings
+    const configManager = LLMConfigurationManager.getInstance();
+    const newProvider = configManager.getProvider();
+
+    logger.info(`Settings changed, current provider: ${newProvider}`);
+
+    // Load saved settings (for instance properties)
     this.#apiKey = localStorage.getItem('ai_chat_api_key');
     this.#liteLLMApiKey = localStorage.getItem(LITELLM_API_KEY_STORAGE_KEY);
     this.#liteLLMEndpoint = localStorage.getItem(LITELLM_ENDPOINT_KEY);
-    
-    // Reset model options based on the new provider
-    if (newProvider === 'litellm') {
-      // First update model options with empty models
-      this.#updateModelOptions([], false);
-      
-      // Then refresh LiteLLM models
-      await this.#refreshLiteLLMModels();
-    } else if (newProvider === 'groq') {
-      // For Groq, update model options and refresh models if API key exists
-      this.#updateModelOptions([], false);
-      
-      const groqApiKey = localStorage.getItem('ai_chat_groq_api_key');
-      if (groqApiKey) {
-        await this.#refreshGroqModels();
-      }
-    } else {
-      // For OpenAI, just update model options with empty LiteLLM models
-      this.#updateModelOptions([], false);
-    }
-    
-    this.#updateModelSelections();
-    
-    // Validate models after updating selections
-    this.#validateAndFixModelSelections();
-    
+
+    // Fetch models for the current provider
+    await this.#refreshModelsForCurrentProvider();
+
+    // Sync local MODEL_OPTIONS with the centralized manager
+    syncModelOptions();
+
+    // Use the centralized validation method (single source of truth)
+    const corrected = configManager.validateAndFixModelSelections();
+
+    // Update instance properties with corrected values
+    this.#selectedModel = corrected.main;
+    this.#miniModel = corrected.mini;
+    this.#nanoModel = corrected.nano;
+
+    logger.info('Model selections after validation:', corrected);
+
     this.#initializeAgentService();
+
     // Re-initialize MCP based on latest settings
     try {
       await MCPRegistry.init();
@@ -2588,15 +2247,21 @@ export class AIChatPanel extends UI.Panel.Panel {
     
     // Check if the current selected model is valid for the new provider
     const selectedModelOption = MODEL_OPTIONS.find(opt => opt.value === this.#selectedModel);
-    if (!selectedModelOption || selectedModelOption.type !== currentProvider) {
-      logger.info(`Selected model ${this.#selectedModel} is not valid for provider ${currentProvider}`);
-      
+    if (!this.#selectedModel || !selectedModelOption || selectedModelOption.type !== currentProvider) {
+      logger.info(`Selected model ${this.#selectedModel} is not valid for provider ${currentProvider}, selecting default`);
+
       // Try to use provider default main model first
       if (providerDefaults.main && MODEL_OPTIONS.some(option => option.value === providerDefaults.main)) {
         this.#selectedModel = providerDefaults.main;
+        logger.info(`Set main model to provider default: ${providerDefaults.main}`);
       } else if (MODEL_OPTIONS.length > 0) {
         // Otherwise, use the first available model
         this.#selectedModel = MODEL_OPTIONS[0].value;
+        logger.info(`Set main model to first available: ${this.#selectedModel}`);
+      } else {
+        // No models available
+        this.#selectedModel = '';
+        logger.warn(`No models available for provider ${currentProvider}`);
       }
       localStorage.setItem(MODEL_SELECTION_KEY, this.#selectedModel);
     }

@@ -8,6 +8,7 @@ import { SchemaBasedExtractorTool } from '../../tools/SchemaBasedExtractorTool.j
 import { StreamlinedSchemaExtractorTool } from '../../tools/StreamlinedSchemaExtractorTool.js';
 import { BookmarkStoreTool } from '../../tools/BookmarkStoreTool.js';
 import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
+import { SearchMemoryTool, UpdateMemoryTool, ListMemoryBlocksTool, createMemoryAgentConfig } from '../../memory/index.js';
 import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool, RenderWebAppTool, GetWebAppDataTool, RemoveWebAppTool, CreateFileTool, UpdateFileTool, DeleteFileTool, ReadFileTool, ListFilesTool } from '../../tools/Tools.js';
 import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
 import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
@@ -15,6 +16,9 @@ import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ReadabilityExtractorTool } from '../../tools/ReadabilityExtractorTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
+import { SaveResearchReportTool } from '../../tools/SaveResearchReportTool.js';
+import { SearchCustomAgentsTool } from '../../tools/SearchCustomAgentsTool.js';
+import { CallCustomAgentTool } from '../../tools/CallCustomAgentTool.js';
 import { registerMCPMetaTools } from '../../mcp/MCPMetaTools.js';
 import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigatorAgent.js';
 import { createResearchAgentConfig } from './agents/ResearchAgent.js';
@@ -29,13 +33,18 @@ import { createScrollActionAgentConfig } from './agents/ScrollActionAgent.js';
 import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
+import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
+import { initializeMiniApps } from '../../mini_apps/MiniAppInitialization.js';
 
 /**
  * Initialize all configured agents
  */
-export function initializeConfiguredAgents(): void {
+export async function initializeConfiguredAgents(): Promise<void> {
   // Ensure MCP meta-tools are available regardless of mode; selection logic decides if they are surfaced
   registerMCPMetaTools();
+
+  // Initialize mini app system (registers mini apps and mini app tools)
+  initializeMiniApps();
   // Register core tools
   ToolRegistry.registerToolFactory('navigate_url', () => new NavigateURLTool());
   ToolRegistry.registerToolFactory('navigate_back', () => new NavigateBackTool());
@@ -69,7 +78,19 @@ export function initializeConfiguredAgents(): void {
   // Register bookmark and document search tools
   ToolRegistry.registerToolFactory('bookmark_store', () => new BookmarkStoreTool());
   ToolRegistry.registerToolFactory('document_search', () => new DocumentSearchTool());
-  
+
+  // Register research report tool
+  ToolRegistry.registerToolFactory('save_research_report', () => new SaveResearchReportTool());
+
+  // Register custom agent tools (for calling agents created in Agent Studio)
+  ToolRegistry.registerToolFactory('search_custom_agents', () => new SearchCustomAgentsTool());
+  ToolRegistry.registerToolFactory('call_custom_agent', () => new CallCustomAgentTool());
+
+  // Register memory tools
+  ToolRegistry.registerToolFactory('search_memory', () => new SearchMemoryTool());
+  ToolRegistry.registerToolFactory('update_memory', () => new UpdateMemoryTool());
+  ToolRegistry.registerToolFactory('list_memory_blocks', () => new ListMemoryBlocksTool());
+
   // Create and register Direct URL Navigator Agent
   const directURLNavigatorAgentConfig = createDirectURLNavigatorAgentConfig();
   const directURLNavigatorAgent = new ConfigurableAgentTool(directURLNavigatorAgentConfig);
@@ -131,4 +152,16 @@ export function initializeConfiguredAgents(): void {
   const ecommerceProductInfoAgent = new ConfigurableAgentTool(ecommerceProductInfoAgentConfig);
   ToolRegistry.registerToolFactory('ecommerce_product_info_fetcher_tool', () => ecommerceProductInfoAgent);
 
+  // Create and register Memory Agent (background memory consolidation)
+  const memoryAgentConfig = createMemoryAgentConfig('extraction');
+  const memoryAgent = new ConfigurableAgentTool(memoryAgentConfig);
+  ToolRegistry.registerToolFactory('memory_agent', () => memoryAgent);
+
+  // Create and register Search Memory Agent (read-only memory search for orchestrators)
+  const searchMemoryAgentConfig = createMemoryAgentConfig('search');
+  const searchMemoryAgent = new ConfigurableAgentTool(searchMemoryAgentConfig);
+  ToolRegistry.registerToolFactory('search_memory_agent', () => searchMemoryAgent);
+
+  // Initialize custom agents from Agent Studio
+  await AgentStudioIntegration.initialize();
 }

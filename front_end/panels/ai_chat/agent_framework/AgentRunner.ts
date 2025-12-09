@@ -402,19 +402,21 @@ export class AgentRunner {
           ...(actualResult.intermediateSteps || []) // History *from* the recursive call (should exist if flag is true)
       ];
       // Return the result from the target agent, but with combined history
+      // Always use 'handed_off' since this IS a handoff completion
       return {
           ...actualResult,
           intermediateSteps: combinedIntermediateSteps,
-          terminationReason: actualResult.terminationReason || 'handed_off',
+          terminationReason: 'handed_off' as const,
           agentSession: childSession
       };
     }
     // Otherwise (default), omit the target's intermediate steps
     logger.info(`Omitting intermediateSteps from ${targetAgentTool.name} based on its config (default or flag set to false).`);
     // Return result from target, ensuring intermediateSteps are omitted
+    // Always use 'handed_off' since this IS a handoff completion
     const finalResult = {
       ...actualResult,
-      terminationReason: actualResult.terminationReason || 'handed_off',
+      terminationReason: 'handed_off' as const,
       agentSession: childSession
     };
     // Explicitly delete intermediateSteps if they somehow exist on actualResult (shouldn't due to target config)
@@ -430,12 +432,13 @@ export class AgentRunner {
     hooks: AgentRunnerHooks,
     executingAgent: ConfigurableAgentTool | null,
     parentSession?: AgentSession, // For natural nesting
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string; background?: boolean },
     abortSignal?: AbortSignal
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
     const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
+    const isBackground = overrides?.background === true;
     const { prepareInitialMessages, createSuccessResult, createErrorResult, afterExecute } = hooks;
 
 
@@ -463,17 +466,15 @@ export class AgentRunner {
     // Use local session variable instead of static
     let currentSession = agentSession;
     
-    // Emit session started event
-    if (AgentRunner.eventBus) {
-      AgentRunner.eventBus.emitProgress({
-        type: 'session_started',
-        sessionId: agentSession.sessionId,
-        parentSessionId: agentSession.parentSessionId,
-        agentName,
-        timestamp: new Date(),
-        data: { session: agentSession }
-      });
-    }
+    // Emit session started event (skip for background agents)
+    AgentRunner.eventBus?.emitProgress({
+      type: 'session_started',
+      sessionId: agentSession.sessionId,
+      parentSessionId: agentSession.parentSessionId,
+      agentName,
+      timestamp: new Date(),
+      data: { session: agentSession }
+    }, isBackground);
     
     // Create local function that captures the correct session
     const addSessionMessage = (message: Partial<AgentMessage>): void => {
@@ -485,21 +486,21 @@ export class AgentRunner {
       
       currentSession.messages.push(fullMessage);
       
-      // Emit progress events based on message type
-      if (AgentRunner.eventBus && fullMessage.type === 'tool_call') {
-        AgentRunner.eventBus.emitProgress({
+      // Emit progress events based on message type (skip for background agents)
+      if (fullMessage.type === 'tool_call') {
+        AgentRunner.eventBus?.emitProgress({
           type: 'tool_started',
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName: currentSession.agentName,
           timestamp: new Date(),
-          data: { 
+          data: {
             session: currentSession,
             toolCall: fullMessage
           }
-        });
-      } else if (AgentRunner.eventBus && fullMessage.type === 'tool_result') {
-        AgentRunner.eventBus.emitProgress({
+        }, isBackground);
+      } else if (fullMessage.type === 'tool_result') {
+        AgentRunner.eventBus?.emitProgress({
           type: 'tool_completed',
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
@@ -509,7 +510,7 @@ export class AgentRunner {
             session: currentSession,
             toolResult: fullMessage
           }
-        });
+        }, isBackground);
       }
     };
 
@@ -591,17 +592,15 @@ export class AgentRunner {
         currentSession.endTime = new Date();
         currentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
-          AgentRunner.eventBus.emitProgress({
-            type: 'session_completed',
-            sessionId: currentSession.sessionId,
-            parentSessionId: currentSession.parentSessionId,
-            agentName,
-            timestamp: new Date(),
-            data: { session: currentSession, reason: 'aborted' }
-          });
-        }
+        // Emit session completed event (skip for background agents)
+        AgentRunner.eventBus?.emitProgress({
+          type: 'session_completed',
+          sessionId: currentSession.sessionId,
+          parentSessionId: currentSession.parentSessionId,
+          agentName,
+          timestamp: new Date(),
+          data: { session: currentSession, reason: 'aborted' }
+        }, isBackground);
 
         // Clear todo list on abort
         await AgentRunner.clearTodoList(agentName, tools);
@@ -836,17 +835,15 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
-          AgentRunner.eventBus.emitProgress({
-            type: 'session_completed',
-            sessionId: agentSession.sessionId,
-            parentSessionId: agentSession.parentSessionId,
-            agentName,
-            timestamp: new Date(),
-            data: { session: agentSession, reason: 'error' }
-          });
-        }
+        // Emit session completed event (skip for background agents)
+        AgentRunner.eventBus?.emitProgress({
+          type: 'session_completed',
+          sessionId: agentSession.sessionId,
+          parentSessionId: agentSession.parentSessionId,
+          agentName,
+          timestamp: new Date(),
+          data: { session: agentSession, reason: 'error' }
+        }, isBackground);
 
         // Clear todo list on error
         await AgentRunner.clearTodoList(agentName, tools);
@@ -1017,17 +1014,15 @@ export class AgentRunner {
               agentSession.endTime = new Date();
               agentSession.terminationReason = 'handed_off';
 
-              // Emit session completed event
-              if (AgentRunner.eventBus) {
-                AgentRunner.eventBus.emitProgress({
-                  type: 'session_completed',
-                  sessionId: agentSession.sessionId,
-                  parentSessionId: agentSession.parentSessionId,
-                  agentName,
-                  timestamp: new Date(),
-                  data: { session: agentSession, reason: 'handed_off' }
-                });
-              }
+              // Emit session completed event (skip for background agents)
+              AgentRunner.eventBus?.emitProgress({
+                type: 'session_completed',
+                sessionId: agentSession.sessionId,
+                parentSessionId: agentSession.parentSessionId,
+                agentName,
+                timestamp: new Date(),
+                data: { session: agentSession, reason: 'handed_off' }
+              }, isBackground);
 
               return { ...handoffResult, agentSession };
 
@@ -1104,21 +1099,19 @@ export class AgentRunner {
                  }
                });
                
-               // Emit child agent starting
-               if (AgentRunner.eventBus) {
-                AgentRunner.eventBus.emitProgress({
-                  type: 'child_agent_started',
-                  sessionId: currentSession.sessionId,
-                  parentSessionId: currentSession.parentSessionId,
-                  agentName: currentSession.agentName,
-                  timestamp: new Date(),
-                  data: {
-                    parentSession: currentSession,
-                    childAgentName: toolName,
-                    childSessionId: preallocatedChildId
-                  }
-                });
-              }
+               // Emit child agent starting (skip for background agents)
+               AgentRunner.eventBus?.emitProgress({
+                 type: 'child_agent_started',
+                 sessionId: currentSession.sessionId,
+                 parentSessionId: currentSession.parentSessionId,
+                 agentName: currentSession.agentName,
+                 timestamp: new Date(),
+                 data: {
+                   parentSession: currentSession,
+                   childAgentName: toolName,
+                   childSessionId: preallocatedChildId
+                 }
+               }, isBackground);
             }
 
             try {
@@ -1326,17 +1319,15 @@ export class AgentRunner {
           agentSession.endTime = new Date();
           agentSession.terminationReason = 'final_answer';
 
-          // Emit session completed event
-          if (AgentRunner.eventBus) {
-            AgentRunner.eventBus.emitProgress({
-              type: 'session_completed',
-              sessionId: agentSession.sessionId,
-              parentSessionId: agentSession.parentSessionId,
-              agentName,
-              timestamp: new Date(),
-              data: { session: agentSession, reason: 'final_answer' }
-            });
-          }
+          // Emit session completed event (skip for background agents)
+          AgentRunner.eventBus?.emitProgress({
+            type: 'session_completed',
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: new Date(),
+            data: { session: agentSession, reason: 'final_answer' }
+          }, isBackground);
 
           // Exit loop and return success with final answer (summary appended if configured)
           const result = createSuccessResult(finalAnswer, messages, 'final_answer');
@@ -1388,17 +1379,15 @@ export class AgentRunner {
         agentSession.endTime = new Date();
         agentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
-          AgentRunner.eventBus.emitProgress({
-            type: 'session_completed',
-            sessionId: agentSession.sessionId,
-            parentSessionId: agentSession.parentSessionId,
-            agentName,
-            timestamp: new Date(),
-            data: { session: agentSession, reason: 'error' }
-          });
-        }
+        // Emit session completed event (skip for background agents)
+        AgentRunner.eventBus?.emitProgress({
+          type: 'session_completed',
+          sessionId: agentSession.sessionId,
+          parentSessionId: agentSession.parentSessionId,
+          agentName,
+          timestamp: new Date(),
+          data: { session: agentSession, reason: 'error' }
+        }, isBackground);
 
         // Clear todo list on error
         await AgentRunner.clearTodoList(agentName, tools);
@@ -1461,17 +1450,15 @@ export class AgentRunner {
             agentSession.endTime = new Date();
             agentSession.terminationReason = 'handed_off';
 
-            // Emit session completed event
-            if (AgentRunner.eventBus) {
-              AgentRunner.eventBus.emitProgress({
-                type: 'session_completed',
-                sessionId: agentSession.sessionId,
-                parentSessionId: agentSession.parentSessionId,
-                agentName,
-                timestamp: new Date(),
-                data: { session: agentSession, reason: 'handed_off' }
-              });
-            }
+            // Emit session completed event (skip for background agents)
+            AgentRunner.eventBus?.emitProgress({
+              type: 'session_completed',
+              sessionId: agentSession.sessionId,
+              parentSessionId: agentSession.parentSessionId,
+              agentName,
+              timestamp: new Date(),
+              data: { session: agentSession, reason: 'handed_off' }
+            }, isBackground);
 
             return { ...actualResult, agentSession }; // Return the result from the handoff target
         }
@@ -1485,17 +1472,15 @@ export class AgentRunner {
     agentSession.endTime = new Date();
     agentSession.terminationReason = 'max_iterations';
 
-    // Emit session completed event
-    if (AgentRunner.eventBus) {
-      AgentRunner.eventBus.emitProgress({
-        type: 'session_completed',
-        sessionId: agentSession.sessionId,
-        parentSessionId: agentSession.parentSessionId,
-        agentName,
-        timestamp: new Date(),
-        data: { session: agentSession, reason: 'max_iterations' }
-      });
-    }
+    // Emit session completed event (skip for background agents)
+    AgentRunner.eventBus?.emitProgress({
+      type: 'session_completed',
+      sessionId: agentSession.sessionId,
+      parentSessionId: agentSession.parentSessionId,
+      agentName,
+      timestamp: new Date(),
+      data: { session: agentSession, reason: 'max_iterations' }
+    }, isBackground);
 
     // Generate summary of agent progress instead of generic error message
     const progressSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'max_iterations', config.provider, config.getVisionCapability);
