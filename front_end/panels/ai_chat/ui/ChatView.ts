@@ -29,6 +29,7 @@ import './model_selector/ModelSelector.js';
 import { combineMessages } from './message/MessageCombiner.js';
 import './TodoListDisplay.js';
 import './FileListDisplay.js';
+import './SidebarNav.js';
 
 // Shared chat types
 import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData } from '../models/ChatTypes.js';
@@ -120,7 +121,7 @@ export const EXAMPLE_PROMPTS = {
     }
   },
   SUMMARIZE_NEWS: {
-    displayText: '📰 Summarize today\'s news',
+    displayText: 'Summarize today\'s news',
     promptText: 'Summarize today\'s top news stories across different categories',
     agentType: BaseOrchestratorAgent.BaseOrchestratorAgentType.DEEP_RESEARCH,
     modelPreferences: {
@@ -130,6 +131,22 @@ export const EXAMPLE_PROMPTS = {
         nano: 'google/gemini-2.5-flash-lite'
       }
     }
+  },
+  FIND_AND_COMPARE_PRICES: {
+    displayText: 'Find and compare prices',
+    promptText: 'Find and compare prices for the products I am looking at. Provide a concise comparison.'
+  },
+  TRENDING_TOPICS: {
+    displayText: 'Trending topics',
+    promptText: 'What are the trending topics right now? Provide a short list with a one-line summary each.'
+  },
+  RESEARCH_SUMMARY: {
+    displayText: 'Research and create a summary',
+    promptText: 'Research this topic and create a concise summary with key takeaways.'
+  },
+  FIND_BEST_DEALS: {
+    displayText: 'Find the best deals',
+    promptText: 'Find the best deals available for this request and provide links.'
   },
   SUMMARIZE_PAGE: {
     displayText: 'Summarize this page'
@@ -228,6 +245,8 @@ export class ChatView extends HTMLElement {
   // Add version info state
   #versionInfo: VersionInfo | null = null;
   #isVersionBannerDismissed = false;
+  #showConnectorsDropdown = false;
+  #connectorsDropdownPosition?: {left: string; bottom: string};
 
   connectedCallback(): void {
     // Initialize the prompt button click handler
@@ -238,6 +257,9 @@ export class ChatView extends HTMLElement {
 
     // Attach URL listener only when in new-chat state
     this.#updateUrlListener();
+    
+    // Listen for connectors dropdown toggle events
+    this.addEventListener('toggle-connectors-dropdown', this.#handleToggleConnectorsDropdown.bind(this));
 
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
   }
@@ -823,26 +845,45 @@ export class ChatView extends HTMLElement {
     // Determine which view to render based on the first message state
     if (this.#isFirstMessageView) {
       // Render centered first message view
-      const welcomeMessage = this.#messages.length > 0 ? this.#messages[0] : null;
-
       const suggestions = this.#renderExampleSuggestions();
       Lit.render(html`
         ${stylesTemplate}
         <div class="chat-view-container centered-view">
-          ${this.#renderVersionBanner()}
-          <div class="centered-content">
-            ${welcomeMessage ? this.#renderMessage(welcomeMessage, 0) : Lit.nothing}
-            
-            ${suggestions}
-            
-            ${this.#showOAuthLogin ? html`
-              <ai-oauth-connect
-                .visible=${true}
-                @oauth-login=${this.#handleOAuthLogin.bind(this)}
-                @openai-setup=${this.#handleOpenAISetup.bind(this)}
-                @manual-setup=${this.#handleManualSetup.bind(this)}
-              ></ai-oauth-connect>
-            ` : this.#renderInputBar(true)}
+          <ai-sidebar-nav activeItem="chat"></ai-sidebar-nav>
+          <div class="main-content">
+            ${this.#renderVersionBanner()}
+            <div class="centered-content">
+              <div class="welcome-hero">
+                <div class="welcome-top-row">
+                  <button class="whats-new-pill" aria-label="What's new in v1.01">
+                    <span class="pill-icon">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11.5 5.5L9.5 3.5L10.5 2.5C11.05 1.95 11.05 1.05 10.5 0.5C9.95 -0.05 9.05 -0.05 8.5 0.5L7.5 1.5L5.5 1.5L2.5 4.5C2 5 2 5.5 2.5 6L3.5 7L0.5 10C0.2 10.3 0.2 10.75 0.5 11.05L2.95 13.5C3.25 13.8 3.7 13.8 4 13.5L7 10.5L8 11.5C8.5 12 9 12 9.5 11.5L12.5 8.5L12.5 6.5L13.5 5.5C14.05 4.95 14.05 4.05 13.5 3.5L11.5 5.5ZM4.5 11.5L2 9L5 6L7.5 8.5L4.5 11.5Z" fill="currentColor"/>
+                      </svg>
+                    </span>
+                    What's new in v1.01
+                  </button>
+                  <button class="welcome-close" aria-label="Close" @click=${() => this.#dismissWelcome()}>
+                    ×
+                  </button>
+                </div>
+                <div class="welcome-icon">
+                  <span class="icon-star">✦</span>
+                </div>
+                <div class="welcome-title">How can I help you today?</div>
+              </div>
+
+              ${this.#showOAuthLogin ? html`
+                <ai-oauth-connect
+                  .visible=${true}
+                  @oauth-login=${this.#handleOAuthLogin.bind(this)}
+                  @openai-setup=${this.#handleOpenAISetup.bind(this)}
+                  @manual-setup=${this.#handleManualSetup.bind(this)}
+                ></ai-oauth-connect>
+              ` : this.#renderInputBar(true)}
+
+              ${suggestions}
+            </div>
           </div>
         </div>
       `, this.#shadow, {host: this});
@@ -851,48 +892,50 @@ export class ChatView extends HTMLElement {
       Lit.render(html`
         ${stylesTemplate}
         <div class="chat-view-container expanded-view">
-          ${this.#renderVersionBanner()}
-          <ai-message-list .messages=${[]} .state=${this.#state} .agentViewMode=${this.#agentViewMode}>
-            ${Lit.Directives.repeat(
-              combinedMessages || [],
-              (m, i) => this.#messageKey(m, i),
-              (m, i) => this.#renderMessage(m, i)
-            )}
+          <ai-sidebar-nav activeItem="chat"></ai-sidebar-nav>
+          <div class="main-content">
+            ${this.#renderVersionBanner()}
+            <ai-message-list .messages=${[]} .state=${this.#state} .agentViewMode=${this.#agentViewMode}>
+              ${Lit.Directives.repeat(
+                combinedMessages || [],
+                (m, i) => this.#messageKey(m, i),
+                (m, i) => this.#renderMessage(m, i)
+              )}
 
-            ${showGeneralLoading ? html`
-              <div class="message model-message loading" >
-                <div class="message-content">
-                  <div class="message-loading">
-                    <svg class="loading-spinner" width="16" height="16" viewBox="0 0 16 16">
-                      <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 12" stroke-linecap="round">
-                        <animateTransform 
-                          attributeName="transform" 
-                          attributeType="XML" 
-                          type="rotate" 
-                          from="0 8 8" 
-                          to="360 8 8" 
-                          dur="1s" 
-                          repeatCount="indefinite" />
-                      </circle>
-                    </svg>
+              ${showGeneralLoading ? html`
+                <div class="message model-message loading" >
+                  <div class="message-content">
+                    <div class="message-loading">
+                      <svg class="loading-spinner" width="16" height="16" viewBox="0 0 16 16">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 12" stroke-linecap="round">
+                          <animateTransform 
+                            attributeName="transform" 
+                            attributeType="XML" 
+                            type="rotate" 
+                            from="0 8 8" 
+                            to="360 8 8" 
+                            dur="1s" 
+                            repeatCount="indefinite" />
+                        </circle>
+                      </svg>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ` : Lit.nothing}
-            
-            <!-- Global actions row - only shown when chat is complete -->
-            ${showActionsRow ? renderGlobalActionsRow({
-              textToCopy: lastModelAnswer || '',
-              onCopy: () => this.#copyToClipboard(lastModelAnswer || ''),
-              onThumbsUp: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'up' } })),
-              onThumbsDown: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'down' } })),
-              onRetry: () => this.dispatchEvent(new CustomEvent('retry', { bubbles: true }))
-            }) : Lit.nothing}
-          </ai-message-list>
-          <ai-todo-list></ai-todo-list>
-          <ai-file-list-display></ai-file-list-display>
-          ${this.#renderInputBar(false)}
-
+              ` : Lit.nothing}
+              
+              <!-- Global actions row - only shown when chat is complete -->
+              ${showActionsRow ? renderGlobalActionsRow({
+                textToCopy: lastModelAnswer || '',
+                onCopy: () => this.#copyToClipboard(lastModelAnswer || ''),
+                onThumbsUp: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'up' } })),
+                onThumbsDown: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'down' } })),
+                onRetry: () => this.dispatchEvent(new CustomEvent('retry', { bubbles: true }))
+              }) : Lit.nothing}
+            </ai-message-list>
+            <ai-todo-list></ai-todo-list>
+            <ai-file-list-display></ai-file-list-display>
+            ${this.#renderInputBar(false)}
+          </div>
         </div>
       `, this.#shadow, {host: this});
     }
@@ -912,13 +955,12 @@ export class ChatView extends HTMLElement {
     }
 
     return html`
-      <div class="examples-container">
-        <div class="examples-title">Try one of these</div>
-        <div class="examples-list">
+      <div class="examples-container hero-suggestions">
+        <div class="examples-list hero-chip-list">
           ${examples.map(ex => {
             const tooltipText = ex.promptText || ex.displayText;
             return html`
-              <button class="example-chip" @click=${() => this.#handleExampleClick(ex)} title=${tooltipText}>${ex.displayText}</button>
+              <button class="example-chip hero-chip" @click=${() => this.#handleExampleClick(ex)} title=${tooltipText}>${ex.displayText}</button>
             `;
           })}
         </div>
@@ -993,6 +1035,18 @@ export class ChatView extends HTMLElement {
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
   }
 
+  #dismissWelcome(): void {
+    this.#isFirstMessageView = false;
+    void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+  }
+
+  #handleToggleConnectorsDropdown(event: Event): void {
+    const customEvent = event as CustomEvent;
+    this.#showConnectorsDropdown = customEvent.detail.show;
+    this.#connectorsDropdownPosition = customEvent.detail.position;
+    void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+  }
+
   // Get current inspected page URL (if available)
   #getCurrentPageURL(): string | null {
     try {
@@ -1010,55 +1064,13 @@ export class ChatView extends HTMLElement {
 
   // Build example suggestions (generic + page-specific if URL is present)
   #getExampleSuggestions(): ExamplePromptConfig[] {
-    const generic: ExamplePromptConfig[] = [
-      EXAMPLE_PROMPTS.SUMMARIZE_PAGE,
-      EXAMPLE_PROMPTS.EXTRACT_LINKS,
+    return [
+      EXAMPLE_PROMPTS.SUMMARIZE_NEWS,
+      EXAMPLE_PROMPTS.FIND_AND_COMPARE_PRICES,
+      EXAMPLE_PROMPTS.TRENDING_TOPICS,
+      EXAMPLE_PROMPTS.RESEARCH_SUMMARY,
+      EXAMPLE_PROMPTS.FIND_BEST_DEALS,
     ];
-
-    const url = this.#getCurrentPageURL();
-    if (!url) {
-      // Show a smaller set to avoid overcrowding
-      return generic.slice(0, 4);
-    }
-
-    let hostname = '';
-    try { hostname = new URL(url).hostname; } catch {}
-
-    // Detect all Chrome internal pages
-    const isChromeInternalPage = url.startsWith('chrome://');
-
-    if (isChromeInternalPage) {
-      // Provide mixed examples for all Chrome internal pages
-      return [
-        EXAMPLE_PROMPTS.DEEP_RESEARCH_AI_AGENTS,
-        EXAMPLE_PROMPTS.FIND_CONTENT_WRITERS,
-        EXAMPLE_PROMPTS.APPLE_STOCKS_ANALYSIS,
-        EXAMPLE_PROMPTS.SUMMARIZE_NEWS,
-        EXAMPLE_PROMPTS.STAR_BROWSER_OPERATOR_REPO,
-      ];
-    }
-
-    // Detect common search engines
-    const isSearchSite = /(^|\.)((google|bing|duckduckgo|yahoo|yandex|baidu)\.(com|co\.[a-z]+|[a-z]+))$/i.test(hostname);
-
-    if (isSearchSite) {
-      // Provide deep-research oriented examples and pre-select the deep research agent on click
-      return [
-        EXAMPLE_PROMPTS.DEEP_RESEARCH_AI_AGENTS,
-        EXAMPLE_PROMPTS.IPHONE_REVIEWS,
-        EXAMPLE_PROMPTS.APPLE_STOCKS_ANALYSIS,
-        EXAMPLE_PROMPTS.SUMMARIZE_NEWS,
-      ];
-    }
-
-    const specific: ExamplePromptConfig[] = [
-      { displayText: `What do you think about ${hostname ? hostname + ' ' : ''}page?` },
-    ];
-
-    // Merge, de-duplicate by displayText, cap to concise set
-    const map = new Map<string, ExamplePromptConfig>();
-    [...specific, ...generic].forEach(item => { if (!map.has(item.displayText)) map.set(item.displayText, item); });
-    return Array.from(map.values()).slice(0, 6);
   }
 
   // Helper method to format JSON with syntax highlighting

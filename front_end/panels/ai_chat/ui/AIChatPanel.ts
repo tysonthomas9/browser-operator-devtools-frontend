@@ -167,7 +167,7 @@ const UIStrings = {
   /**
    * @description Default text shown in the chat input
    */
-  inputPlaceholder: 'Ask a question...',
+  inputPlaceholder: 'Ask me anything...',
   /**
    * @description Placeholder when OpenAI API key is missing
    */

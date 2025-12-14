@@ -8,55 +8,64 @@
 export function getSettingsStyles(): string {
   return `
     .settings-dialog {
-      color: var(--color-text-primary);
-      background-color: var(--color-background);
+      color: hsl(var(--foreground));
+      background-color: hsl(var(--background));
     }
 
     .settings-content {
       padding: 0;
       max-width: 100%;
+      background: hsl(220 25% 97%);  /* Slate 50 - #F7F9FC equivalent */
     }
 
     .settings-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--color-details-hairline);
+      padding: 16px 24px;
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(var(--background));
     }
 
     .settings-title {
-      font-size: 18px;
-      font-weight: 500;
+      font-size: 24px;
+      font-weight: 600;
       margin: 0;
-      color: var(--color-text-primary);
+      color: hsl(var(--foreground));
     }
 
     .settings-close-button {
       background: none;
       border: none;
-      font-size: 20px;
+      font-size: 24px;
       cursor: pointer;
-      color: var(--color-text-secondary);
+      color: hsl(var(--muted-foreground));
       padding: 4px 8px;
+      line-height: 1;
     }
 
     .settings-close-button:hover {
-      color: var(--color-text-primary);
+      color: hsl(var(--foreground));
     }
 
     .provider-selection-section {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--color-details-hairline);
+      padding: 24px;
+      margin: 16px 24px;
+      border-radius: 6px;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--background));
     }
 
     .provider-select {
-      margin-top: 8px;
+      margin-top: 12px;
     }
 
     .provider-content {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--color-details-hairline);
+      padding: 24px;
+      margin: 0 24px 16px;
+      border-radius: 6px;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--background));
     }
 
     .settings-section {
@@ -67,44 +76,44 @@ export function getSettingsStyles(): string {
       font-size: 16px;
       font-weight: 500;
       margin: 0 0 12px 0;
-      color: var(--color-text-primary);
+      color: hsl(var(--foreground));
     }
 
     .settings-label {
       font-size: 14px;
       font-weight: 500;
       margin-bottom: 6px;
-      color: var(--color-text-primary);
+      color: hsl(var(--foreground));
     }
 
     .settings-hint {
       font-size: 12px;
-      color: var(--color-text-secondary);
+      color: hsl(var(--muted-foreground));
       margin-bottom: 8px;
     }
 
     .settings-description {
       font-size: 14px;
-      color: var(--color-text-secondary);
+      color: hsl(var(--muted-foreground));
       margin: 4px 0 12px 0;
     }
 
     .settings-input, .settings-select {
       width: 100%;
       padding: 8px 12px;
-      border-radius: 4px;
-      border: 1px solid var(--color-details-hairline);
-      background-color: var(--color-background-elevation-2);
-      color: var(--color-text-primary);
+      border-radius: 6px;
+      border: 1px solid hsl(var(--border));
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
       font-size: 14px;
       box-sizing: border-box;
-      height: 32px;
+      height: 40px;
     }
 
     .settings-input:focus, .settings-select:focus {
       outline: none;
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 1px var(--color-primary-opacity-30);
+      border-color: hsl(var(--primary));
+      box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
     }
 
     .settings-status {
@@ -255,8 +264,9 @@ export function getSettingsStyles(): string {
       justify-content: flex-end;
       align-items: center;
       gap: 12px;
-      padding: 16px 20px;
-      border-top: 1px solid var(--color-details-hairline);
+      padding: 16px 24px;
+      border-top: 1px solid hsl(var(--border));
+      background: hsl(var(--background));
     }
 
     .save-status {
@@ -267,18 +277,22 @@ export function getSettingsStyles(): string {
 
     .settings-button {
       padding: 8px 16px;
-      border-radius: 4px;
+      height: 40px;
+      border-radius: 6px;
       font-size: 14px;
       cursor: pointer;
       transition: all 0.2s;
       font-family: inherit;
-      background-color: var(--color-background-elevation-1);
-      border: 1px solid var(--color-details-hairline);
-      color: var(--color-text-primary);
+      background-color: hsl(var(--background));
+      border: 1px solid hsl(var(--border));
+      color: hsl(var(--foreground));
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .settings-button:hover {
-      background-color: var(--color-background-elevation-2);
+      background-color: hsl(var(--secondary));
     }
 
     .settings-button:disabled {
@@ -289,13 +303,13 @@ export function getSettingsStyles(): string {
     /* Add button styling */
     .add-button {
       min-width: 60px;
-      border-radius: 4px;
-      font-size: 12px;
-      background-color: var(--color-background-elevation-1);
+      border-radius: 6px;
+      font-size: 14px;
+      background-color: hsl(var(--background));
     }
 
     .add-button:hover {
-      background-color: var(--color-background-elevation-2);
+      background-color: hsl(var(--secondary));
     }
 
     /* Icon button styling */
@@ -333,26 +347,32 @@ export function getSettingsStyles(): string {
       justify-content: center;
     }
 
-    /* Cancel button */
+    /* Cancel button - Outline variant */
     .cancel-button {
-      background-color: var(--color-background-elevation-1);
-      border: 1px solid var(--color-details-hairline);
-      color: var(--color-text-primary);
+      background-color: hsl(var(--background));
+      border: 1px solid hsl(var(--border));
+      color: hsl(var(--foreground));
+      height: 40px;
+      padding: 8px 16px;
+      border-radius: 6px;
     }
 
     .cancel-button:hover {
-      background-color: var(--color-background-elevation-2);
+      background-color: hsl(var(--secondary));
     }
 
-    /* Save button */
+    /* Save button - Primary variant */
     .save-button {
-      background-color: var(--color-primary);
-      border: 1px solid var(--color-primary);
-      color: white;
+      background-color: hsl(var(--primary));
+      border: 1px solid hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      height: 40px;
+      padding: 8px 16px;
+      border-radius: 6px;
     }
 
     .save-button:hover {
-      background-color: var(--color-primary-variant);
+      background-color: hsl(var(--primary) / 0.9);
     }
 
     .clear-button {
