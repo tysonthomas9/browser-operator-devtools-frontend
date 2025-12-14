@@ -34,6 +34,7 @@ import './SidebarNav.js';
 // Shared chat types
 import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData } from '../models/ChatTypes.js';
 import { ChatMessageEntity, State } from '../models/ChatTypes.js';
+import type { SidebarNavItem } from './SidebarNav.js';
 
 const logger = createLogger('ChatView');
 
@@ -247,6 +248,7 @@ export class ChatView extends HTMLElement {
   #isVersionBannerDismissed = false;
   #showConnectorsDropdown = false;
   #connectorsDropdownPosition?: {left: string; bottom: string};
+  #activeSidebarItem: SidebarNavItem = 'chat';
 
   connectedCallback(): void {
     // Initialize the prompt button click handler
@@ -744,6 +746,15 @@ export class ChatView extends HTMLElement {
     }
   }
 
+  #handleSidebarNavClick(item: SidebarNavItem): void {
+    this.#activeSidebarItem = item;
+    this.dispatchEvent(new CustomEvent('sidebar-nav', {
+      bubbles: true,
+      detail: {item},
+    }));
+    this.#render();
+  }
+
   #render(): void {
     // clang-format off
     // Check if the last message is a MODEL message indicating a tool is running
@@ -849,26 +860,16 @@ export class ChatView extends HTMLElement {
       Lit.render(html`
         ${stylesTemplate}
         <div class="chat-view-container centered-view">
-          <ai-sidebar-nav activeItem="chat"></ai-sidebar-nav>
+          <ai-sidebar-nav
+            .activeItem=${this.#activeSidebarItem}
+            .onItemClick=${this.#handleSidebarNavClick.bind(this)}>
+          </ai-sidebar-nav>
           <div class="main-content">
             ${this.#renderVersionBanner()}
             <div class="centered-content">
               <div class="welcome-hero">
-                <div class="welcome-top-row">
-                  <button class="whats-new-pill" aria-label="What's new in v1.01">
-                    <span class="pill-icon">
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11.5 5.5L9.5 3.5L10.5 2.5C11.05 1.95 11.05 1.05 10.5 0.5C9.95 -0.05 9.05 -0.05 8.5 0.5L7.5 1.5L5.5 1.5L2.5 4.5C2 5 2 5.5 2.5 6L3.5 7L0.5 10C0.2 10.3 0.2 10.75 0.5 11.05L2.95 13.5C3.25 13.8 3.7 13.8 4 13.5L7 10.5L8 11.5C8.5 12 9 12 9.5 11.5L12.5 8.5L12.5 6.5L13.5 5.5C14.05 4.95 14.05 4.05 13.5 3.5L11.5 5.5ZM4.5 11.5L2 9L5 6L7.5 8.5L4.5 11.5Z" fill="currentColor"/>
-                      </svg>
-                    </span>
-                    What's new in v1.01
-                  </button>
-                  <button class="welcome-close" aria-label="Close" @click=${() => this.#dismissWelcome()}>
-                    ×
-                  </button>
-                </div>
                 <div class="welcome-icon">
-                  <span class="icon-star">✦</span>
+                  <img src="/bundled/Images/browser-operator-logo.png" alt="Browser Operator logo">
                 </div>
                 <div class="welcome-title">How can I help you today?</div>
               </div>
@@ -892,7 +893,10 @@ export class ChatView extends HTMLElement {
       Lit.render(html`
         ${stylesTemplate}
         <div class="chat-view-container expanded-view">
-          <ai-sidebar-nav activeItem="chat"></ai-sidebar-nav>
+          <ai-sidebar-nav
+            .activeItem=${this.#activeSidebarItem}
+            .onItemClick=${this.#handleSidebarNavClick.bind(this)}>
+          </ai-sidebar-nav>
           <div class="main-content">
             ${this.#renderVersionBanner()}
             <ai-message-list .messages=${[]} .state=${this.#state} .agentViewMode=${this.#agentViewMode}>

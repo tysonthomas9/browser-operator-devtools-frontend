@@ -84,6 +84,7 @@ localStorage.removeItem = (key: string) => {
 
 import chatViewStyles from './chatView.css.js';
 import { ChatView } from './ChatView.js';
+import type { SidebarNavItem } from './SidebarNav.js';
 import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage, State as ChatViewState } from '../models/ChatTypes.js';
 import { HelpDialog } from './HelpDialog.js';
 import { SettingsDialog } from './SettingsDialog.js';
@@ -509,7 +510,7 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#toolbarContainer = document.createElement('div');
     this.#toolbarContainer.classList.add('toolbar-container');
     this.#toolbarContainer.setAttribute('role', 'toolbar');
-    this.#toolbarContainer.style.cssText = 'display: flex; justify-content: space-between; width: 100%; padding: 0 4px; box-sizing: border-box; margin: 0 0 10px 0;';
+    this.#toolbarContainer.style.cssText = 'display: flex; justify-content: space-between; width: calc(100% - 36px); margin-left: 36px; padding: 0 4px; box-sizing: border-box; margin-top: 0; margin-bottom: 0; background: white;';
     this.contentElement.appendChild(this.#toolbarContainer);
 
     // Create left toolbar using DOM method (not constructor)
@@ -518,6 +519,27 @@ export class AIChatPanel extends UI.Panel.Panel {
     // Create right toolbar using DOM method (not constructor)
     this.#rightToolbar = this.#toolbarContainer.createChild('devtools-toolbar', 'ai-chat-right-toolbar') as UI.Toolbar.Toolbar;
     this.#rightToolbar.style.cssText = 'overflow: visible;';
+
+    // Add "What's new" pill to toolbar (reuse existing styles from chatView.css)
+    const whatsNewPill = document.createElement('button');
+    whatsNewPill.className = 'whats-new-pill';
+    whatsNewPill.setAttribute('aria-label', "What's new in v1.01");
+    // Float at the top, centered, above all content; enforce blue background and border
+    whatsNewPill.style.cssText = 'position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; background: hsl(var(--primary)); border: 1px solid hsl(var(--primary));';
+    whatsNewPill.innerHTML = `
+      <span class="pill-icon">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 1.2L7.8 3.6C7.94 4.02 8.28 4.36 8.7 4.5L11.1 5.3L8.7 6.1C8.28 6.24 7.94 6.58 7.8 7L7 9.4L6.2 7C6.06 6.58 5.72 6.24 5.3 6.1L2.9 5.3L5.3 4.5C5.72 4.36 6.06 4.02 6.2 3.6L7 1.2Z" fill="currentColor"/>
+        </svg>
+      </span>
+      What's new in v1.01
+    `;
+    // Place the pill between the left (new chat) and right (settings/close) toolbars
+    if (this.#rightToolbar && this.#toolbarContainer.contains(this.#rightToolbar)) {
+      this.#toolbarContainer.insertBefore(whatsNewPill, this.#rightToolbar);
+    } else {
+      this.#toolbarContainer.appendChild(whatsNewPill);
+    }
 
     // Create toolbar buttons ONCE
     this.#newChatButton = new UI.Toolbar.ToolbarButton(
@@ -544,8 +566,6 @@ export class AIChatPanel extends UI.Panel.Panel {
       this
     );
 
-    this.#settingsMenuButton = this.#createSettingsMenuButton();
-
     this.#closeButton = new UI.Toolbar.ToolbarButton(
       'Close Chat Window',
       'cross',
@@ -560,7 +580,6 @@ export class AIChatPanel extends UI.Panel.Panel {
 
     // Add buttons to toolbars ONCE (order matters for right toolbar)
     this.#leftToolbar.appendToolbarItem(this.#newChatButton);
-    this.#rightToolbar.appendToolbarItem(this.#settingsMenuButton);
     this.#rightToolbar.appendToolbarItem(this.#closeButton);
 
     // Create container for the chat view
@@ -577,6 +596,8 @@ export class AIChatPanel extends UI.Panel.Panel {
 
     // Add event listener for manual setup requests from ChatView
     this.#chatView.addEventListener('manual-setup-requested', this.#handleManualSetupRequest.bind(this));
+    // Wire sidebar navigation actions
+    this.#chatView.addEventListener('sidebar-nav', this.#handleSidebarNavEvent.bind(this));
   }
 
   /**
@@ -1208,6 +1229,43 @@ export class AIChatPanel extends UI.Panel.Panel {
   #handleManualSetupRequest(): void {
     logger.info('Manual setup requested from ChatView');
     this.#onSettingsClick();
+  }
+
+  #handleSidebarNavEvent(event: Event): void {
+    const detail = (event as CustomEvent<{item: SidebarNavItem}>).detail;
+    if (!detail?.item) {
+      return;
+    }
+    this.#handleSidebarNavigation(detail.item);
+  }
+
+  #handleSidebarNavigation(item: SidebarNavItem): void {
+    switch (item) {
+      case 'settings':
+        this.#onSettingsClick();
+        break;
+      case 'history':
+        void this.#onHistoryClick();
+        break;
+      case 'help':
+        this.#onHelpClick();
+        break;
+      case 'evaluations':
+        this.#onEvaluationTestClick();
+        break;
+      case 'connectors':
+        this.#onMCPConnectorsClick();
+        break;
+      case 'agents':
+        this.#onAgentStudioClick();
+        break;
+      case 'workflows':
+        this.#onAgentStudioClick();
+        break;
+      case 'chat':
+      default:
+        break;
+    }
   }
 
   /**

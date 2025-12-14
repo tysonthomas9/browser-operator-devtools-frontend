@@ -7,7 +7,7 @@ import * as Lit from '../../../ui/lit/lit.js';
 const {html, Decorators} = Lit;
 const {customElement} = Decorators as any;
 
-export type SidebarNavItem = 'chat' | 'agents' | 'connectors' | 'settings' | 'workflows';
+export type SidebarNavItem = 'chat' | 'agents' | 'connectors' | 'settings' | 'workflows' | 'history' | 'help' | 'evaluations';
 
 export interface SidebarNavProps {
   activeItem?: SidebarNavItem;
@@ -41,6 +41,9 @@ export class SidebarNav extends HTMLElement {
       { id: 'connectors' as const, icon: this.#getConnectorsIcon(), label: 'Connectors' },
       { id: 'workflows' as const, icon: this.#getWorkflowsIcon(), label: 'Workflows' },
       { id: 'settings' as const, icon: this.#getSettingsIcon(), label: 'Settings' },
+      { id: 'history' as const, icon: this.#getHistoryIcon(), label: 'History' },
+      { id: 'help' as const, icon: this.#getHelpIcon(), label: 'Help' },
+      { id: 'evaluations' as const, icon: this.#getEvaluationsIcon(), label: 'Evaluations' },
     ];
 
     Lit.render(html`
@@ -48,13 +51,15 @@ export class SidebarNav extends HTMLElement {
         :host {
           display: flex;
           flex-direction: column;
-          width: 40px;
+          width: 36px;
           background: hsl(var(--sidebar-background, 0 0% 98%));
           border-right: 1px solid #e9e9e9;
-          padding: 8px 0;
+          padding: 14px 0 18px;
           gap: 16px;
           align-items: center;
           flex-shrink: 0;
+          justify-content: flex-start;
+          position: static;
         }
 
         .nav-item {
@@ -74,6 +79,10 @@ export class SidebarNav extends HTMLElement {
           background: rgba(16, 147, 244, 0.05);
         }
 
+        .nav-item:hover svg {
+          fill: hsl(var(--foreground, 217.2 32.4% 27.5%));
+        }
+
         .nav-item.active {
           background: rgba(16, 147, 244, 0.1);
         }
@@ -81,8 +90,8 @@ export class SidebarNav extends HTMLElement {
         .nav-item svg {
           width: 20px;
           height: 20px;
-          fill: hsl(var(--foreground, 217.2 32.4% 27.5%));
-          transition: fill 0.2s ease;
+          fill: hsl(var(--muted-foreground, 213.5 16.9% 52.5%));
+          transition: fill 0.2s ease, background-color 0.2s ease;
         }
 
         .nav-item.active svg {
@@ -170,6 +179,39 @@ export class SidebarNav extends HTMLElement {
     return html`
       <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M17.3761 12.1217C17.2423 12.0373 17.0894 11.988 16.9315 11.9786C16.7736 11.9692 16.6158 11.9999 16.473 12.0678C16.2763 12.1615 16.0586 12.2022 15.8413 12.1859C15.6241 12.1695 15.4149 12.0966 15.2345 11.9745C15.0541 11.8523 14.9087 11.6852 14.8128 11.4895C14.7169 11.2939 14.6739 11.0766 14.6878 10.8592C14.7091 10.5581 14.8374 10.2745 15.0494 10.0596C15.2614 9.84471 15.5433 9.71269 15.8441 9.68735C16.0591 9.67127 16.2745 9.71167 16.4691 9.80454C16.6119 9.87321 16.7698 9.90456 16.928 9.89565C17.0863 9.88674 17.2396 9.83786 17.3739 9.75359C17.5081 9.66932 17.6187 9.5524 17.6955 9.41375C17.7723 9.27511 17.8126 9.11927 17.8128 8.96079V5.62485C17.8128 5.21045 17.6482 4.81302 17.3552 4.52C17.0622 4.22697 16.6647 4.06235 16.2503 4.06235H13.7503C13.7496 3.63552 13.6618 3.21333 13.4923 2.82161C13.3228 2.42989 13.0751 2.07689 12.7644 1.78423C12.4536 1.49027 12.0854 1.26383 11.6828 1.11916C11.2803 0.974482 10.8521 0.91471 10.4253 0.9436C9.67239 0.993076 8.96265 1.31277 8.42666 1.84388C7.89068 2.37499 7.5645 3.08178 7.50814 3.83423C7.50032 3.91157 7.50032 3.98423 7.50032 4.06235H5.00032C4.58592 4.06235 4.1885 4.22697 3.89547 4.52C3.60244 4.81302 3.43782 5.21045 3.43782 5.62485V7.81235C3.011 7.81305 2.5888 7.90085 2.19708 8.07037C1.80536 8.2399 1.45237 8.4876 1.1597 8.79829C0.755447 9.22868 0.481404 9.7648 0.369319 10.3445C0.257233 10.9243 0.311692 11.5239 0.526385 12.074C0.741079 12.624 1.10722 13.102 1.5824 13.4525C2.05757 13.8031 2.62234 14.0118 3.21126 14.0545C3.2866 14.061 3.36222 14.0636 3.43782 14.0623V16.2498C3.43782 16.6643 3.60244 17.0617 3.89547 17.3547C4.1885 17.6477 4.58592 17.8123 5.00032 17.8123H16.2503C16.6647 17.8123 17.0622 17.6477 17.3552 17.3547C17.6482 17.0617 17.8128 16.6643 17.8128 16.2498V12.9147C17.8129 12.7564 17.7729 12.6007 17.6965 12.462C17.6202 12.3233 17.5099 12.2063 17.3761 12.1217ZM15.9378 15.9373H5.31282V12.9147C5.31284 12.7565 5.27282 12.6008 5.19648 12.4622C5.12013 12.3237 5.00996 12.2067 4.87622 12.1221C4.74248 12.0376 4.58952 11.9883 4.43159 11.9788C4.27365 11.9693 4.11589 11.9999 3.97298 12.0678C3.77739 12.1619 3.56055 12.2031 3.34407 12.1873C3.044 12.1622 2.76274 12.0308 2.55082 11.8169C2.33889 11.6029 2.21019 11.3205 2.18782 11.0202C2.17335 10.8027 2.21596 10.5853 2.31143 10.3894C2.4069 10.1936 2.55192 10.026 2.7321 9.90351C2.91228 9.78096 3.12137 9.70765 3.33862 9.69084C3.55587 9.67403 3.77375 9.7143 3.97064 9.80766C4.11364 9.8761 4.27166 9.90715 4.42992 9.89792C4.58818 9.88868 4.74152 9.83947 4.8756 9.75487C5.00967 9.67028 5.1201 9.55306 5.19657 9.41419C5.27303 9.27532 5.31303 9.11932 5.31282 8.96079V5.93735H8.64876C8.80691 5.93724 8.96247 5.89711 9.10094 5.82072C9.23942 5.74432 9.35632 5.63414 9.44076 5.50042C9.5252 5.3667 9.57445 5.21379 9.5839 5.05592C9.59336 4.89805 9.56273 4.74035 9.49486 4.59751C9.40075 4.40191 9.35954 4.18508 9.37533 3.9686C9.40036 3.66847 9.53167 3.38713 9.74563 3.17517C9.95959 2.96321 10.2422 2.83456 10.5425 2.81235C10.7599 2.7978 10.9773 2.84032 11.1732 2.9357C11.3691 3.03107 11.5366 3.17599 11.6592 3.35608C11.7819 3.53617 11.8553 3.74518 11.8722 3.96239C11.8891 4.1796 11.849 4.39746 11.7558 4.59438C11.6872 4.73741 11.656 4.89552 11.6651 5.05389C11.6743 5.21227 11.7235 5.36573 11.8081 5.49991C11.8927 5.6341 12.01 5.74462 12.149 5.82112C12.2879 5.89763 12.444 5.93762 12.6027 5.93735H15.9378V7.81235C15.8597 7.81235 15.787 7.81235 15.7113 7.82094C14.9052 7.88084 14.1536 8.25074 13.6145 8.85298C13.0754 9.45522 12.7905 10.2429 12.8199 11.0507C12.8492 11.8585 13.1904 12.6235 13.7718 13.1851C14.3531 13.7466 15.1295 14.0611 15.9378 14.0623V15.9373Z" fill="currentColor"/>
+      </svg>
+    `;
+  }
+
+  #getHistoryIcon() {
+    return html`
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3.75 10a6.25 6.25 0 1 1 6.25 6.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 5.625V10l3.125 1.875" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3.75 10H1.875M3.75 10L5.625 8.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+  }
+
+  #getHelpIcon() {
+    return html`
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 1.875C5.82436 1.875 2.5 5.19936 2.5 9.375C2.5 13.5506 5.82436 16.875 10 16.875C14.1756 16.875 17.5 13.5506 17.5 9.375C17.5 5.19936 14.1756 1.875 10 1.875Z" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M10 13.125H10.0063" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M10 10.625C10 9.16667 12 9.0625 12 7.1875C12 6.08446 11.103 5.1875 10 5.1875C8.89697 5.1875 8 6.08446 8 7.1875" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+  }
+
+  #getEvaluationsIcon() {
+    return html`
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 12.5L7.5 9L10.5 12L15.5 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 17.5H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M4 2.5H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M7.5 9V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M10.5 12V17.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M13.5 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     `;
   }

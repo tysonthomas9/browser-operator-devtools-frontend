@@ -4,8 +4,6 @@
 
 import * as Lit from '../../../../ui/lit/lit.js';
 import type { ImageInputData } from '../../models/ChatTypes.js';
-import * as BaseOrchestratorAgent from '../../core/BaseOrchestratorAgent.js';
-
 import '../model_selector/ModelSelector.js';
 import './ChatInput.js';
 import '../ConnectorsDropdown.js';
@@ -208,8 +206,6 @@ export class InputBar extends HTMLElement {
       </div>
     ` : Lit.nothing;
 
-    const agentButtons = BaseOrchestratorAgent.renderAgentTypeButtons(this.#selectedPromptType ?? null, this.#agentButtonsHandler, this.#centered);
-
     const modelSelector = (
       this.#currentProvider !== 'browseroperator' &&
       this.#modelOptions &&
@@ -301,7 +297,10 @@ export class InputBar extends HTMLElement {
     `;
 
     Lit.render(html`
-      <div class="input-container ${this.#centered ? 'centered' : ''}">
+      <div
+        class="input-container ${this.#centered ? 'centered' : ''}"
+        data-selected-prompt-type=${this.#selectedPromptType ?? ''}
+      >
         ${imagePreview}
         <div class="input-row stacked">
           <ai-chat-input
@@ -340,11 +339,6 @@ export class InputBar extends HTMLElement {
             </div>
           </div>
         </div>
-        ${this.#centered ? Lit.nothing : html`
-          <div class="prompt-buttons-row">
-            ${agentButtons}
-          </div>
-        `}
       </div>
     `, this, {host: this});
   }

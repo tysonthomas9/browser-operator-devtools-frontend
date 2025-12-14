@@ -111,6 +111,12 @@
   color-scheme: light dark;
 }
 
+:host {
+  flex: 1 1 auto;
+  min-height: 0; /* allow host to shrink within parent flex layout */
+  height: 100%;
+}
+
 /* Flexbox layout for proper space allocation */
 ai-message-list {
   flex: 1 1 auto;
@@ -137,11 +143,28 @@ ai-input-bar {
   display: flex;
   flex-direction: row; /* Changed to row to accommodate sidebar */
   height: 100%;
+  min-height: 0; /* Allow container to shrink to parent height */
+  max-height: 100%; /* Prevent overflow beyond parent tab */
   width: 100%;
   position: relative;
   overflow: hidden; /* Ensure only the message list scrolls */
-  background: #f7f9fc;
+  background: hsl(var(--background, 0 0% 100%));
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  align-items: flex-start;
+}
+
+/* Toolbar strip above chat content */
+.toolbar-container {
+  background: hsl(var(--background, 0 0% 100%));
+}
+
+/* Ensure sidebar stays pinned to the top/left and main content offsets for it */
+ai-sidebar-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  height: 100vh;
 }
 
 .main-content {
@@ -149,9 +172,12 @@ ai-input-bar {
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  height: 100%;
+  height: 655px;
+  max-height: 655px;
+  min-height: 0; /* allow internal flex children to shrink */
   overflow: hidden;
-  background: #f7f9fc;
+  background: hsl(var(--background, 0 0% 100%));
+  margin-left: 36px; /* match the sidebar width to remove extra gutter */
 }
 
 /* Legacy selector kept for backwards compatibility (unused by ai-message-list) */
@@ -239,9 +265,9 @@ ai-input-bar {
   padding: 4px 12px;
   height: 22px;
   border-radius: 16px;
-  border: 1px solid var(--blue-selected-border);
-  background: var(--blue-selected);
-  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary));
+  background: hsl(var(--primary));
+  color: hsl(var(--foreground, 217.2 32.4% 27.5%));
   font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.24px;
@@ -250,8 +276,8 @@ ai-input-bar {
 }
 
 .whats-new-pill:hover {
-  background: #d0ebff;
-  border-color: #a0d5ff;
+  background: hsl(var(--primary) / 0.9);
+  border-color: hsl(var(--primary) / 0.9);
 }
 
 .whats-new-pill .pill-icon {
@@ -259,7 +285,7 @@ ai-input-bar {
   height: 14px;
   display: flex;
   align-items: center;
-  color: hsl(var(--primary));
+  color: hsl(var(--foreground, 217.2 32.4% 27.5%));
 }
 
 .welcome-close {
@@ -278,11 +304,19 @@ ai-input-bar {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: radial-gradient(circle, rgba(248, 250, 255, 0.3) 0%, rgba(223, 233, 255, 0.3) 100%);
+  background: radial-gradient(circle, rgba(248, 250, 255, 0.45) 0%, rgba(223, 233, 255, 0.55) 100%);
   display: grid;
   place-items: center;
-  box-shadow: 0 8px 24px rgba(48, 99, 191, 0.15);
+  box-shadow: 0 10px 30px rgba(16, 147, 244, 0.14);
   position: relative;
+}
+
+.welcome-icon img {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 8px 24px rgba(0, 164, 254, 0.22);
 }
 
 .welcome-icon::before {
@@ -291,13 +325,8 @@ ai-input-bar {
   inset: 0;
   border-radius: 16px;
   background: radial-gradient(circle, #f8faff 0%, #dfe9ff 100%);
-  opacity: 0.3;
+  opacity: 0.22;
   z-index: -1;
-}
-
-.icon-star {
-  color: #5a7cf7;
-  font-size: 24px;
 }
 
 .welcome-title {
@@ -364,6 +393,7 @@ ai-input-bar {
 .example-chip:hover {
   background: hsl(var(--border));  /* #D3D9E5 */
   border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
 }
 
 .example-chip:active {
@@ -387,6 +417,7 @@ ai-input-bar {
 .hero-chip:hover {
   background: hsl(var(--border));
   border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
 }
 
 @keyframes fadeInScale {
@@ -413,7 +444,7 @@ ai-input-bar {
               transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s both;
   border-radius: 20px;
-  border: 1px solid var(--slate-300);
+  border: 1px solid hsl(var(--border));
 }
 
 @keyframes slideUp {
@@ -433,123 +464,6 @@ ai-input-bar {
   background-color: var(--color-scrollbar);
   border-radius: 4px;
 }
-
-/* Prompt buttons styling */
-.prompt-buttons-container {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-right: 6px;
-  justify-content: flex-start; /* Ensure left alignment */
-}
-
-.prompt-buttons-container.second-line {
-  top: 35px; /* Position on the second line of the textarea */
-}
-
-.prompt-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 14px;
-  background-color: var(--color-background-elevation-1);
-  border: 1px solid var(--color-primary-container-border);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-  padding: 0;
-  font-size: 14px;
-}
-
-/* Hide labels by default */
-.prompt-label {
-  display: none;
-  font-size: 12px;
-  margin-left: 4px;
-  font-weight: normal;
-}
-
-.prompt-label.selected {
-  color: #0767d6;
-}
-
-/* Show labels in centered view when width is sufficient */
-@media (min-width: 300px) {
-  .centered-view .prompt-button {
-    width: auto;
-    padding: 0 12px;
-  }
-  
-  .centered-view .prompt-label {
-    display: inline;
-  }
-}
-
-.prompt-button:hover {
-  background-color: var(--color-background-elevation-2);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.prompt-button:active {
-  transform: translateY(0);
-}
-
-.prompt-button.selected {
-  background-color: #def1fb;
-  border: 2px solid var(--color-primary-container-border);
-  box-shadow: 0 0 0 1px var(--color-primary-container-border);
-  transform: translateY(-1px);
-}
-
-.prompt-button.customized {
-  position: relative;
-}
-
-.prompt-custom-indicator {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  font-size: 8px;
-  color: var(--color-accent-blue);
-  font-weight: bold;
-}
-
-
-
-.prompt-buttons-row {
-  display: flex;
-  width: 100%;
-  padding: 8px 4px 0 4px;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 5px;
-  border-top: 1px solid #eef3ff;
-}
-
-/* Adjust spacing for buttons with text in centered view */
-@media (min-width: 300px) {
-  .centered-view .prompt-buttons-row {
-    padding: 10px 2px 2px 2px;
-    justify-content: space-between;
-  }
-  
-  .centered-view .prompt-buttons-container {
-    gap: 12px;
-    margin-right: 0;
-    justify-content: flex-start; /* Always left-aligned */
-    margin-left: 12px; /* Add left margin for spacing */
-  }
-  
-  .centered-view .actions-container {
-    margin-right: 12px;
-  }
-}
-
-
 
 .actions-container {
   display: flex;
@@ -1095,7 +1009,7 @@ ai-input-bar {
   background-color: hsl(var(--background));
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border-radius: 20px;
-  border: 1px solid var(--slate-300);
+  border: 1px solid hsl(var(--border));
   margin: 0 auto 10px auto;
   transition: all var(--transition-medium);
   width: 100%;

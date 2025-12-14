@@ -64,7 +64,8 @@ export class MessageList extends HTMLElement {
       style.textContent = `
         ai-message-list {
           display: block;
-          height: 100%;
+          height: 562px;
+          max-height: 562px;
           flex: 1 1 auto;
           position: relative;
           z-index: 0;
