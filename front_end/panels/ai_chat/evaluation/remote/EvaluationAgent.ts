@@ -464,6 +464,7 @@ export class EvaluationAgent {
       logger.info('DevTools Langfuse tracing configured successfully from request');
     }
 
+
     // Create a trace for this evaluation - use tracing from request if available
     const traceId = requestTracing.trace_id || `eval-${params.evaluationId}-${Date.now()}`;
     const sessionId = requestTracing.session_id || `eval-session-${Date.now()}`;
