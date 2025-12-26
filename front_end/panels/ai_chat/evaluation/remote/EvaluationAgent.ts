@@ -426,13 +426,25 @@ export class EvaluationAgent {
       tool: params.tool
     });
 
-    // Create a trace for this evaluation
-    const traceId = `eval-${params.evaluationId}-${Date.now()}`;
-    const sessionId = `eval-session-${Date.now()}`;
-    const tracingContext: TracingContext = { 
-      traceId, 
+    // Use tracing metadata from request params (from eval framework via api-server)
+    // The tracing field is now properly forwarded through BrowserAgentServer.executeRequest()
+    const requestTracing = params.tracing || {};
+    logger.info('Tracing metadata received:', {
+      hasTracing: !!params.tracing,
+      tracingKeys: Object.keys(requestTracing),
+      sessionId: requestTracing.session_id,
+      traceId: requestTracing.trace_id
+    });
+
+    // Create a trace for this evaluation - use tracing from request if available
+    const traceId = requestTracing.trace_id || `eval-${params.evaluationId}-${Date.now()}`;
+    const sessionId = requestTracing.session_id || `eval-session-${Date.now()}`;
+    const tracingContext: TracingContext = {
+      traceId,
       sessionId,
-      parentObservationId: undefined 
+      parentObservationId: undefined,
+      // Include full tracing metadata for LLM calls (session grouping in Langfuse)
+      metadata: requestTracing
     };
     const orchestratorDescriptor = await this.orchestratorDescriptorPromise;
     

@@ -276,15 +276,15 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       };
     }
 
-    // Default: provider requires apiKey
-    if (!apiKey) {
+    // Default: provider requires apiKey (unless in AUTOMATED_MODE where keys come dynamically)
+    if (!apiKey && !BUILD_CONFIG.AUTOMATED_MODE) {
       logger.warn(`Provider ${provider} requires API key`);
       return null;
     }
 
     return {
       provider,
-      apiKey
+      apiKey: apiKey || ''  // Default to empty string for AUTOMATED_MODE
     };
   }
 
@@ -597,7 +597,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           tracingContext: {
             sessionId: existingContext?.sessionId || this.#sessionId,
             traceId,
-            parentObservationId: parentObservationId
+            parentObservationId: parentObservationId,
+            // Forward metadata from evaluation context for Langfuse session grouping
+            metadata: existingContext?.metadata
           },
           executionId: this.#executionId,
           abortSignal: this.#abortController?.signal,

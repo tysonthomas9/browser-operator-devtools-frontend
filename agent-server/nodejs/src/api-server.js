@@ -548,8 +548,11 @@ class APIServer {
         await new Promise(resolve => setTimeout(resolve, waitTimeout));
       }
 
+      // Extract tracing metadata for Langfuse integration
+      const tracingMetadata = requestBody.metadata || {};
+
       // Create a dynamic request for this request
-      const request = this.createDynamicRequestNested(requestBody.input, nestedModelConfig);
+      const request = this.createDynamicRequestNested(requestBody.input, nestedModelConfig, tracingMetadata);
 
       // Execute the request on the new tab's DevTools client
       logger.info('Executing request on new tab', {
@@ -581,29 +584,35 @@ class APIServer {
    */
   processNestedModelConfig(requestBody) {
     const defaults = this.configDefaults?.model || {};
+    // Default LiteLLM endpoint from environment variable
+    const defaultLiteLLMEndpoint = process.env.LITELLM_ENDPOINT;
 
     // If nested format is provided, use it directly with fallbacks
     if (requestBody.model) {
-      // Extract endpoint from each model tier, with fallback chain:
+      // Helper to get endpoint with fallback chain:
       // 1. Try tier-specific endpoint (e.g., main_model.endpoint)
       // 2. Fall back to top-level endpoint (e.g., model.endpoint)
-      // 3. Fall back to undefined (will use env var later)
-      const mainEndpoint = requestBody.model.main_model?.endpoint || requestBody.model.endpoint;
-      const miniEndpoint = requestBody.model.mini_model?.endpoint || requestBody.model.endpoint;
-      const nanoEndpoint = requestBody.model.nano_model?.endpoint || requestBody.model.endpoint;
+      // 3. Fall back to LITELLM_ENDPOINT env var (for litellm provider)
+      const getEndpoint = (tierConfig) => {
+        const explicitEndpoint = tierConfig?.endpoint || requestBody.model.endpoint;
+        if (explicitEndpoint) return explicitEndpoint;
+        // Use env var default for litellm provider
+        if (tierConfig?.provider === 'litellm') return defaultLiteLLMEndpoint;
+        return undefined;
+      };
 
       return {
         main_model: {
           ...this.extractModelTierConfig('main', requestBody.model.main_model, defaults),
-          endpoint: mainEndpoint
+          endpoint: getEndpoint(requestBody.model.main_model)
         },
         mini_model: {
           ...this.extractModelTierConfig('mini', requestBody.model.mini_model, defaults),
-          endpoint: miniEndpoint
+          endpoint: getEndpoint(requestBody.model.mini_model)
         },
         nano_model: {
           ...this.extractModelTierConfig('nano', requestBody.model.nano_model, defaults),
-          endpoint: nanoEndpoint
+          endpoint: getEndpoint(requestBody.model.nano_model)
         }
       };
     }
@@ -633,10 +642,15 @@ class APIServer {
 
     // If it's an object with provider/model/api_key, extract those fields
     if (typeof tierConfig === 'object' && tierConfig.provider) {
+      // Get API key with fallback for litellm provider
+      let apiKey = tierConfig.api_key;
+      if (!apiKey && tierConfig.provider === 'litellm') {
+        apiKey = process.env.LITELLM_API_KEY;
+      }
       return {
         provider: tierConfig.provider,
         model: tierConfig.model,
-        api_key: tierConfig.api_key
+        api_key: apiKey
         // endpoint will be added by caller
       };
     }
@@ -750,9 +764,10 @@ class APIServer {
    * Create a dynamic evaluation object with nested model configuration
    * @param {string|Array<{role: string, content: string}>} input - Input message (string) or conversation array (OpenAI Responses API format)
    * @param {import('./types/model-config').ModelConfig} nestedModelConfig - Model configuration
+   * @param {Object} tracingMetadata - Optional tracing metadata for Langfuse integration
    * @returns {import('./types/model-config').EvaluationRequest} Evaluation request object
    */
-  createDynamicRequestNested(input, nestedModelConfig) {
+  createDynamicRequestNested(input, nestedModelConfig, tracingMetadata = {}) {
     const requestId = `api-req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
     // Determine input format and structure accordingly
@@ -792,7 +807,10 @@ class APIServer {
         tags: ['api', 'dynamic'],
         priority: 'high',
         source: 'api'
-      }
+      },
+      // Tracing metadata for Langfuse integration
+      // Contains session_id, trace_id, eval_id, etc. from eval framework
+      tracing: tracingMetadata
     };
   }
 

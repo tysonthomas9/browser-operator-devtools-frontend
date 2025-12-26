@@ -749,6 +749,8 @@ export class AgentRunner {
           tools: toolSchemas,
           temperature: temperature ?? 0,
           agentName: agentName,  // Pass agent identity for provider-specific routing
+          // Pass tracing metadata explicitly for Langfuse integration
+          tracingMetadata: tracingContext?.metadata,
         });
 
         // Complete the generation observation

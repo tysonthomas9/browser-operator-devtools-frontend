@@ -730,10 +730,18 @@ export class BrowserAgentServer extends EventEmitter {
           metadata: {
             tags: request.metadata?.tags || [],
             retries: request.settings?.retry_policy?.max_retries || 0
-          }
+          },
+          // Forward tracing metadata for Langfuse session grouping
+          tracing: request.tracing || {}
         },
         id: rpcId
       };
+
+      logger.debug('RPC request prepared with tracing:', {
+        hasTracing: !!request.tracing,
+        tracingKeys: request.tracing ? Object.keys(request.tracing) : [],
+        sessionId: request.tracing?.session_id
+      });
 
       // Send RPC request
       const response = await connection.rpcClient.callMethod(
