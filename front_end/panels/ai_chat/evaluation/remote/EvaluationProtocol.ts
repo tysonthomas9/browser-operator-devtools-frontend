@@ -113,6 +113,11 @@ export interface EvaluationParams {
     category?: string;
     tags?: string[];
     trace_name?: string;
+    // Langfuse credentials for auto-configuration
+    // When provided, DevTools will auto-configure Langfuse tracing if not already enabled
+    langfuse_endpoint?: string;
+    langfuse_public_key?: string;
+    langfuse_secret_key?: string;
   };
 }
 

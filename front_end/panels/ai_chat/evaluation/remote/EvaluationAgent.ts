@@ -11,7 +11,7 @@ import { ToolRegistry, ConfigurableAgentTool } from '../../agent_framework/Confi
 import { AgentService } from '../../core/AgentService.js';
 import { AIChatPanel } from '../../ui/AIChatPanel.js';
 import { createLogger } from '../../core/Logger.js';
-import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
+import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig, setTracingConfig, refreshTracingProvider } from '../../tracing/TracingConfig.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
 import '../../core/BaseOrchestratorAgent.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
@@ -433,8 +433,36 @@ export class EvaluationAgent {
       hasTracing: !!params.tracing,
       tracingKeys: Object.keys(requestTracing),
       sessionId: requestTracing.session_id,
-      traceId: requestTracing.trace_id
+      traceId: requestTracing.trace_id,
+      hasLangfuseCredentials: !!(requestTracing.langfuse_endpoint && requestTracing.langfuse_public_key && requestTracing.langfuse_secret_key)
     });
+
+    // Auto-configure Langfuse tracing from request if credentials provided and not already enabled
+    if (requestTracing.langfuse_endpoint &&
+        requestTracing.langfuse_public_key &&
+        requestTracing.langfuse_secret_key &&
+        !isTracingEnabled()) {
+      logger.info('Auto-configuring DevTools Langfuse tracing from request', {
+        endpoint: requestTracing.langfuse_endpoint,
+        hasPublicKey: true,
+        hasSecretKey: true
+      });
+
+      setTracingConfig({
+        provider: 'langfuse',
+        endpoint: requestTracing.langfuse_endpoint,
+        publicKey: requestTracing.langfuse_public_key,
+        secretKey: requestTracing.langfuse_secret_key
+      });
+
+      // Refresh the tracing provider to pick up new configuration
+      await refreshTracingProvider();
+
+      // Update this instance's tracing provider
+      this.tracingProvider = createTracingProvider();
+
+      logger.info('DevTools Langfuse tracing configured successfully from request');
+    }
 
     // Create a trace for this evaluation - use tracing from request if available
     const traceId = requestTracing.trace_id || `eval-${params.evaluationId}-${Date.now()}`;
