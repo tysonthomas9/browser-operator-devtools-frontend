@@ -593,26 +593,33 @@ class APIServer {
       // 1. Try tier-specific endpoint (e.g., main_model.endpoint)
       // 2. Fall back to top-level endpoint (e.g., model.endpoint)
       // 3. Fall back to LITELLM_ENDPOINT env var (for litellm provider)
-      const getEndpoint = (tierConfig) => {
-        const explicitEndpoint = tierConfig?.endpoint || requestBody.model.endpoint;
+      // @param {Object} resolvedConfig - Config after extractModelTierConfig (has defaults applied)
+      // @param {Object} rawTierConfig - Original tier config from request (may be undefined)
+      const getEndpoint = (resolvedConfig, rawTierConfig) => {
+        const explicitEndpoint = rawTierConfig?.endpoint || requestBody.model.endpoint;
         if (explicitEndpoint) return explicitEndpoint;
-        // Use env var default for litellm provider
-        if (tierConfig?.provider === 'litellm') return defaultLiteLLMEndpoint;
+        // Use env var default for litellm provider (check resolved config for provider)
+        if (resolvedConfig?.provider === 'litellm') return defaultLiteLLMEndpoint;
         return undefined;
       };
 
+      // Extract tier configs first so getEndpoint can use resolved provider
+      const mainConfig = this.extractModelTierConfig('main', requestBody.model.main_model, defaults);
+      const miniConfig = this.extractModelTierConfig('mini', requestBody.model.mini_model, defaults);
+      const nanoConfig = this.extractModelTierConfig('nano', requestBody.model.nano_model, defaults);
+
       return {
         main_model: {
-          ...this.extractModelTierConfig('main', requestBody.model.main_model, defaults),
-          endpoint: getEndpoint(requestBody.model.main_model)
+          ...mainConfig,
+          endpoint: getEndpoint(mainConfig, requestBody.model.main_model)
         },
         mini_model: {
-          ...this.extractModelTierConfig('mini', requestBody.model.mini_model, defaults),
-          endpoint: getEndpoint(requestBody.model.mini_model)
+          ...miniConfig,
+          endpoint: getEndpoint(miniConfig, requestBody.model.mini_model)
         },
         nano_model: {
-          ...this.extractModelTierConfig('nano', requestBody.model.nano_model, defaults),
-          endpoint: getEndpoint(requestBody.model.nano_model)
+          ...nanoConfig,
+          endpoint: getEndpoint(nanoConfig, requestBody.model.nano_model)
         }
       };
     }
