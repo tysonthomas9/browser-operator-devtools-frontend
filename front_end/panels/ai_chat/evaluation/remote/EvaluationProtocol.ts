@@ -352,3 +352,88 @@ export function createLLMConfigurationResponse(
     id
   };
 }
+
+// Direct Tool Execution Messages (bypass LLM orchestration)
+
+export interface ToolExecutionRequest {
+  jsonrpc: '2.0';
+  method: 'execute_tool';
+  params: ToolExecutionParams;
+  id: string;
+}
+
+export interface ToolExecutionParams {
+  tool: string;
+  args?: Record<string, any>;
+  timeout?: number;
+}
+
+export interface ToolExecutionSuccessResponse {
+  jsonrpc: '2.0';
+  result: {
+    success: true;
+    output: any;
+    executionTime: number;
+    tool: string;
+  };
+  id: string;
+}
+
+export interface ToolExecutionErrorResponse {
+  jsonrpc: '2.0';
+  error: {
+    code: number;
+    message: string;
+    data: {
+      tool: string;
+      error: string;
+    };
+  };
+  id: string;
+}
+
+// Type guard for tool execution
+export function isToolExecutionRequest(msg: any): msg is ToolExecutionRequest {
+  return msg !== null &&
+         typeof msg === 'object' &&
+         msg.jsonrpc === '2.0' &&
+         msg.method === 'execute_tool' &&
+         msg.params !== undefined;
+}
+
+// Helper functions for tool execution
+export function createToolExecutionSuccessResponse(
+  id: string,
+  tool: string,
+  output: any,
+  executionTime: number
+): ToolExecutionSuccessResponse {
+  return {
+    jsonrpc: '2.0',
+    result: {
+      success: true,
+      output,
+      executionTime,
+      tool
+    },
+    id
+  };
+}
+
+export function createToolExecutionErrorResponse(
+  id: string,
+  code: number,
+  message: string,
+  tool: string,
+  error: string
+): ToolExecutionErrorResponse {
+  return {
+    jsonrpc: '2.0',
+    error: {
+      code,
+      message,
+      data: { tool, error }
+    },
+    id
+  };
+}

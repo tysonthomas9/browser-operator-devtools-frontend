@@ -1419,6 +1419,55 @@ export class BrowserAgentServer extends EventEmitter {
   }
 
   /**
+   * Execute a tool directly on a connected DevTools client
+   * This bypasses LLM orchestration and calls the tool directly
+   * @param {Object} connection - DevTools WebSocket connection
+   * @param {string} tool - Tool name (e.g., 'perform_action', 'navigate_url')
+   * @param {Object} args - Tool-specific arguments
+   * @param {number} timeout - Execution timeout in milliseconds
+   * @returns {Promise<Object>} Tool execution result
+   */
+  async executeToolDirect(connection, tool, args, timeout = 30000) {
+    const rpcId = `tool-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    logger.info('Executing tool directly', {
+      clientId: connection.clientId,
+      tool,
+      timeout
+    });
+
+    try {
+      // Prepare RPC request for execute_tool method
+      const response = await connection.rpcClient.callMethod(
+        connection.ws,
+        'execute_tool',
+        {
+          tool,
+          args,
+          timeout
+        },
+        timeout + 5000 // Add buffer for network overhead
+      );
+
+      logger.info('Tool execution completed', {
+        clientId: connection.clientId,
+        tool,
+        success: response?.result?.success
+      });
+
+      return response;
+
+    } catch (error) {
+      logger.error('Tool execution failed', {
+        clientId: connection.clientId,
+        tool,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Execute JavaScript in a browser tab
    * @param {string} tabId - Tab ID (target ID)
    * @param {string} expression - JavaScript expression to execute

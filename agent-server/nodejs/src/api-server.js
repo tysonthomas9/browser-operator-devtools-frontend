@@ -163,6 +163,71 @@ class APIServer {
             result = await this.getDOMSnapshot(JSON.parse(body));
             break;
 
+          case '/v1/tools/execute':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.executeToolDirect(JSON.parse(body));
+            break;
+
+          case '/v1/tools':
+            if (method !== 'GET') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = this.getAvailableTools();
+            break;
+
+          // Convenience endpoints for common actions
+          case '/actions/click':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.handleActionClick(JSON.parse(body));
+            break;
+
+          case '/actions/type':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.handleActionType(JSON.parse(body));
+            break;
+
+          case '/actions/scroll':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.handleActionScroll(JSON.parse(body));
+            break;
+
+          case '/actions/navigate':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.handleActionNavigate(JSON.parse(body));
+            break;
+
+          case '/actions/hover':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.handleActionHover(JSON.parse(body));
+            break;
+
+          case '/page/accessibility-tree':
+            if (method !== 'GET' && method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.getAccessibilityTree(method === 'POST' ? JSON.parse(body) : parsedUrl.query);
+            break;
+
           default:
             this.sendError(res, 404, 'Not found');
             return;
@@ -430,6 +495,362 @@ class APIServer {
       exceptionDetails: result.exceptionDetails,
       timestamp: Date.now()
     };
+  }
+
+  /**
+   * Execute a tool directly without LLM orchestration
+   * POST /v1/tools/execute
+   *
+   * Request format:
+   * {
+   *   "clientId": "xxx",
+   *   "tabId": "yyy",
+   *   "tool": "perform_action",
+   *   "args": { "method": "click", "nodeId": 123 },
+   *   "timeout": 30000
+   * }
+   */
+  async executeToolDirect(payload) {
+    const { clientId, tabId, tool, args, timeout = 30000 } = payload;
+
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    if (!tool) {
+      throw new Error('Tool name is required');
+    }
+
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+
+    logger.info('Executing tool directly', {
+      baseClientId,
+      tabId,
+      tool,
+      timeout,
+      hasArgs: !!args
+    });
+
+    // Find the connection for this tab
+    const connection = this.browserAgentServer.connectedClients.get(compositeClientId);
+
+    if (!connection) {
+      throw new Error(`No DevTools connection found for tab ${tabId}. Ensure the tab's DevTools is connected.`);
+    }
+
+    if (!connection.ready) {
+      throw new Error(`DevTools connection for tab ${tabId} is not ready.`);
+    }
+
+    // Execute the tool via RPC
+    const result = await this.browserAgentServer.executeToolDirect(
+      connection,
+      tool,
+      args,
+      timeout
+    );
+
+    return {
+      clientId: baseClientId,
+      tabId,
+      tool,
+      success: result?.result?.success ?? false,
+      output: result?.result?.output,
+      executionTime: result?.result?.executionTime,
+      error: result?.error?.message,
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Get list of available tools
+   * GET /v1/tools
+   *
+   * Note: This returns a static list of known tools since the tool registry
+   * lives in the DevTools frontend. For dynamic tool discovery, use the
+   * DevTools connection.
+   */
+  getAvailableTools() {
+    // Static list of commonly available tools
+    // The actual registry is in the DevTools frontend (TypeScript)
+    const tools = [
+      {
+        name: 'perform_action',
+        description: 'Execute DOM actions on elements (click, type, hover, etc.)',
+        schema: {
+          type: 'object',
+          properties: {
+            method: {
+              type: 'string',
+              enum: ['click', 'fill', 'type', 'press', 'hover', 'scrollIntoView', 'selectOption', 'check', 'uncheck', 'setChecked'],
+              description: 'Action method to execute'
+            },
+            nodeId: {
+              type: ['number', 'string'],
+              description: 'Accessibility tree node ID'
+            },
+            args: {
+              type: 'array',
+              description: 'Arguments for the action (e.g., text to type)'
+            },
+            reasoning: {
+              type: 'string',
+              description: 'Reasoning for the action'
+            }
+          },
+          required: ['method', 'nodeId']
+        }
+      },
+      {
+        name: 'navigate_url',
+        description: 'Navigate to a URL',
+        schema: {
+          type: 'object',
+          properties: {
+            url: {
+              type: 'string',
+              description: 'URL to navigate to'
+            },
+            reasoning: {
+              type: 'string',
+              description: 'Reasoning for navigation'
+            }
+          },
+          required: ['url']
+        }
+      },
+      {
+        name: 'scroll_page',
+        description: 'Scroll the page',
+        schema: {
+          type: 'object',
+          properties: {
+            direction: {
+              type: 'string',
+              enum: ['up', 'down', 'left', 'right'],
+              description: 'Scroll direction'
+            },
+            amount: {
+              type: 'number',
+              description: 'Scroll amount in pixels'
+            },
+            pages: {
+              type: 'number',
+              description: 'Number of pages to scroll'
+            }
+          }
+        }
+      },
+      {
+        name: 'get_accessibility_tree',
+        description: 'Get the accessibility tree for the current page',
+        schema: {
+          type: 'object',
+          properties: {
+            maxDepth: {
+              type: 'number',
+              description: 'Maximum depth to traverse'
+            }
+          }
+        }
+      },
+      {
+        name: 'take_screenshot',
+        description: 'Capture a screenshot of the page',
+        schema: {
+          type: 'object',
+          properties: {
+            fullPage: {
+              type: 'boolean',
+              description: 'Capture full page or viewport only'
+            }
+          }
+        }
+      },
+      {
+        name: 'get_page_html',
+        description: 'Get the HTML content of the page',
+        schema: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'execute_javascript',
+        description: 'Execute JavaScript in the page context',
+        schema: {
+          type: 'object',
+          properties: {
+            code: {
+              type: 'string',
+              description: 'JavaScript code to execute'
+            }
+          },
+          required: ['code']
+        }
+      }
+    ];
+
+    return {
+      tools,
+      count: tools.length,
+      timestamp: Date.now()
+    };
+  }
+
+  // ============================================
+  // Convenience Action Endpoints
+  // ============================================
+
+  /**
+   * Click on an element
+   * POST /actions/click
+   *
+   * Request: { clientId, tabId, nodeId, timeout? }
+   */
+  async handleActionClick(payload) {
+    const { clientId, tabId, nodeId, timeout = 30000 } = payload;
+
+    return this.executeToolDirect({
+      clientId,
+      tabId,
+      tool: 'perform_action',
+      args: {
+        method: 'click',
+        nodeId,
+        reasoning: 'Click action via API'
+      },
+      timeout
+    });
+  }
+
+  /**
+   * Type text into an element
+   * POST /actions/type
+   *
+   * Request: { clientId, tabId, nodeId, text, timeout? }
+   */
+  async handleActionType(payload) {
+    const { clientId, tabId, nodeId, text, timeout = 30000 } = payload;
+
+    if (!text) {
+      throw new Error('Text is required for type action');
+    }
+
+    return this.executeToolDirect({
+      clientId,
+      tabId,
+      tool: 'perform_action',
+      args: {
+        method: 'fill',
+        nodeId,
+        args: [text],
+        reasoning: 'Type action via API'
+      },
+      timeout
+    });
+  }
+
+  /**
+   * Scroll the page
+   * POST /actions/scroll
+   *
+   * Request: { clientId, tabId, direction?, amount?, pages?, timeout? }
+   */
+  async handleActionScroll(payload) {
+    const { clientId, tabId, direction = 'down', amount, pages, timeout = 30000 } = payload;
+
+    return this.executeToolDirect({
+      clientId,
+      tabId,
+      tool: 'scroll_page',
+      args: {
+        direction,
+        amount,
+        pages
+      },
+      timeout
+    });
+  }
+
+  /**
+   * Navigate to a URL
+   * POST /actions/navigate
+   *
+   * Request: { clientId, tabId, url, timeout? }
+   */
+  async handleActionNavigate(payload) {
+    const { clientId, tabId, url, timeout = 30000 } = payload;
+
+    if (!url) {
+      throw new Error('URL is required for navigate action');
+    }
+
+    return this.executeToolDirect({
+      clientId,
+      tabId,
+      tool: 'navigate_url',
+      args: {
+        url,
+        reasoning: 'Navigate action via API'
+      },
+      timeout
+    });
+  }
+
+  /**
+   * Hover over an element
+   * POST /actions/hover
+   *
+   * Request: { clientId, tabId, nodeId, timeout? }
+   */
+  async handleActionHover(payload) {
+    const { clientId, tabId, nodeId, timeout = 30000 } = payload;
+
+    return this.executeToolDirect({
+      clientId,
+      tabId,
+      tool: 'perform_action',
+      args: {
+        method: 'hover',
+        nodeId,
+        reasoning: 'Hover action via API'
+      },
+      timeout
+    });
+  }
+
+  /**
+   * Get the accessibility tree for a page
+   * GET/POST /page/accessibility-tree
+   *
+   * Request: { clientId, tabId, maxDepth? }
+   */
+  async getAccessibilityTree(payload) {
+    const { clientId, tabId, maxDepth } = payload;
+
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    return this.executeToolDirect({
+      clientId,
+      tabId,
+      tool: 'get_accessibility_tree',
+      args: {
+        maxDepth
+      },
+      timeout: 30000
+    });
   }
 
   /**
