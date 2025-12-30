@@ -3,8 +3,8 @@
 This directory contains Docker configuration files for building and running the Browser Operator DevTools Frontend with integrated Agent Server in a containerized environment.
 
 > **Deployment Types:** This directory supports **Type 1** (DevTools only) and **Type 2** (DevTools + Agent Server).
-> For **Type 3** (full dockerized browser), see the [web-agent](https://github.com/anthropics/web-agent) repository.
-> Quick reference: [../CLAUDE.md](../CLAUDE.md)
+> For **Type 3** (full dockerized browser), see the [web-agent](https://github.com/BrowserOperator/web-agent) repository.
+> Quick reference: [CLAUDE.md](../CLAUDE.md)
 
 ## Overview
 
