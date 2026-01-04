@@ -3,7 +3,7 @@
  */
 
 import fs from 'fs';
-import type { RunSummary, TestResult } from '../types.ts';
+import { getStatusIcon, type RunSummary, type TestResult } from '../types.ts';
 
 export class MarkdownReporter {
   private outputPath?: string;
@@ -12,7 +12,7 @@ export class MarkdownReporter {
     this.outputPath = outputPath;
   }
 
-  async generate(summary: RunSummary): Promise<void> {
+  generate(summary: RunSummary): void {
     const lines: string[] = [];
 
     // Header
@@ -46,7 +46,7 @@ export class MarkdownReporter {
     lines.push('|--------|------|-------|----------|');
 
     for (const result of summary.results) {
-      const icon = this.getStatusIcon(result.status);
+      const icon = getStatusIcon(result.status);
       const score = result.score !== undefined ? `${(result.score * 100).toFixed(0)}%` : '-';
       const duration = `${(result.duration / 1000).toFixed(2)}s`;
       lines.push(`| ${icon} | ${result.testName} | ${score} | ${duration} |`);
@@ -73,7 +73,7 @@ export class MarkdownReporter {
 
   private formatDetailedResult(result: TestResult): string {
     const lines: string[] = [];
-    const icon = this.getStatusIcon(result.status);
+    const icon = getStatusIcon(result.status);
 
     lines.push(`### ${icon} ${result.testName}`);
     lines.push('');
@@ -113,20 +113,5 @@ export class MarkdownReporter {
     lines.push('');
 
     return lines.join('\n');
-  }
-
-  private getStatusIcon(status: string): string {
-    switch (status) {
-      case 'passed':
-        return '✅';
-      case 'failed':
-        return '❌';
-      case 'error':
-        return '💥';
-      case 'skipped':
-        return '⏭️';
-      default:
-        return '❓';
-    }
   }
 }

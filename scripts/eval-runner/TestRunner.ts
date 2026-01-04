@@ -5,7 +5,7 @@
  * and BraintrustTracker to run evaluations.
  */
 
-import type { TestCase, TestResult, RunSummary, CLIOptions, CriteriaResult } from './types.ts';
+import { getStatusIcon, type TestCase, type TestResult, type RunSummary, type CLIOptions, type CriteriaResult } from './types.ts';
 import { BrowserExecutor, type ExecutionContext } from './BrowserExecutor.ts';
 import { BraintrustTracker } from './BraintrustTracker.ts';
 import { AgentBridge } from './AgentBridge.ts';
@@ -59,6 +59,7 @@ export class TestRunner {
     if (this.options.experiment && this.options.braintrustApiKey) {
       await this.braintrustTracker.init({
         apiKey: this.options.braintrustApiKey,
+        org: this.options.org || 'BO',
         project: this.options.project || 'browser-operator',
         experiment: this.options.experiment,
         metadata: {
@@ -390,10 +391,7 @@ export class TestRunner {
    * Print result for a single test
    */
   private printTestResult(result: TestResult): void {
-    const icon = result.status === 'passed' ? '✅' :
-                 result.status === 'failed' ? '❌' :
-                 result.status === 'error' ? '💥' : '⏭️';
-
+    const icon = getStatusIcon(result.status);
     const score = result.score !== undefined ? ` (${(result.score * 100).toFixed(0)}%)` : '';
     const duration = `${(result.duration / 1000).toFixed(1)}s`;
 

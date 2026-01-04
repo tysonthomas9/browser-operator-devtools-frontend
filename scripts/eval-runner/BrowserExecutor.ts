@@ -47,6 +47,10 @@ function detectChromePath(): string {
 
   if (platform === 'darwin') {
     candidates.push(
+      // Prefer Browser Operator for better bot detection bypass and authenticated sessions
+      '/Applications/Browser Operator.app/Contents/MacOS/Browser Operator',
+      `${os.homedir()}/Applications/Browser Operator.app/Contents/MacOS/Browser Operator`,
+      // Fall back to standard Chrome
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
       '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -91,7 +95,7 @@ export class BrowserExecutor {
   constructor(config: Partial<BrowserConfig> = {}) {
     this.config = {
       chromePath: config.chromePath || process.env.CHROME_PATH,
-      headless: config.headless ?? true,
+      headless: config.headless ?? false,
       timeout: config.timeout || 60000,
       screenshotDir: config.screenshotDir || './eval-screenshots',
       remoteDebuggingPort: config.remoteDebuggingPort,

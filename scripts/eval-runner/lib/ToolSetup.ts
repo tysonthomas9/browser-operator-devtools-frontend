@@ -7,6 +7,9 @@
  */
 
 import { ConfigurableAgentTool, ToolRegistry } from '../../../front_end/panels/ai_chat/agent_framework/ConfigurableAgentTool.ts';
+import { createLogger } from '../../../front_end/panels/ai_chat/core/Logger.ts';
+
+const logger = createLogger('ToolSetup');
 
 // Import tools
 import {
@@ -21,7 +24,14 @@ import {
   WaitTool,
   ExecuteJavaScriptTool,
   ClickElementTool,
+  ObjectiveDrivenActionTool,
+  NodeIDsToURLsTool,
+  NetworkAnalysisTool,
 } from '../../../front_end/panels/ai_chat/tools/Tools.ts';
+
+// Import additional CDP-compatible tools
+import { ExecuteCodeTool } from '../../../front_end/panels/ai_chat/tools/ExecuteCodeTool.ts';
+import { HybridAccessibilityTreeTool, ResolveEncodedIdTool } from '../../../front_end/panels/ai_chat/tools/HybridAccessibilityTreeTool.ts';
 
 // Import agent configs
 import { createActionAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgent.ts';
@@ -35,7 +45,7 @@ import { createResearchAgentConfig } from '../../../front_end/panels/ai_chat/age
  * Only registers tools needed for eval tests, skipping browser-specific features.
  */
 export async function setupToolsForEval(): Promise<void> {
-  console.log('[ToolSetup] Registering tools for eval runner...');
+  logger.info('Registering tools for eval runner...');
 
   // Skip DOM tools in Node.js - they require browser SDK
   // DOM tools (hybrid accessibility tree, EncodedId resolver) will be available in browser only
@@ -52,6 +62,14 @@ export async function setupToolsForEval(): Promise<void> {
   ToolRegistry.registerToolFactory('wait_for_page_load', () => new WaitTool());
   ToolRegistry.registerToolFactory('execute_javascript', () => new ExecuteJavaScriptTool());
   ToolRegistry.registerToolFactory('click_element', () => new ClickElementTool());
+
+  // Register CDP-compatible tools for testing
+  ToolRegistry.registerToolFactory('execute_code', () => new ExecuteCodeTool());
+  ToolRegistry.registerToolFactory('get_hybrid_accessibility_tree', () => new HybridAccessibilityTreeTool());
+  ToolRegistry.registerToolFactory('resolve_encoded_id', () => new ResolveEncodedIdTool());
+  ToolRegistry.registerToolFactory('objective_driven_action', () => new ObjectiveDrivenActionTool());
+  ToolRegistry.registerToolFactory('node_ids_to_urls', () => new NodeIDsToURLsTool());
+  ToolRegistry.registerToolFactory('analyze_network', () => new NetworkAnalysisTool());
 
   // Register Action Agent
   const actionAgentConfig = createActionAgentConfig();
@@ -76,6 +94,6 @@ export async function setupToolsForEval(): Promise<void> {
     throw new Error('Failed to initialize required agents');
   }
 
-  console.log('[ToolSetup] Tools registered successfully');
-  console.log(`[ToolSetup] Available tools: ${ToolRegistry.getRegisteredToolNames().join(', ')}`);
+  logger.info('Tools registered successfully');
+  logger.debug(`Available tools: ${ToolRegistry.getRegisteredToolNames().join(', ')}`);
 }

@@ -37,8 +37,9 @@ When analyzing page structure, you have access to:
 3. Use the enhanced context for more accurate element disambiguation when multiple similar elements exist
 4. Determine the appropriate action method based on the element type and objective:
    - For links, buttons: use 'click'
+   - For context menus: use 'rightClick' to trigger a right-click (context menu) event
    - For checkboxes: use 'check' (to check), 'uncheck' (to uncheck), or 'setChecked' (to set to specific state)
-   - For radio buttons: use 'click' 
+   - For radio buttons: use 'click'
    - For input fields: use 'fill' with appropriate text
    - For dropdown/select elements: use 'selectOption' with the option value or text
 5. Execute the action using perform_action tool
@@ -63,14 +64,14 @@ After executing an action, the perform_action tool returns objective evidence in
   * Consider if the element might be disabled or hidden
 
 **Example Analysis:**
-Action: clicked search button (nodeId: 123)
+Action: clicked search button (nodeId: "0-123")
 Result: pageChange.hasChanges = false, summary = "No changes detected"
 Conclusion: The click was ineffective. Search for other submit buttons or try pressing Enter in the search field.
 
 **Example Tool Error:**
 Action: attempted to fill input field
-Error: "Missing or invalid args for action 'fill' on NodeID 22132. Expected an object with a string property 'text'. Example: { "text": "your value" }"
-Conclusion: Fix the args format and retry with proper syntax: { "method": "fill", "nodeId": 22132, "args": { "text": "search query" } }
+Error: "Missing or invalid args for action 'fill' on NodeID 0-22132. Expected an object with a string property 'text'. Example: { "text": "your value" }"
+Conclusion: Fix the args format and retry with proper syntax: { "method": "fill", "nodeId": "0-22132", "args": { "text": "search query" } }
 
 ## Important Considerations
 - **NEVER claim success unless pageChange.hasChanges = true**
@@ -85,32 +86,27 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
 - If pageChange shows no changes, immediately try an alternative approach
 
 ## Method Examples
-- perform_action with method='check' for checkboxes: { "method": "check", "nodeId": 123 }
-- perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": 456, "args": { "text": "United States" } }
-- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": 789, "args": { "checked": true } }
+**IMPORTANT: Always use EncodedId format (e.g., "0-123") from the accessibility tree, not plain numeric IDs.**
+- perform_action with method='click' for buttons/links: { "method": "click", "nodeId": "0-123" }
+- perform_action with method='rightClick' for context menus: { "method": "rightClick", "nodeId": "0-123" }
+- perform_action with method='check' for checkboxes: { "method": "check", "nodeId": "0-456" }
+- perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": "0-789", "args": { "text": "United States" } }
+- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": "1-234", "args": { "checked": true } }
+- For elements in iframes, use the frame ordinal prefix (e.g., "1-456" for frame 1, "2-789" for frame 2)
 
-## Date Picker / Calendar Widgets
-When selecting dates from calendar widgets:
+## Date/Calendar Widgets
+For date pickers and date range pickers:
 
-**TRY DIRECT INPUT FIRST** (fastest method):
-1. Click the date input field to focus it
-2. Use 'fill' method to type the date directly: { "method": "fill", "nodeId": X, "args": { "text": "03/15/2024" } }
-3. Common date formats: MM/DD/YYYY, YYYY-MM-DD, DD/MM/YYYY
-4. Click elsewhere or press Tab to confirm - the datepicker should accept the typed date
-5. If direct input doesn't work, fall back to calendar navigation below
+1. **Prefer direct input**: Use 'fill' to type the date directly
+   - Single date: { "method": "fill", "nodeId": "0-XXX", "args": { "text": "03/15/2024" } }
+   - Date range: { "method": "fill", "nodeId": "0-XXX", "args": { "text": "02/01/2024 - 02/28/2024" } }
 
-**CALENDAR NAVIGATION** (when direct input fails):
-1. Click the date input to open the calendar popup
-2. Check the CURRENT displayed month/year vs TARGET date
-3. For dates far from current display:
-   - Look for YEAR navigation: "<<" or ">>" buttons, year dropdown, or clickable year text in header
-   - Click on the month/year header text - many datepickers open a year/month selector
-   - If only month arrows ("<" and ">") exist and target is years away, use direct input instead
-4. Navigate to correct YEAR first, then MONTH
-5. Click the target day number
-6. Verify the date input shows the expected value
+2. **Use calendar UI** when direct input fails or for nearby dates:
+   - Click input to open calendar
+   - Navigate using Prev/Next or month/year selectors
+   - Click the target day
 
-IMPORTANT: Direct text input (fill method) is ALWAYS preferred over calendar navigation for dates more than a few months away.`,
+Avoid excessive calendar navigation - if target date is far away, use direct input.`,
     tools: [
       'get_page_content',
       'perform_action',
@@ -119,7 +115,7 @@ IMPORTANT: Direct text input (fill method) is ALWAYS preferred over calendar nav
       'scroll_page',
       'take_screenshot',
     ],
-    maxIterations: 10,
+    maxIterations: 12,
     modelName: MODEL_SENTINELS.USE_MINI,
     temperature: 0.5,
     schema: {

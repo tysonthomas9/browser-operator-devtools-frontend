@@ -38,8 +38,6 @@ export class BraintrustTracker {
   private braintrust: any = null;
   private enabled: boolean = false;
 
-  constructor() {}
-
   /**
    * Initialize Braintrust tracking
    */
@@ -213,50 +211,8 @@ export class BraintrustTracker {
    */
   getExperimentUrl(): string | null {
     if (!this.enabled || !this.config) return null;
-    return `https://www.braintrust.dev/app/${this.config.project}/experiments/${this.config.experiment}`;
+    // URL format: /app/{org}/p/{project}/experiments/{experiment}
+    const org = this.config.org || 'BO';
+    return `https://www.braintrust.dev/app/${org}/p/${this.config.project}/experiments/${this.config.experiment}`;
   }
-}
-
-/**
- * Create custom scorers for Braintrust evaluation
- */
-export function createScorers() {
-  return {
-    /**
-     * Binary success scorer
-     */
-    success: {
-      name: 'success',
-      score: (_input: unknown, output: any, expected: any) => {
-        return output?.status === expected?.status ? 1 : 0;
-      },
-    },
-
-    /**
-     * Criteria completion scorer
-     */
-    criteriaCompletion: {
-      name: 'criteria_completion',
-      score: (_input: unknown, output: any) => {
-        const criteria = output?.validation?.criteria || [];
-        if (criteria.length === 0) return 0;
-        const passed = criteria.filter((c: any) => c.passed).length;
-        return passed / criteria.length;
-      },
-    },
-
-    /**
-     * Duration performance scorer (faster is better)
-     */
-    performance: {
-      name: 'performance',
-      score: (_input: unknown, output: any, _expected: unknown, metadata: any) => {
-        const duration = metadata?.duration || output?.duration;
-        const timeout = metadata?.timeout || 60000;
-        if (!duration) return 0;
-        // Score based on how quickly it completed relative to timeout
-        return Math.max(0, 1 - duration / timeout);
-      },
-    },
-  };
 }

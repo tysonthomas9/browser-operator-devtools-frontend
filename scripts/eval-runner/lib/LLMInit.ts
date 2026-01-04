@@ -7,6 +7,9 @@
 
 import { LLMClient } from '../../../front_end/panels/ai_chat/LLM/LLMClient.ts';
 import type { LLMProvider } from '../../../front_end/panels/ai_chat/LLM/LLMTypes.ts';
+import { createLogger } from '../../../front_end/panels/ai_chat/core/Logger.ts';
+
+const logger = createLogger('LLMInit');
 
 export interface EvalLLMConfig {
   provider: string;
@@ -30,6 +33,6 @@ export async function initializeLLMForEval(config: EvalLLMConfig): Promise<LLMCl
     }],
   });
 
-  console.log(`[LLMInit] Initialized LLM client with ${config.provider} provider`);
+  logger.info(`Initialized LLM client with ${config.provider} provider`);
   return client;
 }

@@ -183,40 +183,40 @@ export const shadowFormFillTest: TestCase<ActionAgentArgs> = {
 /**
  * Test interacting with GitHub web components (real-world shadow DOM).
  */
-export const githubDropdownShadowTest: TestCase<ActionAgentArgs> = {
+export const githubSearchShadowTest: TestCase<ActionAgentArgs> = {
   id: 'action-agent-shadow-005',
-  name: 'GitHub dropdown in shadow DOM',
-  description: 'Open GitHub user menu dropdown which uses web components with shadow DOM',
+  name: 'GitHub search with shadow DOM',
+  description: 'Use GitHub search bar to search for "browser operator" - tests shadow DOM form interaction',
   url: 'https://github.com',
   tool: 'action_agent',
   input: {
-    objective: 'Click on the user avatar or menu button in the top right navigation',
-    reasoning: 'Testing real-world shadow DOM interaction with GitHub web components',
-    hint: 'GitHub uses custom elements with shadow DOM for navigation. Target the avatar or dropdown trigger.',
+    objective: 'Search for "browser operator" using the GitHub search bar',
+    reasoning: 'Testing real-world shadow DOM interaction with GitHub search components',
+    hint: 'GitHub uses web components with shadow DOM. Find the search input, type "browser operator", and submit the search.',
   },
   validation: {
     type: 'llm-judge',
     llmJudge: {
       criteria: [
-        'Located the user menu element in GitHub navigation',
-        'Successfully handled GitHub web component shadow DOM',
-        'Dropdown or menu opened after click',
-        'No accessibility or targeting errors',
+        'Located the search input in GitHub navigation',
+        'Successfully entered "browser operator" into the search field',
+        'Search was submitted (Enter pressed or search button clicked)',
+        'Search results page loaded with results for "browser operator"',
       ],
       visualVerification: {
         enabled: true,
         captureBeforeAction: true,
         captureAfterAction: true,
         verificationPrompts: [
-          'Verify the GitHub navigation menu was opened',
-          'Confirm dropdown items are now visible',
-          'Check that the click targeted the correct element',
+          'Verify the search input was found and used',
+          'Confirm search results are displayed',
+          'Check that results relate to "browser operator"',
         ],
       },
     },
   },
   metadata: {
-    tags: ['action', 'shadow-dom', 'github', 'real-world', 'dropdown'],
+    tags: ['action', 'shadow-dom', 'github', 'real-world', 'search', 'form'],
     timeout: 30000,
   },
 };
@@ -306,7 +306,7 @@ export const shadowDOMActionTests = [
   shadowClickClosedTest,
   shadowNestedClickTest,
   shadowFormFillTest,
-  githubDropdownShadowTest,
+  githubSearchShadowTest,
   shadowCustomSelectTest,
   shadowToggleTest,
 ];

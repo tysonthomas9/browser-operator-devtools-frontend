@@ -79,6 +79,8 @@ export class FileListDisplay extends HTMLElement {
       clearInterval(this.#refreshInterval);
       this.#refreshInterval = undefined;
     }
+    // Clean up keydown listener if modal was open when component was removed
+    document.removeEventListener('keydown', this.#boundHandleKeyDown);
   }
 
   async #loadFiles(): Promise<void> {

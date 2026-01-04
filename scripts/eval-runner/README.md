@@ -16,29 +16,32 @@ A scalable command-line evaluation runner for Browser Operator agents with Brain
 ## Installation
 
 ```bash
-# From the project root, install dependencies
-npm install braintrust puppeteer-core commander openai
+# Navigate to the eval-runner directory
+cd scripts/eval-runner
 
-# Set environment variables
+# Install dependencies
+npm install
+
+# Set environment variables (or use .env file in project root)
 export OPENAI_API_KEY=your_openai_key
-export BRAINTRUST_API_KEY=your_braintrust_key  # Optional, for tracking
-export CHROME_PATH=/path/to/chrome  # Optional, auto-detected
+export CEREBRAS_API_KEY=your_cerebras_key  # For Cerebras models
+export BRAINTRUST_API_KEY=your_braintrust_key  # Optional, for experiment tracking
 ```
 
 ## Quick Start
 
 ```bash
-# Run a quick test with 2 basic tests
-npx tsx scripts/eval-runner/cli.ts
+# From scripts/eval-runner directory:
+npm run eval -- --tool action_agent --limit 2
 
-# Run all action-agent tests
-npx tsx scripts/eval-runner/cli.ts --tool action_agent
+# Or from project root:
+npx tsx scripts/eval-runner/cli.ts --tool action_agent --limit 2
 
 # Run with visible browser (not headless)
-npx tsx scripts/eval-runner/cli.ts --tool action_agent --no-headless
+npm run eval -- --tool action_agent --no-headless
 
 # Connect to existing Browser Operator instance (recommended for sites with bot detection)
-npx tsx scripts/eval-runner/cli.ts --tool action_agent --remote-debugging-port 9222
+npm run eval -- --tool action_agent --remote-debugging-port 9222
 ```
 
 ## Usage Examples
@@ -190,8 +193,10 @@ npx tsx scripts/eval-runner/cli.ts \
 | `-c, --concurrency <n>` | Max parallel tests | `3` |
 | `--timeout <ms>` | Test timeout in milliseconds | `60000` |
 | `-r, --retries <n>` | Number of retries on failure | `1` |
-| `-e, --experiment <name>` | Braintrust experiment name | - |
+| `-e, --experiment <name>` | Braintrust experiment name | auto-generated |
 | `--project <name>` | Braintrust project name | `browser-operator` |
+| `--org <name>` | Braintrust organization name | `BO` |
+| `--no-braintrust` | Disable Braintrust experiment tracking | - |
 | `--provider <provider>` | LLM provider (openai, anthropic, litellm, cerebras) | `openai` |
 | `-m, --model <model>` | Model for agents | `gpt-4o` |
 | `--judge-provider <provider>` | LLM provider for judge | `openai` |

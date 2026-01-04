@@ -711,7 +711,7 @@ export class AgentRunner {
         const tracingProvider = createTracingProvider();
         const generationStartTime = getRuntime().now();
 
-        console.log(`[HIERARCHICAL_TRACING] AgentRunner: Starting LLM generation for ${agentName}:`, {
+        logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Starting LLM generation for ${agentName}:`, {
           hasTracingContext: !!tracingContext,
           traceId: tracingContext?.traceId,
           currentAgentSpanId: tracingContext?.currentAgentSpanId,
@@ -755,7 +755,7 @@ export class AgentRunner {
             }
           }, tracingContext.traceId);
 
-          console.log(`[HIERARCHICAL_TRACING] AgentRunner: Created LLM generation:`, {
+          logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Created LLM generation:`, {
             generationId,
             agentName,
             iteration: iteration + 1,
@@ -827,7 +827,7 @@ export class AgentRunner {
             }
           });
 
-          console.log(`[HIERARCHICAL_TRACING] AgentRunner: Completed LLM generation:`, {
+          logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Completed LLM generation:`, {
             generationId,
             agentName,
             iteration: iteration + 1,
@@ -951,7 +951,7 @@ export class AgentRunner {
               }
             }, tracingContext.traceId);
 
-            console.log(`[HIERARCHICAL_TRACING] AgentRunner: Created tool call decision:`, {
+            logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Created tool call decision:`, {
               toolCallObservationId,
               toolName,
               agentName,
@@ -1109,7 +1109,7 @@ export class AgentRunner {
                     parentToolCallDecision: toolCallObservationId
                   }
                 }, tracingContext.traceId);
-                console.log(`[HIERARCHICAL_TRACING] AgentRunner: Created tool execution span:`, {
+                logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Created tool execution span:`, {
                   toolSpanId,
                   toolName,
                   agentName,
@@ -1258,7 +1258,7 @@ export class AgentRunner {
                       parentToolCallDecision: toolCallObservationId
                     }
                   });
-                  console.log(`[HIERARCHICAL_TRACING] AgentRunner: Completed tool execution span:`, {
+                  logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Completed tool execution span:`, {
                     toolSpanId,
                     toolName,
                     agentName,

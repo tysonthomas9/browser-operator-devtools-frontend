@@ -19,55 +19,109 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { Command } from 'commander';
-import type { CLIOptions, TestCase, RunSummary } from './types.ts';
+import { getProviderConfig, type CLIOptions, type TestCase, type RunSummary, type LLMProvider } from './types.ts';
 import { TestRunner } from './TestRunner.ts';
 import { ConsoleReporter } from './reporters/ConsoleReporter.ts';
 import { JsonReporter } from './reporters/JsonReporter.ts';
 import { MarkdownReporter } from './reporters/MarkdownReporter.ts';
 import { domTests } from './test-cases/dom-tests.ts';
+import { Logger, LogLevel } from '../../front_end/panels/ai_chat/core/Logger.ts';
+
+// Test module configuration for dynamic loading
+interface TestModuleConfig {
+  path: string;
+  exports: { name: string; label: string }[];
+  label: string;
+}
+
+const TEST_MODULES: TestModuleConfig[] = [
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-tests.ts',
+    exports: [{ name: 'actionAgentTests', label: 'action-agent' }],
+    label: 'action-agent',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-shadow-dom-tests.ts',
+    exports: [{ name: 'shadowDOMActionTests', label: 'shadow-dom action' }],
+    label: 'shadow-dom',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-iframe-tests.ts',
+    exports: [
+      { name: 'iframeActionTests', label: 'iframe action' },
+      { name: 'encodedIdActionTests', label: 'encodedId action' },
+    ],
+    label: 'iframe',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/web-task-agent-tests.ts',
+    exports: [{ name: 'webTaskAgentTests', label: 'web-task-agent' }],
+    label: 'web-task-agent',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/web-task-agent-shadow-dom-tests.ts',
+    exports: [{ name: 'webTaskAgentShadowDOMTests', label: 'web-task-agent shadow-dom' }],
+    label: 'web-task-agent shadow-dom',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/web-task-agent-iframe-tests.ts',
+    exports: [
+      { name: 'webTaskAgentIframeTests', label: 'web-task-agent iframe' },
+      { name: 'hybridSnapshotTests', label: 'hybrid snapshot' },
+    ],
+    label: 'web-task-agent iframe',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/research-agent-tests.ts',
+    exports: [{ name: 'researchAgentTests', label: 'research-agent' }],
+    label: 'research-agent',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/schema-extractor-tests.ts',
+    exports: [{ name: 'schemaExtractorTests', label: 'schema-extractor' }],
+    label: 'schema-extractor',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/streamlined-schema-extractor-tests.ts',
+    exports: [{ name: 'streamlinedSchemaExtractorTests', label: 'streamlined-schema-extractor' }],
+    label: 'streamlined-schema-extractor',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/html-to-markdown-tests.ts',
+    exports: [{ name: 'htmlToMarkdownTests', label: 'html-to-markdown' }],
+    label: 'html-to-markdown',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/cdp-tool-tests.ts',
+    exports: [{ name: 'cdpToolTests', label: 'cdp-tool' }],
+    label: 'cdp-tool',
+  },
+];
+
+async function loadTestModule(
+  config: TestModuleConfig,
+  tests: TestCase[]
+): Promise<void> {
+  try {
+    const module = await import(config.path);
+    for (const exp of config.exports) {
+      if (module[exp.name]) {
+        tests.push(...module[exp.name]);
+        console.log(`   Loaded ${module[exp.name].length} ${exp.label} tests`);
+      }
+    }
+  } catch (error) {
+    console.log(`   Could not load ${config.label} tests: ${error}`);
+  }
+}
 
 // Test case imports - load from TypeScript source files
 async function loadTestCases(): Promise<TestCase[]> {
   // Start with DOM tests which are always available
   const tests: TestCase[] = [...domTests];
 
-  // Try to load DevTools test cases directly from TypeScript files
-  try {
-    // Import action-agent tests
-    const actionAgentModule = await import('../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-tests.ts');
-    if (actionAgentModule.actionAgentTests) {
-      tests.push(...actionAgentModule.actionAgentTests);
-      console.log(`   Loaded ${actionAgentModule.actionAgentTests.length} action-agent tests`);
-    }
-  } catch (error) {
-    console.log(`   Could not load action-agent tests: ${error}`);
-  }
-
-  try {
-    // Import action-agent shadow DOM tests
-    const shadowDomModule = await import('../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-shadow-dom-tests.ts');
-    if (shadowDomModule.shadowDOMActionTests) {
-      tests.push(...shadowDomModule.shadowDOMActionTests);
-      console.log(`   Loaded ${shadowDomModule.shadowDOMActionTests.length} shadow-dom action tests`);
-    }
-  } catch (error) {
-    console.log(`   Could not load shadow-dom tests: ${error}`);
-  }
-
-  try {
-    // Import action-agent iframe tests
-    const iframeModule = await import('../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-iframe-tests.ts');
-    if (iframeModule.iframeActionTests) {
-      tests.push(...iframeModule.iframeActionTests);
-      console.log(`   Loaded ${iframeModule.iframeActionTests.length} iframe action tests`);
-    }
-    if (iframeModule.encodedIdActionTests) {
-      tests.push(...iframeModule.encodedIdActionTests);
-      console.log(`   Loaded ${iframeModule.encodedIdActionTests.length} encodedId action tests`);
-    }
-  } catch (error) {
-    console.log(`   Could not load iframe tests: ${error}`);
-  }
+  // Load all test modules
+  await Promise.all(TEST_MODULES.map(config => loadTestModule(config, tests)));
 
   // If no DevTools tests loaded, add fallback
   if (tests.length === domTests.length) {
@@ -194,11 +248,18 @@ async function main() {
     .description('CLI Evaluation Runner for Browser Operator agents')
     .version('1.0.0');
 
+  // Accumulator for repeated/comma-separated options
+  const collect = (value: string, previous: string[] = []): string[] => {
+    // Support both comma-separated and repeated flags
+    const newValues = value.split(',').map(v => v.trim()).filter(v => v);
+    return previous.concat(newValues);
+  };
+
   program
     // Test selection
     .option('-t, --tool <tool>', 'Filter by tool name (action_agent, web_task_agent, etc.)')
-    .option('--tag <tags...>', 'Filter by tags (AND logic)')
-    .option('--test <ids...>', 'Run specific test IDs')
+    .option('--tag <tags>', 'Filter by tags (AND logic). Comma-separated or repeat flag.', collect, [])
+    .option('--test <ids>', 'Run specific test IDs. Comma-separated or repeat flag.', collect, [])
 
     // Execution
     .option('-p, --parallel', 'Run tests in parallel', false)
@@ -208,8 +269,10 @@ async function main() {
     .option('-l, --limit <n>', 'Limit number of tests to run', parseInt)
 
     // Braintrust
-    .option('-e, --experiment <name>', 'Braintrust experiment name (enables tracking)')
+    .option('-e, --experiment <name>', 'Braintrust experiment name (auto-generated if not provided)')
+    .option('--no-braintrust', 'Disable Braintrust experiment tracking')
     .option('--project <name>', 'Braintrust project name', 'browser-operator')
+    .option('--org <name>', 'Braintrust organization name', 'BO')
     .option('--braintrust-api-key <key>', 'Braintrust API key (or set BRAINTRUST_API_KEY)')
 
     // LLM Configuration
@@ -228,8 +291,7 @@ async function main() {
 
     // Browser
     .option('--chrome-path <path>', 'Path to Chrome executable')
-    .option('--headless', 'Run browser in headless mode', true)
-    .option('--no-headless', 'Run browser with visible UI')
+    .option('--headless', 'Run browser in headless mode (default: visible UI)')
     .option('--remote-debugging-port <port>', 'Connect to existing browser on this port', parseInt)
 
     // Logging
@@ -241,16 +303,14 @@ async function main() {
 
   const opts = program.opts();
 
-  // Determine API key based on provider
-  const getApiKeyForProvider = (provider: string): string | undefined => {
-    if (opts.apiKey) return opts.apiKey;
-    switch (provider) {
-      case 'cerebras': return process.env.CEREBRAS_API_KEY;
-      case 'openai': return process.env.OPENAI_API_KEY;
-      case 'groq': return process.env.GROQ_API_KEY;
-      case 'anthropic': return process.env.ANTHROPIC_API_KEY;
-      default: return process.env.OPENAI_API_KEY;
-    }
+  // Generate default experiment name if Braintrust is enabled (default) and no name provided
+  const getExperimentName = (): string | undefined => {
+    if (opts.braintrust === false) return undefined; // --no-braintrust flag
+    if (opts.experiment) return opts.experiment;
+    // Auto-generate: eval-YYYY-MM-DD-HH-MM
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `eval-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}`;
   };
 
   const options: CLIOptions = {
@@ -262,15 +322,16 @@ async function main() {
     timeout: opts.timeout,
     retries: opts.retries,
     limit: opts.limit,
-    experiment: opts.experiment,
+    experiment: getExperimentName(),
     project: opts.project,
+    org: opts.org,
     braintrustApiKey: opts.braintrustApiKey || process.env.BRAINTRUST_API_KEY,
     provider: opts.provider,
     model: opts.model,
     judgeProvider: opts.judgeProvider,
     judgeModel: opts.judgeModel,
-    apiKey: getApiKeyForProvider(opts.provider),
-    judgeApiKey: getApiKeyForProvider(opts.judgeProvider),
+    apiKey: getProviderConfig(opts.provider as LLMProvider, opts.apiKey).apiKey,
+    judgeApiKey: getProviderConfig(opts.judgeProvider as LLMProvider, opts.apiKey).apiKey,
     format: opts.format,
     output: opts.output,
     verbose: opts.verbose,
@@ -282,6 +343,12 @@ async function main() {
     logDir: opts.logDir,
     detailedLogs: opts.detailedLogs,
   };
+
+  // Configure logging based on verbose flag
+  Logger.configure({
+    level: options.verbose ? LogLevel.DEBUG : LogLevel.WARN,
+    includeTimestamp: options.verbose,
+  });
 
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗

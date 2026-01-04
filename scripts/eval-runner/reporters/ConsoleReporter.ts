@@ -2,7 +2,7 @@
  * Console Reporter - Formats results for terminal output
  */
 
-import type { RunSummary, TestResult } from '../types.ts';
+import { getStatusIcon, type RunSummary, type TestResult } from '../types.ts';
 
 export class ConsoleReporter {
   private verbose: boolean;
@@ -11,7 +11,7 @@ export class ConsoleReporter {
     this.verbose = verbose;
   }
 
-  async generate(summary: RunSummary): Promise<void> {
+  generate(summary: RunSummary): void {
     console.log('\n' + '═'.repeat(60));
     console.log('                    DETAILED RESULTS');
     console.log('═'.repeat(60) + '\n');
@@ -22,7 +22,7 @@ export class ConsoleReporter {
   }
 
   private printResult(result: TestResult): void {
-    const icon = this.getStatusIcon(result.status);
+    const icon = getStatusIcon(result.status);
     const score = result.score !== undefined ? ` [${(result.score * 100).toFixed(0)}%]` : '';
 
     console.log(`${icon} ${result.testName}${score}`);
@@ -58,20 +58,5 @@ export class ConsoleReporter {
     }
 
     console.log('');
-  }
-
-  private getStatusIcon(status: string): string {
-    switch (status) {
-      case 'passed':
-        return '✅';
-      case 'failed':
-        return '❌';
-      case 'error':
-        return '💥';
-      case 'skipped':
-        return '⏭️';
-      default:
-        return '❓';
-    }
   }
 }

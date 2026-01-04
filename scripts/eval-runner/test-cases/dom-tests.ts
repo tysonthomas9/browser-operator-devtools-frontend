@@ -7,10 +7,12 @@
 
 import type { TestCase } from '../types.ts';
 
-// Shadow Piercer Runtime Script (injected into pages)
+// Shadow Piercer Runtime Script (injected into pages for TESTING)
+// Note: Uses __testShadowPiercer flag to avoid collision with Browser Operator's built-in injection
 export const SHADOW_PIERCER_RUNTIME = `
 (function() {
-  if (window.__browserOperatorInjected) return;
+  // Use test-specific flag to avoid collision with Browser Operator's built-in shadow piercer
+  if (window.__testShadowPiercerInjected) return;
 
   const state = {
     hostToRoot: new WeakMap(),
@@ -112,9 +114,10 @@ export const SHADOW_PIERCER_RUNTIME = `
     return root;
   };
 
+  // Set test-specific state (separate from Browser Operator's built-in state)
   window.__browserOperatorState = state;
   window.__browserOperatorResolveXPath = resolveSimpleXPath;
-  window.__browserOperatorInjected = true;
+  window.__testShadowPiercerInjected = true;
 })();
 `;
 
@@ -170,7 +173,7 @@ export const shadowPiercerOpenTest: DOMTestCase = {
     assertions: [
       {
         description: 'Shadow piercer is injected',
-        check: `({ passed: typeof window.__browserOperatorInjected === 'boolean' && window.__browserOperatorInjected })`,
+        check: `({ passed: typeof window.__testShadowPiercerInjected === 'boolean' && window.__testShadowPiercerInjected })`,
       },
       {
         description: 'Open shadow root is tracked',

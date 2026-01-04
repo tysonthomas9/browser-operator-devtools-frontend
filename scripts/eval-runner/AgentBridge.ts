@@ -16,6 +16,9 @@ import type { LLMProvider } from '../../front_end/panels/ai_chat/LLM/LLMTypes.ts
 import { initializeLLMForEval } from './lib/LLMInit.ts';
 import { setupToolsForEval } from './lib/ToolSetup.ts';
 import type { TestLogger } from './TestLogger.ts';
+import { createLogger } from '../../front_end/panels/ai_chat/core/Logger.ts';
+
+const logger = createLogger('AgentBridge');
 
 interface AgentResult {
   success: boolean;
@@ -51,7 +54,7 @@ export class AgentBridge {
   async init(): Promise<void> {
     if (this.initialized) return;
 
-    console.log('[AgentBridge] Initializing...');
+    logger.info('Initializing...');
 
     // Initialize LLM with eval runner's config
     await initializeLLMForEval({
@@ -65,7 +68,7 @@ export class AgentBridge {
     await setupToolsForEval();
 
     this.initialized = true;
-    console.log('[AgentBridge] Initialization complete');
+    logger.info('Initialization complete');
   }
 
   /**
@@ -213,9 +216,11 @@ export class AgentBridge {
         };
 
       case 'web_task_agent':
-        // WebTaskAgent expects: { task: string }
+        // WebTaskAgent expects: { task: string, reasoning: string, extraction_schema?: object }
         return {
           task: input.task || input.query || '',
+          reasoning: input.reasoning || 'Eval runner test',
+          extraction_schema: input.extraction_schema,
         };
 
       case 'research_agent':
@@ -259,8 +264,9 @@ export class AgentBridge {
     }
 
     // Determine success based on result structure
+    // Tools return raw values - if there's no explicit error, treat as success
     const success = result.success !== undefined ? result.success :
-                   !result.error && (result.output || result.message);
+                   (result.error === undefined || result.error === null);
 
     return {
       success: Boolean(success),

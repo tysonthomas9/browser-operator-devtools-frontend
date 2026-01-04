@@ -5,7 +5,7 @@
  * based on defined criteria and visual evidence.
  */
 
-import type { TestCase, CriteriaResult } from './types.ts';
+import { getProviderConfig, type TestCase, type CriteriaResult, type LLMProvider } from './types.ts';
 import fs from 'fs';
 import path from 'path';
 
@@ -37,26 +37,10 @@ export class LLMJudge {
    * Initialize the LLM client
    */
   async init(): Promise<void> {
-    let apiKey: string | undefined;
-    let baseURL: string | undefined;
-
-    switch (this.config.provider) {
-      case 'cerebras':
-        apiKey = this.config.apiKey || process.env.CEREBRAS_API_KEY;
-        baseURL = 'https://api.cerebras.ai/v1';
-        break;
-      case 'anthropic':
-        apiKey = this.config.apiKey || process.env.ANTHROPIC_API_KEY;
-        break;
-      case 'litellm':
-        apiKey = this.config.apiKey || process.env.OPENAI_API_KEY;
-        baseURL = process.env.LITELLM_BASE_URL;
-        break;
-      case 'openai':
-      default:
-        apiKey = this.config.apiKey || process.env.OPENAI_API_KEY;
-        break;
-    }
+    const { apiKey, baseURL } = getProviderConfig(
+      this.config.provider as LLMProvider,
+      this.config.apiKey
+    );
 
     if (!apiKey) {
       throw new Error(`No API key for ${this.config.provider}. Set environment variable or use --api-key`);
@@ -140,8 +124,9 @@ ${criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 ## Instructions
 1. Analyze the agent's result and any visual evidence (screenshots if provided)
 2. For each criterion, determine if it was met (true/false) and provide a brief explanation
-3. Calculate an overall score (0-1) based on how many criteria were met
-4. Provide a final determination: PASSED or FAILED
+3. Calculate an overall score (0-1) based on how many criteria were met (passed criteria / total criteria)
+4. IMPORTANT: Set passed=true ONLY if ALL criteria passed. If ANY criterion failed, set passed=false.
+   The score and passed fields must be consistent: score=1.0 means passed=true, score<1.0 means passed=false.
 
 Respond in JSON format:
 {

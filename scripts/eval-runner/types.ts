@@ -18,6 +18,7 @@ export interface CLIOptions {
   // Braintrust
   experiment?: string;
   project?: string;
+  org?: string;
   braintrustApiKey?: string;
 
   // LLM Configuration
@@ -120,16 +121,62 @@ export interface RunSummary {
 
 export interface BraintrustConfig {
   apiKey: string;
+  org: string;
   project: string;
   experiment: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface AgentExecutionContext {
-  page: any; // Puppeteer Page
-  cdp: any;  // CDP Session
-  target: any; // DevTools Target abstraction
-  screenshotDir: string;
-  timeout: number;
-  abortSignal?: AbortSignal;
+/**
+ * Get status icon for test result display
+ */
+export function getStatusIcon(status: TestResult['status']): string {
+  const icons: Record<TestResult['status'], string> = {
+    passed: '✅',
+    failed: '❌',
+    error: '💥',
+    skipped: '⏭️',
+  };
+  return icons[status] ?? '❓';
+}
+
+export type LLMProvider = 'openai' | 'anthropic' | 'litellm' | 'cerebras' | 'groq';
+
+interface ProviderConfig {
+  apiKey: string | undefined;
+  baseURL: string | undefined;
+}
+
+/**
+ * Get API key and base URL for a given LLM provider
+ */
+export function getProviderConfig(provider: LLMProvider, explicitApiKey?: string): ProviderConfig {
+  switch (provider) {
+    case 'cerebras':
+      return {
+        apiKey: explicitApiKey || process.env.CEREBRAS_API_KEY,
+        baseURL: 'https://api.cerebras.ai/v1',
+      };
+    case 'anthropic':
+      return {
+        apiKey: explicitApiKey || process.env.ANTHROPIC_API_KEY,
+        baseURL: undefined,
+      };
+    case 'groq':
+      return {
+        apiKey: explicitApiKey || process.env.GROQ_API_KEY,
+        baseURL: 'https://api.groq.com/openai/v1',
+      };
+    case 'litellm':
+      return {
+        apiKey: explicitApiKey || process.env.OPENAI_API_KEY,
+        baseURL: process.env.LITELLM_BASE_URL,
+      };
+    case 'openai':
+    default:
+      return {
+        apiKey: explicitApiKey || process.env.OPENAI_API_KEY,
+        baseURL: undefined,
+      };
+  }
 }

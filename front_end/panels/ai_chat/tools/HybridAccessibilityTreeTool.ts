@@ -12,27 +12,10 @@
  * for precise cross-frame element targeting.
  */
 
-import {captureHybridSnapshot, type HybridSnapshot} from '../a11y/HybridSnapshot.js';
-import {ensurePiercerInjected} from '../dom/ShadowPiercer.js';
+import {captureHybridSnapshotUniversal, type HybridSnapshot} from '../a11y/HybridSnapshotUniversal.js';
 import type {EncodedId} from '../common/context.js';
 import type {Tool, LLMContext, ErrorResult} from './Tools.js';
-
-// Detect if we're in a Node.js environment (eval runner, tests)
-const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
-
-// Lazy-loaded browser-only SDK dependency
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let sdkLoaded = false;
-
-async function ensureSDK(): Promise<boolean> {
-  if (isNodeEnvironment) return false;
-  if (!sdkLoaded) {
-    sdkLoaded = true;
-    try { SDK = await import('../../../core/sdk/sdk.js'); }
-    catch { return false; }
-  }
-  return SDK !== null;
-}
+import {getAdapter} from '../cdp/getAdapter.js';
 
 /**
  * Arguments for the hybrid accessibility tree tool
@@ -96,27 +79,19 @@ Use this when you need to interact with elements inside shadow DOM or iframes.`;
 
   async execute(
       args: HybridAccessibilityTreeArgs,
-      _ctx?: LLMContext,
+      ctx?: LLMContext,
   ): Promise<HybridAccessibilityTreeResult|ErrorResult> {
     try {
-      // Get the main target
-      if (!(await ensureSDK()) || !SDK) {
-        return {error: 'SDK not available (Node.js environment)'};
-      }
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-      if (!target) {
-        return {error: 'No page target available'};
+      // Get adapter from context (works in both DevTools and eval runner)
+      const adapter = await getAdapter(ctx);
+      if (!adapter) {
+        return {error: 'No browser connection available'};
       }
 
       const pierceShadow = args.pierceShadow ?? true;
 
-      // Ensure shadow piercer is injected for shadow DOM access
-      if (pierceShadow) {
-        await ensurePiercerInjected(target);
-      }
-
-      // Capture the hybrid snapshot
-      const snapshot = await captureHybridSnapshot(target, {
+      // Capture the hybrid snapshot using CDP (pierce:true handles shadow DOM natively)
+      const snapshot = await captureHybridSnapshotUniversal(adapter, {
         focusSelector: args.focusSelector,
         pierceShadow,
       });

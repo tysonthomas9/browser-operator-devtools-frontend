@@ -27,11 +27,11 @@ export {
   accessibilityActionTest,
   errorRecoveryTest,
   datePickerTest,
+  datePickerFillTest,
   dateRangePickerTest,
   timePickerTest,
   fileUploadTest,
   modalDialogTest,
-  contextMenuTest,
   sliderTest,
   multiSelectTest,
   autocompleteTest,
@@ -52,7 +52,7 @@ export {
   shadowClickClosedTest,
   shadowNestedClickTest,
   shadowFormFillTest,
-  githubDropdownShadowTest,
+  githubSearchShadowTest,
   shadowCustomSelectTest,
   shadowToggleTest,
 } from './action-agent-shadow-dom-tests.js';
@@ -114,6 +114,43 @@ export {htmlToMarkdownTests} from './html-to-markdown-tests.js';
 // WebTaskAgent Tests
 export {webTaskAgentTests} from './web-task-agent-tests.js';
 
+// CDP Tool Tests
+export {
+  cdpToolTests,
+  navigateBackToolTests,
+  executeCodeToolTests,
+  hybridA11yToolTests,
+  waitToolTests,
+  nodeIdsToUrlsToolTests,
+  networkAnalysisToolTests,
+  objectiveActionToolTests,
+  // Individual tests
+  navigateBackEcommerceTest,
+  navigateBackNewsMultiStepTest,
+  navigateBackHistoryBoundaryTest,
+  executeCodeProductExtractionTest,
+  executeCodeMetadataTest,
+  executeCodeNavigationLinksTest,
+  executeCodeFormFieldsTest,
+  executeCodeTableDataTest,
+  executeCodeBookCatalogTest,
+  hybridA11yComplexInteractiveTest,
+  hybridA11yShadowDOMTest,
+  hybridA11yMultiFrameTest,
+  hybridA11yFormHeavyTest,
+  hybridA11ySPADynamicTest,
+  waitBasicTest,
+  waitDurationAliasTest,
+  waitBelowMinimumTest,
+  waitAboveMaximumTest,
+  nodeIdsToUrlsValidTest,
+  nodeIdsToUrlsEmptyArrayTest,
+  nodeIdsToUrlsInvalidIdsTest,
+  networkAnalysisBrowserOnlyTest,
+  objectiveActionClickTest,
+  objectiveActionFormFillTest,
+} from './cdp-tool-tests.js';
+
 // ============================================================================
 // Combined Test Collections
 // ============================================================================
@@ -128,6 +165,7 @@ import {researchAgentTests} from './research-agent-tests.js';
 import {schemaExtractorTests} from './schema-extractor-tests.js';
 import {streamlinedSchemaExtractorTests} from './streamlined-schema-extractor-tests.js';
 import {htmlToMarkdownTests} from './html-to-markdown-tests.js';
+import {cdpToolTests} from './cdp-tool-tests.js';
 // testScreenshotVerification is a function, not a TestCase array - not included in allTests
 
 /**
@@ -160,6 +198,7 @@ export const allTests = [
   ...schemaExtractorTests,
   ...streamlinedSchemaExtractorTests,
   ...htmlToMarkdownTests,
+  ...cdpToolTests,
 ];
 
 /**
@@ -206,4 +245,11 @@ export function getEncodedIdTests() {
     ...encodedIdActionTests,
     ...hybridSnapshotTests,
   ];
+}
+
+/**
+ * Get CDP tool tests.
+ */
+export function getCDPToolTests() {
+  return cdpToolTests;
 }

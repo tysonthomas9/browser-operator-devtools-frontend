@@ -18,7 +18,7 @@ import * as SDK from '../../../core/sdk/sdk.js';
 import type * as Protocol from '../../../generated/protocol.js';
 
 import {ensurePiercerInjected, getPiercerStats} from './ShadowPiercer.js';
-import {resolveComposedXPath, resolveComposedCss} from './ComposedTreeResolver.js';
+import {resolveComposedXPath, resolveComposedCss, type ResolvedElement} from './ComposedTreeResolver.js';
 import {parseEncodedId, type EncodedId} from '../common/context.js';
 import {FrameRegistry} from '../a11y/FrameRegistry.js';
 
@@ -41,12 +41,65 @@ export interface EnhancedResolutionResult {
 }
 
 /**
+ * Type for resolver functions
+ */
+type SelectorResolverFunction = (
+  target: SDK.Target.Target,
+  selector: string,
+) => Promise<ResolvedElement | null>;
+
+/**
+ * Common resolution logic with piercer injection and error handling.
+ */
+async function resolveWithPiercerEnhanced(
+  target: SDK.Target.Target,
+  selector: string,
+  resolverFn: SelectorResolverFunction,
+  selectorType: string,
+  options: {ensurePiercer?: boolean} = {},
+): Promise<EnhancedResolutionResult> {
+  const {ensurePiercer = true} = options;
+
+  try {
+    if (ensurePiercer) {
+      await ensurePiercerInjected(target);
+    }
+
+    const stats = await getPiercerStats(target);
+    const usedShadowPiercer = stats?.installed === true;
+
+    const result = await resolverFn(target, selector);
+
+    if (!result) {
+      return {
+        found: false,
+        usedShadowPiercer,
+        error: `Element not found for ${selectorType}: ${selector}`,
+      };
+    }
+
+    return {
+      found: true,
+      objectId: result.objectId,
+      backendNodeId: result.backendNodeId,
+      usedShadowPiercer,
+    };
+  } catch (error) {
+    return {
+      found: false,
+      usedShadowPiercer: false,
+      error: `${selectorType} resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
  * Resolve an element by EncodedId.
  * The EncodedId format is "frameOrdinal-backendNodeId".
  */
 export async function resolveByEncodedId(
-    target: SDK.Target.Target,
-    encodedId: EncodedId | string,
+  target: SDK.Target.Target,
+  encodedId: EncodedId | string,
 ): Promise<EnhancedResolutionResult> {
   const parsed = parseEncodedId(encodedId);
   if (!parsed) {
@@ -108,45 +161,11 @@ export async function resolveByEncodedId(
  * for shadow DOM support.
  */
 export async function resolveByXPathEnhanced(
-    target: SDK.Target.Target,
-    xpath: string,
-    options: {ensurePiercer?: boolean} = {},
+  target: SDK.Target.Target,
+  xpath: string,
+  options: {ensurePiercer?: boolean} = {},
 ): Promise<EnhancedResolutionResult> {
-  const {ensurePiercer = true} = options;
-
-  try {
-    // Ensure shadow piercer is injected
-    if (ensurePiercer) {
-      await ensurePiercerInjected(target);
-    }
-
-    const stats = await getPiercerStats(target);
-    const usedShadowPiercer = stats?.installed === true;
-
-    // Use composed tree resolver
-    const result = await resolveComposedXPath(target, xpath);
-
-    if (!result) {
-      return {
-        found: false,
-        usedShadowPiercer,
-        error: `Element not found for XPath: ${xpath}`,
-      };
-    }
-
-    return {
-      found: true,
-      objectId: result.objectId,
-      backendNodeId: result.backendNodeId,
-      usedShadowPiercer,
-    };
-  } catch (error) {
-    return {
-      found: false,
-      usedShadowPiercer: false,
-      error: `XPath resolution failed: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
+  return resolveWithPiercerEnhanced(target, xpath, resolveComposedXPath, 'XPath', options);
 }
 
 /**
@@ -154,45 +173,11 @@ export async function resolveByXPathEnhanced(
  * for shadow DOM support.
  */
 export async function resolveByCssSelectorEnhanced(
-    target: SDK.Target.Target,
-    selector: string,
-    options: {ensurePiercer?: boolean} = {},
+  target: SDK.Target.Target,
+  selector: string,
+  options: {ensurePiercer?: boolean} = {},
 ): Promise<EnhancedResolutionResult> {
-  const {ensurePiercer = true} = options;
-
-  try {
-    // Ensure shadow piercer is injected
-    if (ensurePiercer) {
-      await ensurePiercerInjected(target);
-    }
-
-    const stats = await getPiercerStats(target);
-    const usedShadowPiercer = stats?.installed === true;
-
-    // Use composed tree resolver
-    const result = await resolveComposedCss(target, selector);
-
-    if (!result) {
-      return {
-        found: false,
-        usedShadowPiercer,
-        error: `Element not found for selector: ${selector}`,
-      };
-    }
-
-    return {
-      found: true,
-      objectId: result.objectId,
-      backendNodeId: result.backendNodeId,
-      usedShadowPiercer,
-    };
-  } catch (error) {
-    return {
-      found: false,
-      usedShadowPiercer: false,
-      error: `CSS resolution failed: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
+  return resolveWithPiercerEnhanced(target, selector, resolveComposedCss, 'selector', options);
 }
 
 /**
@@ -200,9 +185,9 @@ export async function resolveByCssSelectorEnhanced(
  * injection for subsequent operations.
  */
 export async function resolveByBackendNodeId(
-    target: SDK.Target.Target,
-    backendNodeId: number,
-    options: {ensurePiercer?: boolean} = {},
+  target: SDK.Target.Target,
+  backendNodeId: number,
+  options: {ensurePiercer?: boolean} = {},
 ): Promise<EnhancedResolutionResult> {
   const {ensurePiercer = true} = options;
 
@@ -245,9 +230,9 @@ export async function resolveByBackendNodeId(
  * resolution method.
  */
 export async function resolveElementSmart(
-    target: SDK.Target.Target,
-    selector: string,
-    options: {ensurePiercer?: boolean} = {},
+  target: SDK.Target.Target,
+  selector: string,
+  options: {ensurePiercer?: boolean} = {},
 ): Promise<EnhancedResolutionResult> {
   const trimmed = selector.trim();
 

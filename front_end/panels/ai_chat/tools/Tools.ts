@@ -1973,17 +1973,10 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
       xpath = match[2];  // elementNodeId within iframe
       logger.info(`Iframe action detected - iframeNodeId: ${iframeNodeId}, elementNodeId: ${xpath}`);
     } else {
-      // Fallback for numeric backendNodeIds - DEPRECATED: Use EncodedId format (e.g., "0-123") instead
-      logger.warn(`[PerformActionTool] Using fallback path for numeric nodeId ${nodeId}. ` +
-                  `This path may fail for iframe elements. Use EncodedId format (e.g., "0-123") instead.`);
-      const treeResult = await UtilsUniversal.getAccessibilityTree(adapter);
-      xpath = treeResult.xpathMap?.[nodeId as number] ||
-              await UtilsUniversal.getXPathByBackendNodeId(adapter, nodeId as number);
-      if (!xpath) {
-        return { error: `Could not determine XPath for NodeID: ${nodeId}. ` +
-                        `Hint: For iframe elements, use EncodedId format (e.g., "1-456").` };
-      }
-      logger.info(`Found XPath for nodeId ${nodeId}: ${xpath}`);
+      // Numeric nodeIds are no longer supported - require EncodedId format
+      return {
+        error: `Invalid nodeId format: "${nodeId}". Use EncodedId format (e.g., "0-123" for main frame, "1-456" for iframe) from the accessibility tree. Numeric nodeIds are no longer supported.`
+      };
     }
 
     try {
@@ -2015,11 +2008,8 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
         enum: ['click', 'rightClick', 'hover', 'fill', 'type', 'press', 'scrollIntoView', 'selectOption', 'check', 'uncheck', 'setChecked', 'drag']
       },
       nodeId: {
-        oneOf: [
-          { type: 'number' },
-          { type: 'string' }
-        ],
-        description: 'NodeID of the element to perform the action on (number for main document, string with iframe_ prefix for iframe elements)'
+        type: 'string',
+        description: 'EncodedId of the element from the accessibility tree (format: "frameOrdinal-backendNodeId", e.g., "0-123" for main frame, "1-456" for iframe). Always use the exact EncodedId shown in square brackets in the accessibility tree output.'
       },
       args: {
         oneOf: [
@@ -2673,13 +2663,13 @@ Important guidelines:
 /**
  * Tool for getting URLs from a list of NodeIDs
  */
-export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToURLsResult | ErrorResult> {
+export class NodeIDsToURLsTool implements Tool<{ nodeIds: (string | number)[] }, NodeIDsToURLsResult | ErrorResult> {
   name = 'node_ids_to_urls';
-  description = 'Gets URLs associated with DOM elements identified by NodeIDs from accessibility tree.';
+  description = 'Gets URLs associated with DOM elements identified by EncodedIds from accessibility tree.';
 
-  async execute(args: { nodeIds: number[] }, ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
+  async execute(args: { nodeIds: (string | number)[] }, ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
     if (!Array.isArray(args.nodeIds)) {
-      return { error: 'nodeIds must be an array of numbers' };
+      return { error: 'nodeIds must be an array of EncodedId strings (e.g., ["0-123", "0-456"])' };
     }
 
     if (args.nodeIds.length === 0) {
@@ -2692,14 +2682,33 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToU
       return { error: 'No browser connection available' };
     }
 
-    const results: Array<{ nodeId: number, url?: string }> = [];
+    const results: Array<{ nodeId: string | number, url?: string }> = [];
     const runtimeAgent = adapter.runtimeAgent();
 
     // Process each nodeId separately
     for (const nodeId of args.nodeIds) {
       try {
+        let backendNodeId: number;
+
+        // Handle EncodedId format (e.g., "0-123")
+        if (typeof nodeId === 'string' && isEncodedId(nodeId)) {
+          const parsed = parseEncodedId(nodeId);
+          if (!parsed) {
+            results.push({ nodeId });
+            continue;
+          }
+          backendNodeId = parsed.backendNodeId;
+        } else if (typeof nodeId === 'number') {
+          // Legacy support for numeric nodeIds (deprecated)
+          logger.warn(`[NodeIDsToURLsTool] Numeric nodeId ${nodeId} is deprecated. Use EncodedId format (e.g., "0-${nodeId}").`);
+          backendNodeId = nodeId;
+        } else {
+          results.push({ nodeId });
+          continue;
+        }
+
         // First, get the xpath for the node using universal utils
-        const xpath = await UtilsUniversal.getXPathByBackendNodeId(adapter, nodeId);
+        const xpath = await UtilsUniversal.getXPathByBackendNodeId(adapter, backendNodeId);
         if (!xpath) {
           results.push({ nodeId });
           continue;
@@ -2763,9 +2772,9 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToU
     properties: {
       nodeIds: {
         type: 'array',
-        description: 'Array of node IDs to get URLs for',
+        description: 'Array of EncodedIds from the accessibility tree to get URLs for (e.g., ["0-123", "0-456"])',
         items: {
-          type: 'number'
+          type: 'string'
         }
       }
     },

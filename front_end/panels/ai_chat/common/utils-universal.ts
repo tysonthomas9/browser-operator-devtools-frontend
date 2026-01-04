@@ -21,15 +21,9 @@ import {
   dispatchMouseMove,
   dispatchDrag,
 } from './mouse-helpers.js';
+import {createLogger} from '../core/Logger.js';
 
-/**
- * Simple logger that works in both browser and Node.js
- */
-const logger = {
-  info: (...args: unknown[]) => console.log('[utils-universal]', ...args),
-  warn: (...args: unknown[]) => console.warn('[utils-universal]', ...args),
-  error: (...args: unknown[]) => console.error('[utils-universal]', ...args),
-};
+const logger = createLogger('utils-universal');
 
 // ============================================================================
 // Constants
@@ -680,10 +674,11 @@ async function getFrameExecutionContextId(
     frameId: string,
 ): Promise<number | undefined> {
   try {
-    const runtimeAgent = adapter.runtimeAgent();
+    const pageAgent = adapter.pageAgent();
 
     // Create an isolated world in the frame to get its execution context
-    const response = await runtimeAgent.invoke<{executionContextId: number}>('createIsolatedWorld', {
+    // Note: createIsolatedWorld is a Page domain method, not Runtime
+    const response = await pageAgent.invoke<{executionContextId: number}>('createIsolatedWorld', {
       frameId,
       worldName: 'frame-context-resolver',
     });
@@ -720,6 +715,7 @@ export async function performActionByBackendNodeId(
 
   // Resolve backendNodeId to objectId for methods that need JavaScript execution
   let objectId: string | undefined;
+  let executionContextId: number | undefined;
 
   // For click, hover, scrollIntoView, and press, we can use Input events directly
   // For other methods, we need to resolve to objectId first
@@ -732,7 +728,7 @@ export async function performActionByBackendNodeId(
 
       if (frameInfo) {
         logger.info(`[performActionByBackendNodeId] Resolving in iframe: frameId=${frameInfo.frameId}`);
-        const executionContextId = await getFrameExecutionContextId(adapter, frameInfo.frameId);
+        executionContextId = await getFrameExecutionContextId(adapter, frameInfo.frameId);
 
         if (executionContextId) {
           const resolveResponse = await domAgent.invoke<{object?: {objectId?: string}}>('resolveNode', {
@@ -774,13 +770,13 @@ export async function performActionByBackendNodeId(
   } else if (method === 'scrollIntoView') {
     await scrollIntoViewByBackendNodeId(domAgent, backendNodeId);
   } else if ((method === 'fill' || method === 'type') && objectId) {
-    await fillElement(runtimeAgent, inputAgent, objectId, args);
+    await fillElement(runtimeAgent, inputAgent, objectId, args, executionContextId);
   } else if (method === 'press') {
     await pressKey(inputAgent, args);
   } else if (method === 'selectOption' && objectId) {
-    await selectOption(runtimeAgent, objectId, args);
+    await selectOption(runtimeAgent, objectId, args, executionContextId);
   } else if ((method === 'check' || method === 'uncheck' || method === 'setChecked') && objectId) {
-    await setCheckedState(runtimeAgent, objectId, args);
+    await setCheckedState(runtimeAgent, objectId, args, executionContextId);
   } else if (method === 'drag') {
     await dragByBackendNodeId(domAgent, inputAgent, backendNodeId, args);
   } else {
@@ -926,6 +922,7 @@ async function fillElement(
     inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
     objectId: string,
     args: unknown[],
+    executionContextId?: number,
 ): Promise<void> {
   const text = String(args[0] || '');
 
@@ -1010,6 +1007,7 @@ async function selectOption(
     runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
     objectId: string,
     args: unknown[],
+    executionContextId?: number,
 ): Promise<void> {
   const optionValue = String(args[0] || '');
 
@@ -1058,6 +1056,7 @@ async function selectOption(
 async function checkElement(
     runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
     objectId: string,
+    executionContextId?: number,
 ): Promise<void> {
   await runtimeAgent.invoke('callFunctionOn', {
     objectId,
@@ -1081,6 +1080,7 @@ async function checkElement(
 async function uncheckElement(
     runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
     objectId: string,
+    executionContextId?: number,
 ): Promise<void> {
   await runtimeAgent.invoke('callFunctionOn', {
     objectId,
@@ -1105,6 +1105,7 @@ async function setCheckedState(
     runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
     objectId: string,
     args: unknown[],
+    executionContextId?: number,
 ): Promise<void> {
   const shouldCheck = Boolean(args[0]);
 

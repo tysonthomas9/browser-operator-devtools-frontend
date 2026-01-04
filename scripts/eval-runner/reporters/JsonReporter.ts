@@ -12,7 +12,7 @@ export class JsonReporter {
     this.outputPath = outputPath;
   }
 
-  async generate(summary: RunSummary): Promise<void> {
+  generate(summary: RunSummary): void {
     const output = {
       experiment: summary.experiment,
       timestamp: summary.startTime.toISOString(),
@@ -27,17 +27,8 @@ export class JsonReporter {
         averageScore: summary.averageScore,
         averageDuration: summary.averageDuration,
       },
-      results: summary.results.map(r => ({
-        testId: r.testId,
-        testName: r.testName,
-        status: r.status,
-        score: r.score,
-        duration: r.duration,
-        error: r.error,
-        validation: r.validation,
-        screenshots: r.screenshots,
-        metadata: r.metadata,
-      })),
+      // Exclude 'output' field from results (can be large/verbose)
+      results: summary.results.map(({ output: _, ...rest }) => rest),
     };
 
     const jsonString = JSON.stringify(output, null, 2);
