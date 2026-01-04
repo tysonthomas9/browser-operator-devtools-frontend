@@ -6,7 +6,7 @@
  */
 
 import * as SDK from '../../../core/sdk/sdk.js';
-import type {CDPSessionAdapter, CDPAgent} from './CDPSessionAdapter.js';
+import type {CDPSessionAdapter, CDPAgent, CDPDomain} from './CDPSessionAdapter.js';
 
 /**
  * Creates a CDPAgent wrapper for an SDK domain agent
@@ -34,53 +34,66 @@ function wrapSDKAgent(agent: unknown): CDPAgent {
 }
 
 /**
+ * Map of domain names to SDK target agent getter methods
+ */
+const DOMAIN_TO_SDK_METHOD: Record<CDPDomain, keyof SDK.Target.Target> = {
+  DOM: 'domAgent',
+  Runtime: 'runtimeAgent',
+  Page: 'pageAgent',
+  Accessibility: 'accessibilityAgent',
+  Input: 'inputAgent',
+};
+
+/**
  * SDKTargetAdapter implements CDPSessionAdapter for DevTools context
  */
 export class SDKTargetAdapter implements CDPSessionAdapter {
   private readonly target: SDK.Target.Target;
+  private readonly agentCache = new Map<CDPDomain, CDPAgent>();
 
   constructor(target: SDK.Target.Target) {
     this.target = target;
   }
 
-  domAgent(): CDPAgent {
-    const agent = this.target.domAgent();
-    if (!agent) {
-      throw new Error('DOM agent not available');
+  getAgent(domain: CDPDomain): CDPAgent {
+    // Return cached agent if available
+    const cached = this.agentCache.get(domain);
+    if (cached) {
+      return cached;
     }
-    return wrapSDKAgent(agent);
+
+    // Get the SDK agent using the mapped method
+    const methodName = DOMAIN_TO_SDK_METHOD[domain];
+    const agent = (this.target as unknown as Record<string, () => unknown>)[methodName]?.();
+    if (!agent) {
+      throw new Error(`${domain} agent not available`);
+    }
+
+    // Wrap and cache
+    const wrapped = wrapSDKAgent(agent);
+    this.agentCache.set(domain, wrapped);
+    return wrapped;
+  }
+
+  // Convenience methods delegate to getAgent
+  domAgent(): CDPAgent {
+    return this.getAgent('DOM');
   }
 
   runtimeAgent(): CDPAgent {
-    const agent = this.target.runtimeAgent();
-    if (!agent) {
-      throw new Error('Runtime agent not available');
-    }
-    return wrapSDKAgent(agent);
+    return this.getAgent('Runtime');
   }
 
   pageAgent(): CDPAgent {
-    const agent = this.target.pageAgent();
-    if (!agent) {
-      throw new Error('Page agent not available');
-    }
-    return wrapSDKAgent(agent);
+    return this.getAgent('Page');
   }
 
   accessibilityAgent(): CDPAgent {
-    const agent = this.target.accessibilityAgent();
-    if (!agent) {
-      throw new Error('Accessibility agent not available');
-    }
-    return wrapSDKAgent(agent);
+    return this.getAgent('Accessibility');
   }
 
   inputAgent(): CDPAgent {
-    const agent = this.target.inputAgent();
-    if (!agent) {
-      throw new Error('Input agent not available');
-    }
-    return wrapSDKAgent(agent);
+    return this.getAgent('Input');
   }
 
   inspectedURL(): string|undefined {
@@ -88,19 +101,6 @@ export class SDKTargetAdapter implements CDPSessionAdapter {
   }
 
   async send<T>(domain: string, method: string, params?: Record<string, unknown>): Promise<T> {
-    // Get the agent for the domain
-    const agentMethod = `${domain.toLowerCase()}Agent` as keyof SDK.Target.Target;
-    const agent = (this.target as unknown as Record<string, () => unknown>)[agentMethod]?.();
-    if (!agent) {
-      throw new Error(`Agent for domain ${domain} not available`);
-    }
-    return wrapSDKAgent(agent).invoke<T>(method, params);
-  }
-
-  /**
-   * Get the underlying SDK.Target for cases where direct access is needed
-   */
-  getTarget(): SDK.Target.Target {
-    return this.target;
+    return this.getAgent(domain as CDPDomain).invoke<T>(method, params);
   }
 }

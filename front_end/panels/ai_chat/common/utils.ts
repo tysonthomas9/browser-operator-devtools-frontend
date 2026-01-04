@@ -14,6 +14,7 @@ import { createLogger } from '../core/Logger.js';
 const logger = createLogger('utils');
 
 import type { AccessibilityNode, IFrameAccessibilityNode, TreeResult, BackendIdMaps } from './context.js';
+import { XPATH_BUILDER_FUNCTION_STRING } from './xpath-builder.js';
 
 // Parser function for str output
 export function formatSimplifiedTree(
@@ -632,58 +633,6 @@ export async function getAccessibilityTree(
   }
 }
 
-// This function is wrapped into a string and sent as a CDP command
-// It is not meant to be actually executed here
-const functionString = `
-function getNodePath(el) {
-  if (!el || (el.nodeType !== Node.ELEMENT_NODE && el.nodeType !== Node.TEXT_NODE)) {
-    logger.info("el is not a valid node type");
-    return "";
-  }
-
-  const parts = [];
-  let current = el;
-
-  while (current && (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE)) {
-    let index = 0;
-    let hasSameTypeSiblings = false;
-    const siblings = current.parentElement
-      ? Array.from(current.parentElement.childNodes)
-      : [];
-
-    for (let i = 0; i < siblings.length; i++) {
-      const sibling = siblings[i];
-      if (
-        sibling.nodeType === current.nodeType &&
-        sibling.nodeName === current.nodeName
-      ) {
-        index = index + 1;
-        hasSameTypeSiblings = true;
-        if (sibling.isSameNode(current)) {
-          break;
-        }
-      }
-    }
-
-    if (!current || !current.parentNode) break;
-    if (current.nodeName.toLowerCase() === "html"){
-      parts.unshift("html");
-      break;
-    }
-
-    // text nodes are handled differently in XPath
-    if (current.nodeName !== "#text") {
-      const tagName = current.nodeName.toLowerCase();
-      const pathIndex = hasSameTypeSiblings ? \`[\${index}]\` : "";
-      parts.unshift(\`\${tagName}\${pathIndex}\`);
-    }
-
-    current = current.parentElement;
-  }
-
-  return parts.length ? \`/\${parts.join("/")}\` : "";
-}`;
-
 export async function getXPathByResolvedObjectId(
   target: SDK.Target.Target,
   resolvedObjectId: string,
@@ -692,7 +641,7 @@ export async function getXPathByResolvedObjectId(
   const response = await runtimeAgent.invoke_callFunctionOn({
     objectId: resolvedObjectId as Protocol.Runtime.RemoteObjectId,
     functionDeclaration: `function() {
-      ${functionString}
+      ${XPATH_BUILDER_FUNCTION_STRING}
       return getNodePath(this);
     }`,
     returnByValue: true,

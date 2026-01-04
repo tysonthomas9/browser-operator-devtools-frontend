@@ -9,7 +9,7 @@
  * This allows shared tool implementations to work outside of DevTools.
  */
 
-import type {CDPSessionAdapter, CDPAgent} from './CDPSessionAdapter.js';
+import type {CDPSessionAdapter, CDPAgent, CDPDomain} from './CDPSessionAdapter.js';
 
 /**
  * Interface for any CDP client that can send commands
@@ -22,9 +22,16 @@ export interface CDPClient {
 }
 
 /**
+ * Normalizes an error to a consistent message format
+ */
+function normalizeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * Creates a CDPAgent for a specific domain using a CDP client
  */
-function createDomainAgent(client: CDPClient, domain: string): CDPAgent {
+function createDomainAgent(client: CDPClient, domain: CDPDomain): CDPAgent {
   return {
     async invoke<T>(method: string, params?: Record<string, unknown>): Promise<T> {
       const fullMethod = `${domain}.${method}`;
@@ -32,9 +39,7 @@ function createDomainAgent(client: CDPClient, domain: string): CDPAgent {
         const result = await client.send(fullMethod, params || {});
         return result as T;
       } catch (error) {
-        // Normalize error messages across different CDP clients
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`CDP ${fullMethod} failed: ${message}`);
+        throw new Error(`CDP ${fullMethod} failed: ${normalizeError(error)}`);
       }
     },
   };
@@ -58,59 +63,60 @@ function createDomainAgent(client: CDPClient, domain: string): CDPAgent {
  */
 export class DirectCDPAdapter implements CDPSessionAdapter {
   private readonly client: CDPClient;
-  private readonly url: string|undefined;
+  private url: string|undefined;
+  private readonly agentCache = new Map<CDPDomain, CDPAgent>();
 
   constructor(client: CDPClient, url?: string) {
     this.client = client;
     this.url = url;
   }
 
+  getAgent(domain: CDPDomain): CDPAgent {
+    // Return cached agent if available
+    const cached = this.agentCache.get(domain);
+    if (cached) {
+      return cached;
+    }
+
+    // Create and cache
+    const agent = createDomainAgent(this.client, domain);
+    this.agentCache.set(domain, agent);
+    return agent;
+  }
+
+  // Convenience methods delegate to getAgent
   domAgent(): CDPAgent {
-    return createDomainAgent(this.client, 'DOM');
+    return this.getAgent('DOM');
   }
 
   runtimeAgent(): CDPAgent {
-    return createDomainAgent(this.client, 'Runtime');
+    return this.getAgent('Runtime');
   }
 
   pageAgent(): CDPAgent {
-    return createDomainAgent(this.client, 'Page');
+    return this.getAgent('Page');
   }
 
   accessibilityAgent(): CDPAgent {
-    return createDomainAgent(this.client, 'Accessibility');
+    return this.getAgent('Accessibility');
   }
 
   inputAgent(): CDPAgent {
-    return createDomainAgent(this.client, 'Input');
+    return this.getAgent('Input');
   }
 
   inspectedURL(): string|undefined {
     return this.url;
   }
 
-  async send<T>(domain: string, method: string, params?: Record<string, unknown>): Promise<T> {
-    const fullMethod = `${domain}.${method}`;
-    try {
-      const result = await this.client.send(fullMethod, params || {});
-      return result as T;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`CDP ${fullMethod} failed: ${message}`);
-    }
-  }
-
-  /**
-   * Get the underlying CDP client for cases where direct access is needed
-   */
-  getClient(): CDPClient {
-    return this.client;
-  }
-
   /**
    * Update the URL (useful after navigation)
    */
-  setURL(url: string): DirectCDPAdapter {
-    return new DirectCDPAdapter(this.client, url);
+  updateURL(url: string): void {
+    this.url = url;
+  }
+
+  async send<T>(domain: string, method: string, params?: Record<string, unknown>): Promise<T> {
+    return this.getAgent(domain as CDPDomain).invoke<T>(method, params);
   }
 }

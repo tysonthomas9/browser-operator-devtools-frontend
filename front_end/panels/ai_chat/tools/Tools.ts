@@ -4,7 +4,8 @@
 
 import type * as Protocol from '../../../generated/protocol.js';
 import { createLogger } from '../core/Logger.js';
-import { getAdapter, ensureBrowserDeps, type AdapterContext } from '../cdp/getAdapter.js';
+import { getAdapter, preloadBrowserDeps, type AdapterContext } from '../cdp/getAdapter.js';
+import type { CDPSessionAdapter } from '../cdp/CDPSessionAdapter.js';
 import { isEncodedId, parseEncodedId, type EncodedId } from '../common/context.js';
 import { ResolveEncodedIdTool } from './HybridAccessibilityTreeTool.js';
 import { captureHybridSnapshotUniversal, type HybridSnapshot } from '../a11y/HybridSnapshotUniversal.js';
@@ -34,7 +35,7 @@ async function ensureToolsBrowserDeps(): Promise<boolean> {
     browserDepsLoaded = true;
     try {
       // Also ensure the CDP adapter deps are loaded
-      await ensureBrowserDeps();
+      await preloadBrowserDeps();
       const [sdkModule, commonModule, logsModule, utilsModule, agentServiceModule] = await Promise.all([
         import('../../../core/sdk/sdk.js'),
         import('../../../core/common/common.js'),
@@ -457,9 +458,15 @@ export class NetworkAnalysisTool implements Tool<{ url?: string, limit?: number 
   name = 'analyze_network';
   description = 'Analyzes network requests, optionally filtered by URL pattern';
 
-  async execute(args: { url?: string, limit?: number }, _ctx?: LLMContext): Promise<NetworkAnalysisResult | ErrorResult> {
+  async execute(args: { url?: string, limit?: number }, ctx?: LLMContext): Promise<NetworkAnalysisResult | ErrorResult> {
     const url = args.url;
     const limit = args.limit || 10;
+
+    // NetworkAnalysisTool depends on DevTools NetworkLog which tracks requests over time
+    // This is only available in DevTools browser context, not in eval runner / Node.js
+    if (isNodeEnvironment) {
+      return { error: 'Network analysis requires DevTools NetworkLog and is only available in browser context' };
+    }
 
     // Ensure browser dependencies are loaded
     await ensureToolsBrowserDeps();
@@ -723,47 +730,41 @@ export class NavigateURLTool implements Tool<{ url: string, reasoning: string },
       return { error: 'URL must be a string' };
     }
 
-    // Ensure browser dependencies are loaded
-    await ensureToolsBrowserDeps();
-    if (!SDK) {
-      return { error: 'Navigation is only available in browser context' };
-    }
-
-    // Get the main target
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-    if (!target) {
-      return { error: 'No page target available' };
+    // Use getAdapter pattern - works in both DevTools and eval runner contexts
+    const adapter = await getAdapter(ctx);
+    if (!adapter) {
+      return { error: 'No browser connection available' };
     }
 
     try {
-      // Use the page agent to navigate to the URL
-      const pageAgent = target.pageAgent();
-      if (!pageAgent) {
-        return { error: 'Page agent not available' };
-      }
+      logger.info(`Initiating navigation to: ${url}`);
 
-      logger.info('Initiating navigation to: ${url}');
-      // Perform the navigation
-      const result = await pageAgent.invoke_navigate({ url });
+      // Perform the navigation using CDP Page.navigate
+      const result = await adapter.pageAgent().invoke<{ frameId: string; loaderId?: string; errorText?: string }>(
+        'navigate',
+        { url }
+      );
 
-      if (result.getError()) {
-        logger.error(`Navigation invocation failed: ${result.getError()}`);
-        return { error: `Navigation invocation failed: ${result.getError()}` };
+      if (result.errorText) {
+        logger.error(`Navigation invocation failed: ${result.errorText}`);
+        return { error: `Navigation invocation failed: ${result.errorText}` };
       }
       logger.info('Navigation initiated successfully.');
 
-      // *** Add wait for page load ***
+      // Wait for page load by polling document.readyState
       try {
-        await waitForPageLoad(target, LOAD_TIMEOUT_MS);
+        await this.waitForPageLoadViaAdapter(adapter, LOAD_TIMEOUT_MS);
         logger.info('Page load confirmed or timeout reached.');
       } catch (loadError: any) {
         logger.error(`Error waiting for page load: ${loadError.message}`);
       }
-      // *****************************
 
       // Fetch page metadata AFTER waiting
       logger.info('Fetching page metadata...');
-      const metadataEval = await target.runtimeAgent().invoke_evaluate({
+      const metadataEval = await adapter.runtimeAgent().invoke<{
+        result: { value: { url: string; title: string } };
+        exceptionDetails?: { text: string };
+      }>('evaluate', {
         expression: '({ url: window.location.href, title: document.title })',
         returnByValue: true,
       });
@@ -771,11 +772,9 @@ export class NavigateURLTool implements Tool<{ url: string, reasoning: string },
       // Handle potential errors during metadata evaluation
       if (metadataEval.exceptionDetails) {
         logger.error(`Error fetching metadata: ${metadataEval.exceptionDetails.text}`);
-        // Proceed but without metadata, perhaps? Or return error?
-        // Let's return success but indicate metadata failure.
         return {
-          url: target.inspectedURL() || url, // Use inspectedURL as fallback
-          message: `Successfully navigated to ${target.inspectedURL() || url}, but failed to fetch metadata: ${metadataEval.exceptionDetails.text}`,
+          url: adapter.inspectedURL() || url,
+          message: `Successfully navigated to ${adapter.inspectedURL() || url}, but failed to fetch metadata: ${metadataEval.exceptionDetails.text}`,
           metadata: undefined,
         };
       }
@@ -783,8 +782,13 @@ export class NavigateURLTool implements Tool<{ url: string, reasoning: string },
       const metadata = metadataEval.result.value as { url: string, title: string };
       logger.info('Metadata fetched:', metadata);
 
+      // Update adapter URL after navigation
+      if ('updateURL' in adapter && typeof adapter.updateURL === 'function') {
+        adapter.updateURL(metadata.url);
+      }
+
       // *** Add 404 detection heuristic ***
-      const is404Result = await this.check404Status(target, metadata, ctx);
+      const is404Result = await this.check404Status(adapter, metadata, ctx);
       if (is404Result.is404) {
         return {
           error: `Page not found (404): ${is404Result.reason}`,
@@ -847,11 +851,44 @@ export class NavigateURLTool implements Tool<{ url: string, reasoning: string },
     }
   }
 
-  private async check404Status(target: any, metadata: { url: string, title: string }, ctx?: LLMContext): Promise<{ is404: boolean, reason?: string }> {
+  /**
+   * Wait for page load by polling document.readyState via the adapter.
+   * This works in both DevTools and eval runner contexts.
+   */
+  private async waitForPageLoadViaAdapter(adapter: CDPSessionAdapter, timeoutMs: number): Promise<void> {
+    const startTime = Date.now();
+    const pollInterval = 100; // Poll every 100ms
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const result = await adapter.runtimeAgent().invoke<{
+          result: { value: string };
+          exceptionDetails?: { text: string };
+        }>('evaluate', {
+          expression: 'document.readyState',
+          returnByValue: true,
+        });
+
+        if (result.result?.value === 'complete') {
+          logger.info('Page load complete (document.readyState = complete)');
+          return;
+        }
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      } catch (error) {
+        // If evaluation fails, the page might be navigating - wait and retry
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+
+    logger.warn('Page load timeout reached');
+  }
+
+  private async check404Status(adapter: CDPSessionAdapter, metadata: { url: string, title: string }, ctx?: LLMContext): Promise<{ is404: boolean, reason?: string }> {
     try {
       // Basic heuristic checks first
       const title = metadata.title.toLowerCase();
-      const url = metadata.url.toLowerCase();
 
       // Common 404 indicators in title
       const titleIndicators = [
@@ -862,21 +899,13 @@ export class NavigateURLTool implements Tool<{ url: string, reasoning: string },
 
       const hasTitle404 = titleIndicators.some(indicator => title.includes(indicator));
 
-      // If obvious 404 indicators, get page content for LLM confirmation
-      if (hasTitle404 && Utils) {
-        logger.info('Potential 404 detected in title, getting page content for LLM confirmation');
-
-        // Get accessibility tree for better semantic analysis
-        const treeResult = await Utils.getAccessibilityTree(target);
-        const pageContent = treeResult.simplified;
-        const is404Confirmed = await this.confirmWith404LLM(metadata.url, metadata.title, pageContent, ctx);
-
-        if (is404Confirmed) {
-          return {
-            is404: true,
-            reason: 'Page content indicates this is a 404 error page'
-          };
-        }
+      // If obvious 404 indicators, return true (skip LLM confirmation for adapter context)
+      if (hasTitle404) {
+        logger.info('404 detected based on page title');
+        return {
+          is404: true,
+          reason: 'Page title indicates this is a 404 error page'
+        };
       }
 
       return { is404: false };
@@ -979,33 +1008,24 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
   };
 
   async execute(args: { steps: number, reasoning: string }, ctx?: LLMContext): Promise<NavigateBackResult | ErrorResult> {
-    logger.error('navigate_back', args);
+    logger.info('navigate_back', args);
     const steps = args.steps;
     if (typeof steps !== 'number' || steps <= 0) {
       return { error: 'Steps must be a positive number' };
     }
 
-    // Ensure browser dependencies are loaded
-    await ensureToolsBrowserDeps();
-    if (!SDK) {
-      return { error: 'Navigation is only available in browser context' };
-    }
-
-    // Get the main target
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-    if (!target) {
-      return { error: 'No page target available' };
+    // Use getAdapter pattern - works in both DevTools and eval runner contexts
+    const adapter = await getAdapter(ctx);
+    if (!adapter) {
+      return { error: 'No browser connection available' };
     }
 
     try {
-      // Use JavaScript to navigate back in history
-      const runtimeAgent = target.runtimeAgent();
-      if (!runtimeAgent) {
-        return { error: 'Runtime agent not available' };
-      }
-
       // First, check if we can go back that many steps
-      const historyLengthResult = await runtimeAgent.invoke_evaluate({
+      const historyLengthResult = await adapter.runtimeAgent().invoke<{
+        result: { value: number };
+        exceptionDetails?: { text: string };
+      }>('evaluate', {
         expression: 'window.history.length',
         returnByValue: true,
       });
@@ -1014,13 +1034,15 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
         return { error: `Failed to check history length: ${historyLengthResult.exceptionDetails.text}` };
       }
 
-      const historyLength = historyLengthResult.result.value as number;
+      const historyLength = historyLengthResult.result.value;
       if (historyLength <= steps) {
         return { error: `Cannot go back ${steps} pages. History only contains ${historyLength} entries.` };
       }
 
       // Execute history.go(-steps) to go back
-      const result = await runtimeAgent.invoke_evaluate({
+      const result = await adapter.runtimeAgent().invoke<{
+        exceptionDetails?: { text: string };
+      }>('evaluate', {
         expression: `window.history.go(-${steps})`,
         returnByValue: true,
       });
@@ -1045,7 +1067,10 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
 
         // Check if navigation is complete by testing document readyState
         try {
-          const readyStateResult = await runtimeAgent.invoke_evaluate({
+          const readyStateResult = await adapter.runtimeAgent().invoke<{
+            result: { value: string };
+            exceptionDetails?: { text: string };
+          }>('evaluate', {
             expression: 'document.readyState',
             returnByValue: true,
           });
@@ -1053,25 +1078,26 @@ export class NavigateBackTool implements Tool<{ steps: number, reasoning: string
           if (readyStateResult && !readyStateResult.exceptionDetails &&
             readyStateResult.result.value === 'complete') {
             isNavigationComplete = true;
-            // Only use supported console methods
-            logger.error('Navigation completed, document ready state is complete');
+            logger.info('Navigation completed, document ready state is complete');
           }
         } catch {
           // If we can't evaluate yet, navigation is still in progress
-          logger.error('Still waiting for navigation to complete...');
+          logger.info('Still waiting for navigation to complete...');
         }
       }
 
       if (!isNavigationComplete) {
-        logger.error('Navigation timed out after waiting for document ready state');
+        logger.warn('Navigation timed out after waiting for document ready state');
       }
 
       // Fetch page metadata
-      const metadataEval = await runtimeAgent.invoke_evaluate({
+      const metadataEval = await adapter.runtimeAgent().invoke<{
+        result: { value: { url: string; title: string } };
+      }>('evaluate', {
         expression: '({ url: window.location.href, title: document.title })',
         returnByValue: true,
       });
-      const metadata = metadataEval.result.value as { url: string, title: string };
+      const metadata = metadataEval.result.value;
 
       return {
         success: true,
@@ -1092,22 +1118,19 @@ export class GetPageHTMLTool implements Tool<Record<string, unknown>, PageHTMLRe
   name = 'get_page_html';
   description = 'Gets the HTML contents and structure of the current page for analysis and summarization with CSS, JavaScript, and other non-essential content removed';
 
-  async execute(_args: Record<string, unknown>, _ctx?: LLMContext): Promise<PageHTMLResult | ErrorResult> {
-    // Ensure browser dependencies are loaded
-    await ensureToolsBrowserDeps();
-    if (!SDK) {
-      return { error: 'GetPageHTML is only available in browser context' };
-    }
-
-    // Get the main target
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-    if (!target) {
-      return { error: 'No page target available' };
+  async execute(_args: Record<string, unknown>, ctx?: LLMContext): Promise<PageHTMLResult | ErrorResult> {
+    // Use getAdapter pattern - works in both DevTools and eval runner contexts
+    const adapter = await getAdapter(ctx);
+    if (!adapter) {
+      return { error: 'No browser connection available' };
     }
 
     try {
       // Use the runtime agent to get the page HTML and additional information
-      const result = await target.runtimeAgent().invoke_evaluate({
+      const result = await adapter.runtimeAgent().invoke<{
+        result: { value: PageHTMLResult };
+        exceptionDetails?: { text?: string };
+      }>('evaluate', {
         expression: `(() => {
           // Function to get simplified text content from HTML
           function getSimplifiedHTML() {
@@ -1191,7 +1214,7 @@ export class GetPageHTMLTool implements Tool<Record<string, unknown>, PageHTMLRe
         return { error: `Failed to get page HTML: ${result.exceptionDetails.text || JSON.stringify(result.exceptionDetails)}` };
       }
 
-      return result.result.value as PageHTMLResult;
+      return result.result.value;
     } catch (error) {
       return { error: `Failed to get page HTML, error: ${error}` };
     }
@@ -1602,12 +1625,11 @@ export class WaitTool implements Tool<{ seconds?: number, duration?: number, rea
     // Get viewport summary after waiting
     let viewportSummary: string | undefined;
     try {
-      // Load browser deps for viewport summary (optional - tool still works without it)
-      await ensureToolsBrowserDeps();
-      const target = SDK?.TargetManager.TargetManager.instance().primaryPageTarget();
-      if (target && Utils) {
-        // Get visible accessibility tree
-        const treeResult = await Utils.getVisibleAccessibilityTree(target);
+      // Get adapter from context (works in both DevTools and eval runner)
+      const adapter = await getAdapter(ctx);
+      if (adapter) {
+        // Get visible accessibility tree using universal utils
+        const treeResult = await UtilsUniversal.getAccessibilityTree(adapter);
         
         // Generate summary using LLM if ctx is available
         if (ctx?.provider && ctx.nanoModel) {
@@ -1923,6 +1945,7 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
             method,
             actionArgsArray,
             parsed.backendNodeId,
+            parsed.frameOrdinal,
         );
 
         return {
@@ -1950,12 +1973,15 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
       xpath = match[2];  // elementNodeId within iframe
       logger.info(`Iframe action detected - iframeNodeId: ${iframeNodeId}, elementNodeId: ${xpath}`);
     } else {
-      // Fallback for numeric backendNodeIds
+      // Fallback for numeric backendNodeIds - DEPRECATED: Use EncodedId format (e.g., "0-123") instead
+      logger.warn(`[PerformActionTool] Using fallback path for numeric nodeId ${nodeId}. ` +
+                  `This path may fail for iframe elements. Use EncodedId format (e.g., "0-123") instead.`);
       const treeResult = await UtilsUniversal.getAccessibilityTree(adapter);
       xpath = treeResult.xpathMap?.[nodeId as number] ||
               await UtilsUniversal.getXPathByBackendNodeId(adapter, nodeId as number);
       if (!xpath) {
-        return { error: `Could not determine XPath for NodeID: ${nodeId}` };
+        return { error: `Could not determine XPath for NodeID: ${nodeId}. ` +
+                        `Hint: For iframe elements, use EncodedId format (e.g., "1-456").` };
       }
       logger.info(`Found XPath for nodeId ${nodeId}: ${xpath}`);
     }
@@ -1985,8 +2011,8 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
     properties: {
       method: {
         type: 'string',
-        description: 'Action to perform (click, hover, fill, type, press, scrollIntoView, selectOption, check, uncheck, setChecked, drag)',
-        enum: ['click', 'hover', 'fill', 'type', 'press', 'scrollIntoView', 'selectOption', 'check', 'uncheck', 'setChecked', 'drag']
+        description: 'Action to perform (click, rightClick, hover, fill, type, press, scrollIntoView, selectOption, check, uncheck, setChecked, drag)',
+        enum: ['click', 'rightClick', 'hover', 'fill', 'type', 'press', 'scrollIntoView', 'selectOption', 'check', 'uncheck', 'setChecked', 'drag']
       },
       nodeId: {
         oneOf: [
@@ -2514,15 +2540,14 @@ Important guidelines:
         logger.info(`ObjectiveDrivenActionTool: Performing action '${actionMethod}' on potentially incorrect NodeID ${actionNodeId}...`);
 
         // --- Capture tree state before action ---
-        await ensureToolsBrowserDeps();
-        const target = SDK?.TargetManager.TargetManager.instance().primaryPageTarget();
+        const adapter = await getAdapter(ctx);
         let treeBeforeAction = '';
         let treeAfterAction = '';
         let treeDiff: TreeDiffResult | null = null;
 
         try {
-          if (target && Utils) {
-            const beforeTreeResult = await Utils.getAccessibilityTree(target);
+          if (adapter) {
+            const beforeTreeResult = await UtilsUniversal.getAccessibilityTree(adapter);
             treeBeforeAction = beforeTreeResult.simplified;
             logger.debug('Captured accessibility tree before action');
           }
@@ -2543,13 +2568,13 @@ Important guidelines:
 
         // --- Capture tree state after action and generate diff ---
         try {
-          if (target && treeBeforeAction && Utils) {
-            const afterTreeResult = await Utils.getAccessibilityTree(target);
+          if (adapter && treeBeforeAction) {
+            const afterTreeResult = await UtilsUniversal.getAccessibilityTree(adapter);
             treeAfterAction = afterTreeResult.simplified;
-            
+
             // Generate tree diff
             treeDiff = this.getTreeDiff(treeBeforeAction, treeAfterAction);
-            
+
             logger.info(`Tree diff after ${actionMethod}:`, treeDiff.summary);
             if (treeDiff.hasChanges) {
               logger.debug('Tree changes:', {
@@ -2569,13 +2594,13 @@ Important guidelines:
 
         // Fetch page metadata
         let metadata: { url: string, title: string } | undefined;
-        const pageTarget = SDK?.TargetManager.TargetManager.instance().primaryPageTarget();
-        if (pageTarget) {
-          const metadataEval = await pageTarget.runtimeAgent().invoke_evaluate({
+        if (adapter) {
+          const runtimeAgent = adapter.runtimeAgent();
+          const metadataEval = await runtimeAgent.invoke<{result?: {value?: {url: string, title: string}}}>('evaluate', {
             expression: '({ url: window.location.href, title: document.title })',
             returnByValue: true,
           });
-          metadata = metadataEval.result.value as { url: string, title: string };
+          metadata = metadataEval.result?.value as { url: string, title: string };
         }
 
         return {
@@ -2652,7 +2677,7 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToU
   name = 'node_ids_to_urls';
   description = 'Gets URLs associated with DOM elements identified by NodeIDs from accessibility tree.';
 
-  async execute(args: { nodeIds: number[] }, _ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
+  async execute(args: { nodeIds: number[] }, ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
     if (!Array.isArray(args.nodeIds)) {
       return { error: 'nodeIds must be an array of numbers' };
     }
@@ -2661,49 +2686,43 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: number[] }, NodeIDsToU
       return { error: 'nodeIds array must not be empty' };
     }
 
-    // Ensure browser dependencies are loaded
-    await ensureToolsBrowserDeps();
-    if (!SDK || !Utils) {
-      return { error: 'NodeIDsToURLs is only available in browser context' };
-    }
-
-    // Get the main target
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-    if (!target) {
-      return { error: 'No page target available' };
+    // Get adapter from context (works in both DevTools and eval runner)
+    const adapter = await getAdapter(ctx);
+    if (!adapter) {
+      return { error: 'No browser connection available' };
     }
 
     const results: Array<{ nodeId: number, url?: string }> = [];
+    const runtimeAgent = adapter.runtimeAgent();
 
     // Process each nodeId separately
     for (const nodeId of args.nodeIds) {
       try {
-        // First, get the xpath for the node
-        const xpath = await Utils.getXPathByBackendNodeId(target, nodeId as Protocol.DOM.BackendNodeId);
+        // First, get the xpath for the node using universal utils
+        const xpath = await UtilsUniversal.getXPathByBackendNodeId(adapter, nodeId);
         if (!xpath) {
           results.push({ nodeId });
           continue;
         }
 
         // Execute JavaScript to get the URL from the element
-        const runtimeAgent = target.runtimeAgent();
-        const evaluateResult = await runtimeAgent.invoke_evaluate({
+        const evaluateResult = await runtimeAgent.invoke<{result?: {value?: {found: boolean, url?: string}}, exceptionDetails?: unknown}>('evaluate', {
           expression: `
             (function() {
               const element = document.evaluate("${xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
               if (!element) return { found: false };
-              
+
               // Try to get href for anchor tags
               if (element instanceof HTMLAnchorElement && element.href) {
                 return { found: true, url: element.href };
               }
-              
+
               // Try to find closest anchor parent
               let closestAnchor = element.closest('a[href]');
               if (closestAnchor && closestAnchor.href) {
                 return { found: true, url: closestAnchor.href };
               }
-              
+
               return { found: false };
             })()
           `,

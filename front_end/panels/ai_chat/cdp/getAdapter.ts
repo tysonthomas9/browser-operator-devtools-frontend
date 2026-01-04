@@ -14,33 +14,45 @@ import type { CDPSessionAdapter } from './CDPSessionAdapter.js';
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
 
-// Lazy-loaded browser-only dependencies
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let SDKTargetAdapter: typeof import('./SDKTargetAdapter.js').SDKTargetAdapter | null = null;
-let browserDepsInitialized = false;
+/**
+ * Browser dependencies loaded via lazy promise
+ */
+interface BrowserDeps {
+  SDK: typeof import('../../../core/sdk/sdk.js');
+  SDKTargetAdapter: typeof import('./SDKTargetAdapter.js').SDKTargetAdapter;
+}
+
+// Single lazy promise for browser dependencies - initialized once on first access
+let browserDepsPromise: Promise<BrowserDeps | null> | null = null;
+let browserDepsResult: BrowserDeps | null = null;
 
 /**
- * Ensures browser dependencies (SDK, SDKTargetAdapter) are loaded.
- * Returns false in Node.js environment or if loading fails.
+ * Lazily load browser dependencies.
+ * Returns cached result after first successful load.
  */
-async function ensureBrowserDeps(): Promise<boolean> {
+function loadBrowserDeps(): Promise<BrowserDeps | null> {
   if (isNodeEnvironment) {
-    return false;
+    return Promise.resolve(null);
   }
-  if (!browserDepsInitialized) {
-    browserDepsInitialized = true;
-    try {
-      const [sdkModule, adapterModule] = await Promise.all([
-        import('../../../core/sdk/sdk.js'),
-        import('./SDKTargetAdapter.js'),
-      ]);
-      SDK = sdkModule;
-      SDKTargetAdapter = adapterModule.SDKTargetAdapter;
-    } catch {
-      return false;
-    }
+
+  if (!browserDepsPromise) {
+    browserDepsPromise = Promise.all([
+      import('../../../core/sdk/sdk.js'),
+      import('./SDKTargetAdapter.js'),
+    ]).then(([sdkModule, adapterModule]) => {
+      browserDepsResult = {
+        SDK: sdkModule,
+        SDKTargetAdapter: adapterModule.SDKTargetAdapter,
+      };
+      return browserDepsResult;
+    }).catch(() => {
+      // Reset promise so we can retry on failure
+      browserDepsPromise = null;
+      return null;
+    });
   }
-  return SDK !== null && SDKTargetAdapter !== null;
+
+  return browserDepsPromise;
 }
 
 /**
@@ -75,72 +87,57 @@ export async function getAdapter(ctx?: AdapterContext): Promise<CDPSessionAdapte
     return ctx.cdpAdapter;
   }
 
-  // In Node environment or if SDK not available, return null
-  const depsLoaded = await ensureBrowserDeps();
-  if (!depsLoaded || !SDK || !SDKTargetAdapter) {
+  // Load browser dependencies
+  const deps = await loadBrowserDeps();
+  if (!deps) {
     return null;
   }
 
   // Fall back to SDK.Target for DevTools context
-  const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+  const target = deps.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
   if (!target) {
     return null;
   }
 
-  return new SDKTargetAdapter(target);
+  return new deps.SDKTargetAdapter(target);
 }
 
 /**
- * Synchronous version of getAdapter for backward compatibility.
- * Only works if browser deps are already loaded (call ensureBrowserDeps first).
- * Returns null in Node.js environment.
+ * Get the CDP adapter synchronously if browser dependencies are already loaded.
+ * Returns null if dependencies haven't been loaded yet or no adapter is available.
+ *
+ * Use this when you need sync access and have already called getAdapter() elsewhere.
+ * Prefer getAdapter() for most use cases.
+ *
+ * @param ctx - Optional context that may contain a cdpAdapter
+ * @returns CDPSessionAdapter or null
  */
-export function getAdapterSync(ctx?: AdapterContext): CDPSessionAdapter | null {
+export function getAdapterIfLoaded(ctx?: AdapterContext): CDPSessionAdapter | null {
   // First try to get adapter from context (for eval runner / external contexts)
   if (ctx?.cdpAdapter) {
     return ctx.cdpAdapter;
   }
 
-  // In Node environment or if SDK not loaded yet, return null
-  if (isNodeEnvironment || !SDK || !SDKTargetAdapter) {
+  // Return null if deps not loaded yet
+  if (!browserDepsResult) {
     return null;
   }
 
   // Fall back to SDK.Target for DevTools context
-  const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+  const target = browserDepsResult.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
   if (!target) {
     return null;
   }
 
-  return new SDKTargetAdapter(target);
+  return new browserDepsResult.SDKTargetAdapter(target);
 }
 
 /**
- * Get the CDP adapter, throwing if not available.
- * Use this when adapter is required for the operation.
+ * Preload browser dependencies.
+ * Call this early to ensure getAdapterIfLoaded() will work.
+ * Returns true if dependencies loaded successfully.
  */
-export async function getAdapterOrThrow(ctx?: AdapterContext): Promise<CDPSessionAdapter> {
-  const adapter = await getAdapter(ctx);
-  if (!adapter) {
-    throw new Error('No CDP adapter available. Ensure a browser target is connected.');
-  }
-  return adapter;
+export async function preloadBrowserDeps(): Promise<boolean> {
+  const deps = await loadBrowserDeps();
+  return deps !== null;
 }
-
-/**
- * Get the SDK target directly (for operations that need SDK-specific features).
- * Prefer using getAdapter() when possible for better portability.
- * Returns null in Node.js environment.
- */
-export async function getSDKTarget(): Promise<any | null> {
-  const depsLoaded = await ensureBrowserDeps();
-  if (!depsLoaded || !SDK) {
-    return null;
-  }
-  return SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-}
-
-/**
- * Export the ensureBrowserDeps function so other modules can preload dependencies
- */
-export { ensureBrowserDeps };

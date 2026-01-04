@@ -36,6 +36,10 @@ export class FrameRegistryUniversal {
   private nextOrdinal = 0;
   private mainFrameId: string | null = null;
 
+  // Secondary indexes for O(1) lookups
+  private ordinalToFrameId = new Map<number, string>();
+  private childrenByParent = new Map<string, string[]>();
+
   constructor(private adapter: CDPSessionAdapter) {}
 
   /**
@@ -44,6 +48,8 @@ export class FrameRegistryUniversal {
    */
   async collectFrames(): Promise<FrameInfo[]> {
     this.frames.clear();
+    this.ordinalToFrameId.clear();
+    this.childrenByParent.clear();
     this.nextOrdinal = 0;
     this.mainFrameId = null;
 
@@ -96,6 +102,14 @@ export class FrameRegistryUniversal {
 
     this.frames.set(node.frame.id, info);
 
+    // Build secondary indexes
+    this.ordinalToFrameId.set(info.ordinal, node.frame.id);
+    if (parentId) {
+      const siblings = this.childrenByParent.get(parentId) || [];
+      siblings.push(node.frame.id);
+      this.childrenByParent.set(parentId, siblings);
+    }
+
     // Process child frames recursively
     if (node.childFrames) {
       for (const child of node.childFrames) {
@@ -119,15 +133,11 @@ export class FrameRegistryUniversal {
   }
 
   /**
-   * Get frame info by ordinal.
+   * Get frame info by ordinal (O(1) indexed lookup).
    */
   getFrameByOrdinal(ordinal: number): FrameInfo | undefined {
-    for (const frame of this.frames.values()) {
-      if (frame.ordinal === ordinal) {
-        return frame;
-      }
-    }
-    return undefined;
+    const frameId = this.ordinalToFrameId.get(ordinal);
+    return frameId ? this.frames.get(frameId) : undefined;
   }
 
   /**
@@ -165,16 +175,10 @@ export class FrameRegistryUniversal {
   }
 
   /**
-   * Get child frame IDs for a given parent frame.
+   * Get child frame IDs for a given parent frame (O(1) indexed lookup).
    */
   getChildFrameIds(parentFrameId: string): string[] {
-    const children: string[] = [];
-    for (const [frameId, info] of this.frames) {
-      if (info.parentFrameId === parentFrameId) {
-        children.push(frameId);
-      }
-    }
-    return children;
+    return this.childrenByParent.get(parentFrameId) || [];
   }
 
   /**

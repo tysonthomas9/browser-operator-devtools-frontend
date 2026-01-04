@@ -20,6 +20,11 @@ export interface CDPAgent {
 }
 
 /**
+ * Supported CDP domain names
+ */
+export type CDPDomain = 'DOM' | 'Runtime' | 'Page' | 'Accessibility' | 'Input';
+
+/**
  * CDP Session Adapter interface - abstracts access to CDP domains
  *
  * Implementations:
@@ -28,33 +33,22 @@ export interface CDPAgent {
  */
 export interface CDPSessionAdapter {
   /**
-   * Get the DOM domain agent
-   * Methods: getDocument, describeNode, getBoxModel, resolveNode, etc.
+   * Get an agent for any CDP domain by name.
+   * Agents are cached - the same instance is returned on subsequent calls.
+   * @param domain - The CDP domain name (e.g., 'DOM', 'Runtime')
    */
+  getAgent(domain: CDPDomain): CDPAgent;
+
+  // Convenience methods for common domains (delegate to getAgent)
+  /** Get the DOM domain agent */
   domAgent(): CDPAgent;
-
-  /**
-   * Get the Runtime domain agent
-   * Methods: evaluate, callFunctionOn, etc.
-   */
+  /** Get the Runtime domain agent */
   runtimeAgent(): CDPAgent;
-
-  /**
-   * Get the Page domain agent
-   * Methods: navigate, captureScreenshot, getFrameTree, etc.
-   */
+  /** Get the Page domain agent */
   pageAgent(): CDPAgent;
-
-  /**
-   * Get the Accessibility domain agent
-   * Methods: getFullAXTree, etc.
-   */
+  /** Get the Accessibility domain agent */
   accessibilityAgent(): CDPAgent;
-
-  /**
-   * Get the Input domain agent
-   * Methods: dispatchMouseEvent, dispatchKeyEvent, etc.
-   */
+  /** Get the Input domain agent */
   inputAgent(): CDPAgent;
 
   /**

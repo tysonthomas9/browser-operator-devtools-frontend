@@ -10,7 +10,17 @@
  */
 
 import type {CDPSessionAdapter} from '../cdp/CDPSessionAdapter.js';
+import {FrameRegistryUniversal} from '../cdp/FrameRegistryUniversal.js';
 import type {AccessibilityNode, TreeResult, BackendIdMaps} from './context.js';
+import {XPATH_BUILDER_FUNCTION_STRING} from './xpath-builder.js';
+import {getQuadCenter} from './geometry-helpers.js';
+import {
+  getElementCenterFromObjectId,
+  getElementCenterFromBackendNodeId,
+  dispatchClick,
+  dispatchMouseMove,
+  dispatchDrag,
+} from './mouse-helpers.js';
 
 /**
  * Simple logger that works in both browser and Node.js
@@ -20,6 +30,16 @@ const logger = {
   warn: (...args: unknown[]) => console.warn('[utils-universal]', ...args),
   error: (...args: unknown[]) => console.error('[utils-universal]', ...args),
 };
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Maximum time to wait for element position to stabilize after scroll */
+const SCROLL_STABILIZATION_TIMEOUT_MS = 1000;
+
+/** Interval for checking if element position has stabilized */
+const POSITION_CHECK_INTERVAL_MS = 50;
 
 // ============================================================================
 // Tree Formatting Functions (pure functions, no CDP needed)
@@ -150,51 +170,6 @@ export async function buildBackendIdMaps(adapter: CDPSessionAdapter): Promise<Ba
 // XPath Resolution
 // ============================================================================
 
-const getNodePathFunctionString = `
-function getNodePath(el) {
-  if (!el || (el.nodeType !== Node.ELEMENT_NODE && el.nodeType !== Node.TEXT_NODE)) {
-    return "";
-  }
-
-  const parts = [];
-  let current = el;
-
-  while (current && (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE)) {
-    let index = 0;
-    let hasSameTypeSiblings = false;
-    const siblings = current.parentElement
-      ? Array.from(current.parentElement.childNodes)
-      : [];
-
-    for (let i = 0; i < siblings.length; i++) {
-      const sibling = siblings[i];
-      if (sibling.nodeType === current.nodeType && sibling.nodeName === current.nodeName) {
-        index = index + 1;
-        hasSameTypeSiblings = true;
-        if (sibling.isSameNode(current)) {
-          break;
-        }
-      }
-    }
-
-    if (!current || !current.parentNode) break;
-    if (current.nodeName.toLowerCase() === "html") {
-      parts.unshift("html");
-      break;
-    }
-
-    if (current.nodeName !== "#text") {
-      const tagName = current.nodeName.toLowerCase();
-      const pathIndex = hasSameTypeSiblings ? \`[\${index}]\` : "";
-      parts.unshift(\`\${tagName}\${pathIndex}\`);
-    }
-
-    current = current.parentElement;
-  }
-
-  return parts.length ? \`/\${parts.join("/")}\` : "";
-}`;
-
 /**
  * Gets XPath by resolved object ID
  */
@@ -206,7 +181,7 @@ export async function getXPathByResolvedObjectId(
   const response = await runtimeAgent.invoke<{result?: {value?: string}}>('callFunctionOn', {
     objectId: resolvedObjectId,
     functionDeclaration: `function() {
-      ${getNodePathFunctionString}
+      ${XPATH_BUILDER_FUNCTION_STRING}
       return getNodePath(this);
     }`,
     returnByValue: true,
@@ -245,7 +220,7 @@ export async function getXPathByBackendNodeId(
 
 const getScrollableElementXpathsFunction = `
 window.getScrollableElementXpaths = function() {
-  ${getNodePathFunctionString}
+  ${XPATH_BUILDER_FUNCTION_STRING}
 
   const allElements = document.querySelectorAll('*');
   const scrollableElements = [];
@@ -664,6 +639,8 @@ export async function performAction(
         logger.warn(`Direct click failed, falling back to mouse events: ${e}`);
         await clickWithMouseEvents(domAgent, inputAgent, objectId);
       }
+    } else if (method === 'rightClick') {
+      await rightClickElement(domAgent, inputAgent, objectId);
     } else if (method === 'hover') {
       await hoverElement(domAgent, inputAgent, objectId);
     } else if (method === 'drag') {
@@ -695,20 +672,51 @@ export async function performAction(
 // ============================================================================
 
 /**
+ * Gets the execution context ID for a specific frame.
+ * This is needed to resolve nodes in iframes via DOM.resolveNode.
+ */
+async function getFrameExecutionContextId(
+    adapter: CDPSessionAdapter,
+    frameId: string,
+): Promise<number | undefined> {
+  try {
+    const runtimeAgent = adapter.runtimeAgent();
+
+    // Create an isolated world in the frame to get its execution context
+    const response = await runtimeAgent.invoke<{executionContextId: number}>('createIsolatedWorld', {
+      frameId,
+      worldName: 'frame-context-resolver',
+    });
+
+    return response.executionContextId;
+  } catch (error) {
+    logger.warn(`Failed to get execution context for frame ${frameId}:`, error);
+    return undefined;
+  }
+}
+
+/**
  * Performs an action on a DOM element identified by backendNodeId.
  * This works across frames since backendNodeIds are unique within a target.
+ *
+ * @param adapter - CDP session adapter
+ * @param method - Action method to perform
+ * @param args - Arguments for the action
+ * @param backendNodeId - Backend node ID of the element
+ * @param frameOrdinal - Optional frame ordinal for cross-frame resolution (0 = main frame)
  */
 export async function performActionByBackendNodeId(
     adapter: CDPSessionAdapter,
     method: string,
     args: unknown[],
     backendNodeId: number,
+    frameOrdinal?: number,
 ): Promise<void> {
   const runtimeAgent = adapter.runtimeAgent();
   const domAgent = adapter.domAgent();
   const inputAgent = adapter.inputAgent();
 
-  logger.info(`[performActionByBackendNodeId] method=${method}, backendNodeId=${backendNodeId}`);
+  logger.info(`[performActionByBackendNodeId] method=${method}, backendNodeId=${backendNodeId}, frameOrdinal=${frameOrdinal}`);
 
   // Resolve backendNodeId to objectId for methods that need JavaScript execution
   let objectId: string | undefined;
@@ -716,20 +724,51 @@ export async function performActionByBackendNodeId(
   // For click, hover, scrollIntoView, and press, we can use Input events directly
   // For other methods, we need to resolve to objectId first
   if (['fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked'].includes(method)) {
-    const resolveResponse = await domAgent.invoke<{object?: {objectId?: string}}>('resolveNode', {
-      backendNodeId,
-    });
+    // For iframe nodes (frameOrdinal > 0), we need to resolve with frame context
+    if (frameOrdinal !== undefined && frameOrdinal > 0) {
+      const frameRegistry = new FrameRegistryUniversal(adapter);
+      await frameRegistry.collectFrames();
+      const frameInfo = frameRegistry.getFrameByOrdinal(frameOrdinal);
 
-    if (!resolveResponse.object?.objectId) {
-      throw new Error(`Could not resolve backendNodeId ${backendNodeId} to objectId`);
+      if (frameInfo) {
+        logger.info(`[performActionByBackendNodeId] Resolving in iframe: frameId=${frameInfo.frameId}`);
+        const executionContextId = await getFrameExecutionContextId(adapter, frameInfo.frameId);
+
+        if (executionContextId) {
+          const resolveResponse = await domAgent.invoke<{object?: {objectId?: string}}>('resolveNode', {
+            backendNodeId,
+            executionContextId,
+          });
+
+          if (resolveResponse.object?.objectId) {
+            objectId = resolveResponse.object.objectId;
+            logger.info(`[performActionByBackendNodeId] Resolved iframe node to objectId=${objectId}`);
+          }
+        }
+      }
+
+      if (!objectId) {
+        throw new Error(`Could not resolve iframe backendNodeId ${backendNodeId} (frame ${frameOrdinal}) to objectId`);
+      }
+    } else {
+      // Main frame resolution (original behavior)
+      const resolveResponse = await domAgent.invoke<{object?: {objectId?: string}}>('resolveNode', {
+        backendNodeId,
+      });
+
+      if (!resolveResponse.object?.objectId) {
+        throw new Error(`Could not resolve backendNodeId ${backendNodeId} to objectId`);
+      }
+      objectId = resolveResponse.object.objectId;
+      logger.info(`[performActionByBackendNodeId] Resolved to objectId=${objectId}`);
     }
-    objectId = resolveResponse.object.objectId;
-    logger.info(`[performActionByBackendNodeId] Resolved to objectId=${objectId}`);
   }
 
   // Perform the action
   if (method === 'click') {
     await clickByBackendNodeId(domAgent, inputAgent, backendNodeId);
+  } else if (method === 'rightClick') {
+    await rightClickByBackendNodeId(domAgent, inputAgent, backendNodeId);
   } else if (method === 'hover') {
     await hoverByBackendNodeId(domAgent, inputAgent, backendNodeId);
   } else if (method === 'scrollIntoView') {
@@ -742,6 +781,8 @@ export async function performActionByBackendNodeId(
     await selectOption(runtimeAgent, objectId, args);
   } else if ((method === 'check' || method === 'uncheck' || method === 'setChecked') && objectId) {
     await setCheckedState(runtimeAgent, objectId, args);
+  } else if (method === 'drag') {
+    await dragByBackendNodeId(domAgent, inputAgent, backendNodeId, args);
   } else {
     throw new Error(`Method ${method} not supported for backendNodeId-based action`);
   }
@@ -755,39 +796,24 @@ async function clickByBackendNodeId(
     inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
     backendNodeId: number,
 ): Promise<void> {
-  // First scroll into view to ensure it's visible
   await scrollIntoViewByBackendNodeId(domAgent, backendNodeId);
-
-  // Get box model for positioning
-  const boxModel = await domAgent.invoke<{model?: {content: number[]}}>('getBoxModel', {
-    backendNodeId,
-  });
-
-  if (!boxModel.model) {
-    throw new Error(`Could not get box model for backendNodeId ${backendNodeId}`);
-  }
-
-  const contentQuad = boxModel.model.content;
-  const x = (contentQuad[0] + contentQuad[2] + contentQuad[4] + contentQuad[6]) / 4;
-  const y = (contentQuad[1] + contentQuad[3] + contentQuad[5] + contentQuad[7]) / 4;
-
+  const {x, y} = await getElementCenterFromBackendNodeId(domAgent, backendNodeId);
   logger.info(`[clickByBackendNodeId] Clicking at (${x}, ${y})`);
+  await dispatchClick(inputAgent, x, y, 'left');
+}
 
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mousePressed',
-    x,
-    y,
-    button: 'left',
-    clickCount: 1,
-  });
-
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x,
-    y,
-    button: 'left',
-    clickCount: 1,
-  });
+/**
+ * Right-click element by backendNodeId using Input events.
+ */
+async function rightClickByBackendNodeId(
+    domAgent: ReturnType<CDPSessionAdapter['domAgent']>,
+    inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
+    backendNodeId: number,
+): Promise<void> {
+  await scrollIntoViewByBackendNodeId(domAgent, backendNodeId);
+  const {x, y} = await getElementCenterFromBackendNodeId(domAgent, backendNodeId);
+  logger.info(`[rightClickByBackendNodeId] Right-clicking at (${x}, ${y})`);
+  await dispatchClick(inputAgent, x, y, 'right');
 }
 
 /**
@@ -798,23 +824,8 @@ async function hoverByBackendNodeId(
     inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
     backendNodeId: number,
 ): Promise<void> {
-  const boxModel = await domAgent.invoke<{model?: {content: number[]}}>('getBoxModel', {
-    backendNodeId,
-  });
-
-  if (!boxModel.model) {
-    throw new Error(`Could not get box model for backendNodeId ${backendNodeId}`);
-  }
-
-  const contentQuad = boxModel.model.content;
-  const x = (contentQuad[0] + contentQuad[2] + contentQuad[4] + contentQuad[6]) / 4;
-  const y = (contentQuad[1] + contentQuad[3] + contentQuad[5] + contentQuad[7]) / 4;
-
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mouseMoved',
-    x,
-    y,
-  });
+  const {x, y} = await getElementCenterFromBackendNodeId(domAgent, backendNodeId);
+  await dispatchMouseMove(inputAgent, x, y);
 }
 
 /**
@@ -829,46 +840,53 @@ async function scrollIntoViewByBackendNodeId(
   });
 }
 
+/**
+ * Drag element by backendNodeId using Input events.
+ * Supports both relative offset (offsetX, offsetY) and absolute position (toX, toY).
+ */
+async function dragByBackendNodeId(
+    domAgent: ReturnType<CDPSessionAdapter['domAgent']>,
+    inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
+    backendNodeId: number,
+    args: unknown[],
+): Promise<void> {
+  await scrollIntoViewByBackendNodeId(domAgent, backendNodeId);
+  const {x: startX, y: startY} = await getElementCenterFromBackendNodeId(domAgent, backendNodeId);
+
+  const dragArgs = args[0] as {offsetX?: number; offsetY?: number; toX?: number; toY?: number} | undefined;
+  let endX: number;
+  let endY: number;
+
+  if (dragArgs?.toX !== undefined && dragArgs?.toY !== undefined) {
+    endX = dragArgs.toX;
+    endY = dragArgs.toY;
+  } else {
+    endX = startX + (dragArgs?.offsetX || 0);
+    endY = startY + (dragArgs?.offsetY || 0);
+  }
+
+  logger.info(`[dragByBackendNodeId] Dragging from (${startX}, ${startY}) to (${endX}, ${endY})`);
+  await dispatchDrag(inputAgent, startX, startY, endX, endY);
+}
+
 // Helper functions for performAction
 async function clickWithMouseEvents(
     domAgent: ReturnType<CDPSessionAdapter['domAgent']>,
     inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
     objectId: string,
 ): Promise<void> {
-  const nodeResponse =
-      await domAgent.invoke<{node?: {backendNodeId?: number}}>('describeNode', {objectId});
-  if (!nodeResponse.node?.backendNodeId) {
-    throw new Error('Could not get backend node ID for element');
-  }
+  const {x, y} = await getElementCenterFromObjectId(domAgent, objectId);
+  await dispatchClick(inputAgent, x, y, 'left');
+}
 
-  const boxModel =
-      await domAgent.invoke<{model?: {content: number[]}}>('getBoxModel', {
-        backendNodeId: nodeResponse.node.backendNodeId,
-      });
-
-  if (!boxModel.model) {
-    throw new Error('Could not get box model for element');
-  }
-
-  const contentQuad = boxModel.model.content;
-  const x = (contentQuad[0] + contentQuad[2] + contentQuad[4] + contentQuad[6]) / 4;
-  const y = (contentQuad[1] + contentQuad[3] + contentQuad[5] + contentQuad[7]) / 4;
-
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mousePressed',
-    x,
-    y,
-    button: 'left',
-    clickCount: 1,
-  });
-
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x,
-    y,
-    button: 'left',
-    clickCount: 1,
-  });
+async function rightClickElement(
+    domAgent: ReturnType<CDPSessionAdapter['domAgent']>,
+    inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
+    objectId: string,
+): Promise<void> {
+  const {x, y} = await getElementCenterFromObjectId(domAgent, objectId);
+  logger.info(`[rightClickElement] Right-clicking at (${x}, ${y})`);
+  await dispatchClick(inputAgent, x, y, 'right');
 }
 
 async function hoverElement(
@@ -876,30 +894,8 @@ async function hoverElement(
     inputAgent: ReturnType<CDPSessionAdapter['inputAgent']>,
     objectId: string,
 ): Promise<void> {
-  const nodeResponse =
-      await domAgent.invoke<{node?: {backendNodeId?: number}}>('describeNode', {objectId});
-  if (!nodeResponse.node?.backendNodeId) {
-    throw new Error('Could not get backend node ID for element');
-  }
-
-  const boxModel =
-      await domAgent.invoke<{model?: {content: number[]}}>('getBoxModel', {
-        backendNodeId: nodeResponse.node.backendNodeId,
-      });
-
-  if (!boxModel.model) {
-    throw new Error('Could not get box model for element');
-  }
-
-  const contentQuad = boxModel.model.content;
-  const x = (contentQuad[0] + contentQuad[2] + contentQuad[4] + contentQuad[6]) / 4;
-  const y = (contentQuad[1] + contentQuad[3] + contentQuad[5] + contentQuad[7]) / 4;
-
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mouseMoved',
-    x,
-    y,
-  });
+  const {x, y} = await getElementCenterFromObjectId(domAgent, objectId);
+  await dispatchMouseMove(inputAgent, x, y);
 }
 
 async function dragElement(
@@ -908,24 +904,7 @@ async function dragElement(
     objectId: string,
     args: unknown[],
 ): Promise<void> {
-  const nodeResponse =
-      await domAgent.invoke<{node?: {backendNodeId?: number}}>('describeNode', {objectId});
-  if (!nodeResponse.node?.backendNodeId) {
-    throw new Error('Could not get backend node ID for element');
-  }
-
-  const boxModel =
-      await domAgent.invoke<{model?: {content: number[]}}>('getBoxModel', {
-        backendNodeId: nodeResponse.node.backendNodeId,
-      });
-
-  if (!boxModel.model) {
-    throw new Error('Could not get box model for element');
-  }
-
-  const contentQuad = boxModel.model.content;
-  const startX = (contentQuad[0] + contentQuad[2] + contentQuad[4] + contentQuad[6]) / 4;
-  const startY = (contentQuad[1] + contentQuad[3] + contentQuad[5] + contentQuad[7]) / 4;
+  const {x: startX, y: startY} = await getElementCenterFromObjectId(domAgent, objectId);
 
   const dragArgs = args[0] as {offsetX?: number; offsetY?: number; toX?: number; toY?: number};
   let endX: number;
@@ -939,37 +918,7 @@ async function dragElement(
     endY = startY + (dragArgs.offsetY || 0);
   }
 
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mousePressed',
-    x: startX,
-    y: startY,
-    button: 'left',
-    clickCount: 1,
-  });
-
-  const steps = 10;
-  for (let i = 1; i <= steps; i++) {
-    const progress = i / steps;
-    const currentX = startX + (endX - startX) * progress;
-    const currentY = startY + (endY - startY) * progress;
-
-    await inputAgent.invoke('dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: currentX,
-      y: currentY,
-      button: 'left',
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-
-  await inputAgent.invoke('dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: endX,
-    y: endY,
-    button: 'left',
-    clickCount: 1,
-  });
+  await dispatchDrag(inputAgent, startX, startY, endX, endY);
 }
 
 async function fillElement(
