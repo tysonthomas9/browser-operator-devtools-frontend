@@ -2,15 +2,37 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as SDK from '../../../core/sdk/sdk.js';
 import * as Protocol from '../../../generated/protocol.js';
 import * as Utils from '../common/utils.js';
-import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { waitForPageLoad, type Tool, type LLMContext } from './Tools.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { ContentChunker } from '../utils/ContentChunker.js';
+
+// Detect if we're in a Node.js environment (eval runner, tests)
+const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
+
+// Lazy-loaded browser-only dependencies
+let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
+let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
+let browserDepsLoaded = false;
+
+async function ensureBrowserDeps(): Promise<boolean> {
+  if (isNodeEnvironment) return false;
+  if (!browserDepsLoaded) {
+    browserDepsLoaded = true;
+    try {
+      const [sdkModule, agentServiceModule] = await Promise.all([
+        import('../../../core/sdk/sdk.js'),
+        import('../core/AgentService.js'),
+      ]);
+      SDK = sdkModule;
+      AgentService = agentServiceModule.AgentService;
+    } catch { return false; }
+  }
+  return SDK !== null;
+}
 
 const logger = createLogger('Tool:HTMLToMarkdown');
 
@@ -68,9 +90,13 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
   async execute(args: HTMLToMarkdownArgs, ctx?: LLMContext): Promise<HTMLToMarkdownResult> {
     logger.info('Executing with args', { args });
     const { instruction } = args;
-    const agentService = AgentService.getInstance();
-    const apiKey = agentService.getApiKey();
     const READINESS_TIMEOUT_MS = 15000; // 15 seconds timeout for page readiness
+
+    // Get API key from context first, fallback to AgentService in browser
+    let apiKey = ctx?.apiKey;
+    if (!apiKey && !isNodeEnvironment && AgentService) {
+      apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+    }
 
     // Get provider from context
     const provider = ctx?.provider;
@@ -88,6 +114,13 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
 
     try {
       // *** Add wait for page load ***
+      if (!(await ensureBrowserDeps()) || !SDK) {
+        return {
+          success: false,
+          markdownContent: null,
+          error: 'SDK not available (Node.js environment)'
+        };
+      }
       const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       if (!target) {
         throw new Error('No page target available');
@@ -174,7 +207,7 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
   /**
    * Get page content from the accessibility tree
    */
-  private async getPageContent(target: SDK.Target.Target): Promise<string> {
+  private async getPageContent(target: any): Promise<string> {
     if (!target) {
       throw new Error('No page target available');
     }

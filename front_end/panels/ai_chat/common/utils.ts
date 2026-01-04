@@ -1115,6 +1115,76 @@ export async function performAction(
         x,
         y
       });
+    } else if (method === 'drag') {
+      // Get element coordinates
+      const nodeResponse = await domAgent.invoke_describeNode({ objectId });
+      if (!nodeResponse.node.backendNodeId) {
+        throw new Error('Could not get backend node ID for element');
+      }
+
+      const boxModel = await domAgent.invoke_getBoxModel({
+        backendNodeId: nodeResponse.node.backendNodeId as Protocol.DOM.BackendNodeId
+      });
+
+      if (!boxModel.model) {
+        throw new Error('Could not get box model for element');
+      }
+
+      // Calculate center point of element (start position)
+      const contentQuad = boxModel.model.content;
+      const startX = (contentQuad[0] + contentQuad[2] + contentQuad[4] + contentQuad[6]) / 4;
+      const startY = (contentQuad[1] + contentQuad[3] + contentQuad[5] + contentQuad[7]) / 4;
+
+      // Get drag offset from args
+      const dragArgs = args[0] as { offsetX?: number; offsetY?: number; toX?: number; toY?: number };
+      let endX: number;
+      let endY: number;
+
+      if (dragArgs.toX !== undefined && dragArgs.toY !== undefined) {
+        // Absolute position
+        endX = dragArgs.toX;
+        endY = dragArgs.toY;
+      } else {
+        // Relative offset (default)
+        endX = startX + (dragArgs.offsetX || 0);
+        endY = startY + (dragArgs.offsetY || 0);
+      }
+
+      // Mouse down at start position
+      await inputAgent.invoke_dispatchMouseEvent({
+        type: Protocol.Input.DispatchMouseEventRequestType.MousePressed,
+        x: startX,
+        y: startY,
+        button: Protocol.Input.MouseButton.Left,
+        clickCount: 1
+      });
+
+      // Move in steps for smoother dragging
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) {
+        const progress = i / steps;
+        const currentX = startX + (endX - startX) * progress;
+        const currentY = startY + (endY - startY) * progress;
+
+        await inputAgent.invoke_dispatchMouseEvent({
+          type: Protocol.Input.DispatchMouseEventRequestType.MouseMoved,
+          x: currentX,
+          y: currentY,
+          button: Protocol.Input.MouseButton.Left
+        });
+
+        // Small delay between moves
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+
+      // Mouse up at end position
+      await inputAgent.invoke_dispatchMouseEvent({
+        type: Protocol.Input.DispatchMouseEventRequestType.MouseReleased,
+        x: endX,
+        y: endY,
+        button: Protocol.Input.MouseButton.Left,
+        clickCount: 1
+      });
     } else if (method === 'fill' || method === 'type') {
       const text = String(args[0] || '');
 

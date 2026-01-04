@@ -59,11 +59,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         assert.strictEqual(receivedEvent.type, 'session_started');
         assert.strictEqual(receivedEvent.sessionId, 'test-session-1');
         assert.strictEqual(receivedEvent.agentName, 'test_agent');
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -85,11 +87,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         const receivedEvent = e.data;
         assert.strictEqual(receivedEvent.type, 'tool_started');
         assert.strictEqual(receivedEvent.data.toolCall.toolName, 'test_tool');
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -111,11 +115,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         const receivedEvent = e.data;
         assert.strictEqual(receivedEvent.type, 'tool_completed');
         assert.isTrue(receivedEvent.data.toolResult.success);
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -137,11 +143,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         const receivedEvent = e.data;
         assert.strictEqual(receivedEvent.type, 'session_completed');
         assert.strictEqual(receivedEvent.data.reason, 'final_answer');
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -166,11 +174,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         assert.strictEqual(receivedEvent.type, 'child_agent_started');
         assert.strictEqual(receivedEvent.data.childAgentName, 'child_agent');
         assert.strictEqual(receivedEvent.data.childSessionId, 'child-session');
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -190,11 +200,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
       const listener = (e: EventTargetEvent<AgentRunnerProgressEvent, EventBusEvents>): void => {
         const receivedEvent = e.data;
         assert.strictEqual(receivedEvent.type, 'session_updated');
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
   });
@@ -229,11 +241,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         // Verify optional fields
         assert.strictEqual(receivedEvent.parentSessionId, 'parent-session-id');
 
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -253,11 +267,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         const receivedEvent = e.data;
         assert.instanceOf(receivedEvent.timestamp, Date);
         assert.strictEqual(receivedEvent.timestamp.toISOString(), timestamp.toISOString());
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
 
@@ -299,11 +315,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         const receivedEvent = e.data;
         assert.deepStrictEqual(receivedEvent.data, complexData);
         assert.strictEqual(receivedEvent.data.toolCall.toolArgs.nested.deeply.value, 42);
-        eventBus.removeEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
         done();
       };
 
-      eventBus.addEventListener('agent-progress', listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
       eventBus.emitProgress(event);
     });
   });
@@ -334,18 +352,22 @@ describe('ai_chat: AgentRunnerEventBus', () => {
 
       const listener1 = (e: EventTargetEvent<AgentRunnerProgressEvent, EventBusEvents>): void => {
         listener1Called = true;
-        eventBus.removeEventListener('agent-progress', listener1);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener1 as any);
         checkComplete();
       };
 
       const listener2 = (e: EventTargetEvent<AgentRunnerProgressEvent, EventBusEvents>): void => {
         listener2Called = true;
-        eventBus.removeEventListener('agent-progress', listener2);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener2 as any);
         checkComplete();
       };
 
-      eventBus.addEventListener('agent-progress', listener1);
-      eventBus.addEventListener('agent-progress', listener2);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener1 as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener2 as any);
       eventBus.emitProgress(event);
     });
 
@@ -368,7 +390,8 @@ describe('ai_chat: AgentRunnerEventBus', () => {
 
       const activeListener = (e: EventTargetEvent<AgentRunnerProgressEvent, EventBusEvents>): void => {
         activeListenerCalled = true;
-        eventBus.removeEventListener('agent-progress', activeListener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', activeListener as any);
 
         // Give some time for removed listener to potentially be called
         setTimeout(() => {
@@ -378,11 +401,14 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         }, 10);
       };
 
-      eventBus.addEventListener('agent-progress', removedListener);
-      eventBus.addEventListener('agent-progress', activeListener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', removedListener as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', activeListener as any);
 
       // Remove the first listener before emitting
-      eventBus.removeEventListener('agent-progress', removedListener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.removeEventListener('agent-progress', removedListener as any);
 
       eventBus.emitProgress(event);
     });
@@ -417,11 +443,13 @@ describe('ai_chat: AgentRunnerEventBus', () => {
         const listener = (e: EventTargetEvent<AgentRunnerProgressEvent, EventBusEvents>): void => {
           const receivedEvent = e.data;
           assert.strictEqual(receivedEvent.type, eventType);
-          eventBus.removeEventListener('agent-progress', listener);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventBus.removeEventListener('agent-progress', listener as any);
           done();
         };
 
-        eventBus.addEventListener('agent-progress', listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventBus.addEventListener('agent-progress', listener as any);
         eventBus.emitProgress(event);
       });
     });

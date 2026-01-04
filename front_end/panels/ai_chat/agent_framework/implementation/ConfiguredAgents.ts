@@ -35,6 +35,7 @@ import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProduct
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
 import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
 import { initializeMiniApps } from '../../mini_apps/MiniAppInitialization.js';
+import { registerDOMTools } from '../../tools/DOMToolsRegistration.js';
 
 /**
  * Initialize all configured agents
@@ -45,6 +46,10 @@ export async function initializeConfiguredAgents(): Promise<void> {
 
   // Initialize mini app system (registers mini apps and mini app tools)
   initializeMiniApps();
+
+  // Register DOM tools (hybrid accessibility tree, EncodedId resolver)
+  registerDOMTools();
+
   // Register core tools
   ToolRegistry.registerToolFactory('navigate_url', () => new NavigateURLTool());
   ToolRegistry.registerToolFactory('navigate_back', () => new NavigateBackTool());

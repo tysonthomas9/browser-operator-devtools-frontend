@@ -2,15 +2,37 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as SDK from '../../../core/sdk/sdk.js';
 import * as Protocol from '../../../generated/protocol.js';
 import * as Utils from '../common/utils.js';
 import type { AccessibilityNode } from '../common/context.js';
-import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import type { Tool, LLMContext } from './Tools.js';
 import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
+
+// Detect if we're in a Node.js environment (eval runner, tests)
+const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
+
+// Lazy-loaded browser-only dependencies
+let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
+let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
+let browserDepsLoaded = false;
+
+async function ensureBrowserDeps(): Promise<boolean> {
+  if (isNodeEnvironment) return false;
+  if (!browserDepsLoaded) {
+    browserDepsLoaded = true;
+    try {
+      const [sdkModule, agentServiceModule] = await Promise.all([
+        import('../../../core/sdk/sdk.js'),
+        import('../core/AgentService.js'),
+      ]);
+      SDK = sdkModule;
+      AgentService = agentServiceModule.AgentService;
+    } catch { return false; }
+  }
+  return SDK !== null;
+}
 
 const logger = createLogger('Tool:StreamlinedSchemaExtractor');
 
@@ -107,8 +129,21 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
 
   private async setupExecution(args: StreamlinedSchemaExtractionArgs, ctx?: LLMContext): Promise<ExecutionContext | StreamlinedExtractionResult> {
     const { schema, instruction } = args;
-    const agentService = AgentService.getInstance();
-    const apiKey = agentService.getApiKey();
+
+    // Ensure browser dependencies are available
+    if (!(await ensureBrowserDeps()) || !SDK) {
+      return {
+        success: false,
+        data: null,
+        error: 'SDK not available (Node.js environment)'
+      };
+    }
+
+    // Get API key from context first, fallback to AgentService in browser
+    let apiKey = ctx?.apiKey;
+    if (!apiKey && AgentService) {
+      apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+    }
 
     // Get provider from context
     const provider = ctx?.provider;
@@ -153,7 +188,7 @@ export class StreamlinedSchemaExtractorTool implements Tool<StreamlinedSchemaExt
     };
   }
 
-  private async getAccessibilityData(target: SDK.Target.Target): Promise<{urlMappings: Record<string, string>, treeText: string}> {
+  private async getAccessibilityData(target: any): Promise<{urlMappings: Record<string, string>, treeText: string}> {
     const processedTreeResult = await Utils.getAccessibilityTree(target);
     return {
       treeText: processedTreeResult.simplified,

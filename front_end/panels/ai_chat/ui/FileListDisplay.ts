@@ -77,10 +77,15 @@ export class FileListDisplay extends HTMLElement {
   disconnectedCallback(): void {
     if (this.#refreshInterval) {
       clearInterval(this.#refreshInterval);
+      this.#refreshInterval = undefined;
     }
   }
 
   async #loadFiles(): Promise<void> {
+    // Don't load files if the element is no longer connected to the DOM
+    if (!this.isConnected) {
+      return;
+    }
     try {
       const manager = FileStorageManager.getInstance();
       const files = await manager.listFiles();

@@ -2,16 +2,38 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as SDK from '../../../core/sdk/sdk.js';
 import * as Protocol from '../../../generated/protocol.js';
 import * as Utils from '../common/utils.js';
-import { AgentService } from '../core/AgentService.js';
 import { createLogger } from '../core/Logger.js';
 import type { LLMContext } from './Tools.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
 
 import { NodeIDsToURLsTool, type Tool } from './Tools.js';
+
+// Detect if we're in a Node.js environment (eval runner, tests)
+const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
+
+// Lazy-loaded browser-only dependencies
+let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
+let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
+let browserDepsLoaded = false;
+
+async function ensureBrowserDeps(): Promise<boolean> {
+  if (isNodeEnvironment) return false;
+  if (!browserDepsLoaded) {
+    browserDepsLoaded = true;
+    try {
+      const [sdkModule, agentServiceModule] = await Promise.all([
+        import('../../../core/sdk/sdk.js'),
+        import('../core/AgentService.js'),
+      ]);
+      SDK = sdkModule;
+      AgentService = agentServiceModule.AgentService;
+    } catch { return false; }
+  }
+  return SDK !== null;
+}
 
 const logger = createLogger('Tool:SchemaBasedExtractor');
 
@@ -102,8 +124,12 @@ Schema Examples:
     logger.debug('Executing with args', args);
 
     const { schema, instruction, reasoning } = args;
-    const agentService = AgentService.getInstance();
-    const apiKey = agentService.getApiKey();
+
+    // Get API key from context first, fallback to AgentService in browser
+    let apiKey = ctx?.apiKey;
+    if (!apiKey && !isNodeEnvironment && AgentService) {
+      apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+    }
 
     // Get provider from context
     const provider = ctx?.provider;
@@ -130,6 +156,13 @@ Schema Examples:
 
     try {
       // 1. Get primary target and wait for page load
+      if (!(await ensureBrowserDeps()) || !SDK) {
+        return {
+          success: false,
+          error: 'SDK not available (Node.js environment)',
+          data: null
+        };
+      }
       const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       if (!target) {
         return {

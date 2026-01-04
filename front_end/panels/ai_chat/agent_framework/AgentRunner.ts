@@ -16,6 +16,7 @@ import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';
 import { callLLMWithTracing } from '../tools/LLMTracingWrapper.js';
 import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
 import { FileStorageManager } from '../tools/FileStorageManager.js';
+import { getRuntime } from './RuntimeContext.js';
 
 const logger = createLogger('AgentRunner');
 
@@ -42,6 +43,10 @@ export interface AgentRunnerConfig {
   nanoModel?: string;
   /** Descriptor describing this agent configuration */
   agentDescriptor?: AgentDescriptor;
+  /** CDP session adapter for browser interactions (enables running outside DevTools) */
+  cdpAdapter?: import('../cdp/CDPSessionAdapter.js').CDPSessionAdapter;
+  /** Called before each tool execution (for logging/debugging) */
+  onBeforeToolExecution?: (toolName: string, toolArgs: unknown) => Promise<void>;
 }
 
 /**
@@ -64,7 +69,13 @@ export interface AgentRunnerHooks {
  */
 export class AgentRunner {
   private static eventBus: AgentRunnerEventBus | null = null;
-  
+
+  /**
+   * Track cleanup operations in progress to prevent race conditions.
+   * Uses a Set to track which cleanup operations are currently running.
+   */
+  private static cleanupInProgress = new Set<string>();
+
   /**
    * Initialize event bus connection
    */
@@ -75,9 +86,13 @@ export class AgentRunner {
   }
 
   /**
-   * Clears the todo list file if it exists and has content
-   * Called when an agent completes or fails to clean up state
-   * Only clears if the agent has access to the update_todo tool
+   * Clears the todo list file if it exists and has content.
+   * Called when an agent completes or fails to clean up state.
+   * Only clears if the agent has access to the update_todo tool.
+   *
+   * This method is idempotent and race-condition safe:
+   * - Uses a lock to prevent concurrent cleanup operations
+   * - Handles "file not found" errors gracefully (another agent may have deleted it)
    */
   private static async clearTodoList(agentName: string, tools: Array<Tool<any, any>>): Promise<void> {
     // Only clear todos if the agent has the update_todo tool
@@ -87,16 +102,42 @@ export class AgentRunner {
       return;
     }
 
+    // Use a unique key for the cleanup lock (todos.md is shared across all agents)
+    const cleanupKey = 'todos.md';
+
+    // Check if cleanup is already in progress - skip if so
+    if (AgentRunner.cleanupInProgress.has(cleanupKey)) {
+      logger.debug(`Cleanup already in progress for ${cleanupKey}, skipping for ${agentName}`);
+      return;
+    }
+
+    // Acquire the cleanup lock
+    AgentRunner.cleanupInProgress.add(cleanupKey);
+
     try {
       const fileManager = FileStorageManager.getInstance();
       const todosFile = await fileManager.readFile('todos.md');
 
       if (todosFile?.content && todosFile.content.trim().length > 0) {
-        await fileManager.deleteFile('todos.md');
-        logger.info(`Cleared non-empty todo list for ${agentName}`);
+        try {
+          await fileManager.deleteFile('todos.md');
+          logger.info(`Cleared non-empty todo list for ${agentName}`);
+        } catch (deleteError) {
+          // Handle race condition: file may have been deleted by another agent
+          const errorMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+          if (errorMessage.includes('was not found')) {
+            logger.debug(`Todo list already deleted by another agent, skipping for ${agentName}`);
+          } else {
+            // Re-throw unexpected errors
+            throw deleteError;
+          }
+        }
       }
     } catch (error) {
       logger.debug(`Failed to clear todo list for ${agentName}:`, error);
+    } finally {
+      // Always release the cleanup lock
+      AgentRunner.cleanupInProgress.delete(cleanupKey);
     }
   }
 
@@ -258,7 +299,8 @@ export class AgentRunner {
     defaultGetVisionCapability?: (modelName: string) => Promise<boolean> | boolean,
     miniModel?: string, // Mini model for smaller/faster operations
     nanoModel?: string, // Nano model for smallest/fastest operations
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string }
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    onBeforeToolExecution?: (toolName: string, toolArgs: unknown) => Promise<void>
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const targetAgentName = handoffConfig.targetAgentName;
     const targetAgentTool = ToolRegistry.getRegisteredTool(targetAgentName);
@@ -269,10 +311,10 @@ export class AgentRunner {
       // Create a minimal session for the error case
       const errorSession: AgentSession = {
         agentName: targetAgentName,
-        sessionId: crypto.randomUUID(),
+        sessionId: getRuntime().generateId(),
         status: 'error',
-        startTime: new Date(),
-        endTime: new Date(),
+        startTime: getRuntime().now(),
+        endTime: getRuntime().now(),
         messages: [],
         nestedSessions: [],
         tools: [],
@@ -358,6 +400,7 @@ export class AgentRunner {
       getVisionCapability: defaultGetVisionCapability,
       miniModel,
       nanoModel,
+      onBeforeToolExecution,
     };
     const targetRunnerHooks: AgentRunnerHooks = {
       prepareInitialMessages: undefined, // History already formed by transform or passthrough
@@ -449,10 +492,10 @@ export class AgentRunner {
       agentReasoning: args.reasoning,
       agentDisplayName: executingAgent?.config?.ui?.displayName || agentName,
       agentDescription: executingAgent?.config?.description,
-      sessionId: overrides?.sessionId || crypto.randomUUID(),
+      sessionId: overrides?.sessionId || getRuntime().generateId(),
       parentSessionId: overrides?.parentSessionId || parentSession?.sessionId,
       status: 'running',
-      startTime: new Date(),
+      startTime: getRuntime().now(),
       messages: [],
       nestedSessions: [], // Child sessions nest here naturally
       tools: config.tools.map(t => t.name),
@@ -472,15 +515,15 @@ export class AgentRunner {
       sessionId: agentSession.sessionId,
       parentSessionId: agentSession.parentSessionId,
       agentName,
-      timestamp: new Date(),
+      timestamp: getRuntime().now(),
       data: { session: agentSession }
     }, isBackground);
     
     // Create local function that captures the correct session
     const addSessionMessage = (message: Partial<AgentMessage>): void => {
       const fullMessage: AgentMessage = {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
+        id: getRuntime().generateId(),
+        timestamp: getRuntime().now(),
         ...message
       } as AgentMessage;
       
@@ -493,7 +536,7 @@ export class AgentRunner {
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName: currentSession.agentName,
-          timestamp: new Date(),
+          timestamp: getRuntime().now(),
           data: {
             session: currentSession,
             toolCall: fullMessage
@@ -505,7 +548,7 @@ export class AgentRunner {
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName: currentSession.agentName,
-          timestamp: new Date(),
+          timestamp: getRuntime().now(),
           data: {
             session: currentSession,
             toolResult: fullMessage
@@ -589,7 +632,7 @@ export class AgentRunner {
 
         // Complete session with abort
         currentSession.status = 'error';
-        currentSession.endTime = new Date();
+        currentSession.endTime = getRuntime().now();
         currentSession.terminationReason = 'error';
 
         // Emit session completed event (skip for background agents)
@@ -598,7 +641,7 @@ export class AgentRunner {
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName,
-          timestamp: new Date(),
+          timestamp: getRuntime().now(),
           data: { session: currentSession, reason: 'aborted' }
         }, isBackground);
 
@@ -666,7 +709,7 @@ export class AgentRunner {
         // Get enhanced tracing context for AgentRunner LLM generation
         const tracingContext = getCurrentTracingContext();
         const tracingProvider = createTracingProvider();
-        const generationStartTime = new Date();
+        const generationStartTime = getRuntime().now();
 
         console.log(`[HIERARCHICAL_TRACING] AgentRunner: Starting LLM generation for ${agentName}:`, {
           hasTracingContext: !!tracingContext,
@@ -762,7 +805,7 @@ export class AgentRunner {
           } : undefined;
 
           await tracingProvider.updateObservation(generationId, {
-            endTime: new Date(),
+            endTime: getRuntime().now(),
             output: {
               type: 'llm_response',
               hasToolCalls: llmResponse.reasoning?.summary ? true : false,
@@ -800,7 +843,7 @@ export class AgentRunner {
         const tracingProvider = createTracingProvider();
         if (generationId && tracingContext?.traceId) {
           await tracingProvider.updateObservation(generationId, {
-            endTime: new Date(),
+            endTime: getRuntime().now(),
             error: error.message || String(error),
             metadata: {
               executionLevel: 'agentrunner',
@@ -832,7 +875,7 @@ export class AgentRunner {
 
         // Complete session with error
         agentSession.status = 'error';
-        agentSession.endTime = new Date();
+        agentSession.endTime = getRuntime().now();
         agentSession.terminationReason = 'error';
 
         // Emit session completed event (skip for background agents)
@@ -841,7 +884,7 @@ export class AgentRunner {
           sessionId: agentSession.sessionId,
           parentSessionId: agentSession.parentSessionId,
           agentName,
-          timestamp: new Date(),
+          timestamp: getRuntime().now(),
           data: { session: agentSession, reason: 'error' }
         }, isBackground);
 
@@ -878,7 +921,7 @@ export class AgentRunner {
 
         if (parsedAction.type === 'tool_call') {
           const { name: toolName, args: toolArgs } = parsedAction;
-          const toolCallId = crypto.randomUUID(); // Generate unique ID for OpenAI format
+          const toolCallId = getRuntime().generateId(); // Generate unique ID for OpenAI format
 
           // Create tool call decision event for AgentRunner
           const tracingContext = getCurrentTracingContext();
@@ -890,7 +933,7 @@ export class AgentRunner {
               id: toolCallObservationId,
               name: `AgentRunner Tool Call Decision: ${toolName}`,
               type: 'event',
-              startTime: new Date(),
+              startTime: getRuntime().now(),
               parentObservationId: generationId || tracingContext.currentAgentSpanId || tracingContext.parentObservationId,
               input: {
                 toolName,
@@ -979,7 +1022,7 @@ export class AgentRunner {
               }
 
               // Add handoff message to current session
-              const nestedSessionId = crypto.randomUUID();
+              const nestedSessionId = getRuntime().generateId();
               addSessionMessage({
                 type: 'handoff',
                 content: {
@@ -990,6 +1033,15 @@ export class AgentRunner {
                   nestedSessionId
                 }
               });
+
+              // Capture screenshot before handoff execution (if callback provided)
+              if (config.onBeforeToolExecution) {
+                try {
+                  await config.onBeforeToolExecution(toolName, toolArgs);
+                } catch (hookError) {
+                  logger.warn(`onBeforeToolExecution hook failed: ${hookError}`);
+                }
+              }
 
               // Use the shared handoff execution logic, passing LLM's toolArgs and current session
               const handoffResult = await AgentRunner.executeHandoff(
@@ -1005,13 +1057,14 @@ export class AgentRunner {
                   config.getVisionCapability,
                   config.miniModel,
                   config.nanoModel,
-                  { sessionId: nestedSessionId, parentSessionId: currentSession.sessionId, traceId: getCurrentTracingContext()?.traceId }
+                  { sessionId: nestedSessionId, parentSessionId: currentSession.sessionId, traceId: getCurrentTracingContext()?.traceId },
+                  config.onBeforeToolExecution
               );
 
               // LLM tool handoff replaces the current agent's execution entirely
               // Complete current session and return result with session
               agentSession.status = 'completed';
-              agentSession.endTime = new Date();
+              agentSession.endTime = getRuntime().now();
               agentSession.terminationReason = 'handed_off';
 
               // Emit session completed event (skip for background agents)
@@ -1020,7 +1073,7 @@ export class AgentRunner {
                 sessionId: agentSession.sessionId,
                 parentSessionId: agentSession.parentSessionId,
                 agentName,
-                timestamp: new Date(),
+                timestamp: getRuntime().now(),
                 data: { session: agentSession, reason: 'handed_off' }
               }, isBackground);
 
@@ -1033,7 +1086,7 @@ export class AgentRunner {
             const tracingContext = getCurrentTracingContext();
             const tracingProvider = createTracingProvider();
             let toolSpanId: string | undefined;
-            const toolStartTime = new Date();
+            const toolStartTime = getRuntime().now();
 
             if (tracingContext?.traceId) {
               toolSpanId = `tool-exec-agentrunner-${toolName}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -1075,13 +1128,13 @@ export class AgentRunner {
                // This is an agent being called as a tool!
                
                // Pre-allocate child session ID and add placeholder for real-time UI
-               preallocatedChildId = crypto.randomUUID();
+               preallocatedChildId = getRuntime().generateId();
                const childPlaceholder: AgentSession = {
                  sessionId: preallocatedChildId,
                  agentName: toolName,
                  parentSessionId: currentSession.sessionId,
                  status: 'running',
-                 startTime: new Date(),
+                 startTime: getRuntime().now(),
                  messages: [],
                  nestedSessions: [],
                  tools: []
@@ -1105,7 +1158,7 @@ export class AgentRunner {
                  sessionId: currentSession.sessionId,
                  parentSessionId: currentSession.parentSessionId,
                  agentName: currentSession.agentName,
-                 timestamp: new Date(),
+                 timestamp: getRuntime().now(),
                  data: {
                    parentSession: currentSession,
                    childAgentName: toolName,
@@ -1115,6 +1168,16 @@ export class AgentRunner {
             }
 
             try {
+              // Call pre-execution hook if provided (for screenshots, logging, etc.)
+              if (config.onBeforeToolExecution) {
+                try {
+                  await config.onBeforeToolExecution(toolToExecute.name, toolArgs);
+                } catch (hookError) {
+                  logger.warn(`onBeforeToolExecution hook failed: ${hookError}`);
+                  // Continue with execution even if hook fails
+                }
+              }
+
               logger.info(`${agentName} Executing tool: ${toolToExecute.name}`);
               const execTracingContext = getCurrentTracingContext();
               toolResultData = await toolToExecute.execute(toolArgs as any, ({
@@ -1128,6 +1191,7 @@ export class AgentRunner {
                 overrideSessionId: preallocatedChildId,
                 overrideParentSessionId: currentSession.sessionId,
                 overrideTraceId: execTracingContext?.traceId,
+                cdpAdapter: config.cdpAdapter,
               } as any));
               
               // If this was an agent tool, replace placeholder with actual session
@@ -1179,7 +1243,7 @@ export class AgentRunner {
               if (toolSpanId && tracingContext?.traceId) {
                 try {
                   await tracingProvider.updateObservation(toolSpanId, {
-                    endTime: new Date(),
+                    endTime: getRuntime().now(),
                     output: toolResultData,
                     metadata: {
                       executionLevel: 'agentrunner',
@@ -1217,7 +1281,7 @@ export class AgentRunner {
               if (toolSpanId && tracingContext?.traceId) {
                 try {
                   await tracingProvider.updateObservation(toolSpanId, {
-                    endTime: new Date(),
+                    endTime: getRuntime().now(),
                     error: err.message || String(err),
                     metadata: {
                       executionLevel: 'agentrunner',
@@ -1316,7 +1380,7 @@ export class AgentRunner {
 
           // Complete session naturally
           agentSession.status = 'completed';
-          agentSession.endTime = new Date();
+          agentSession.endTime = getRuntime().now();
           agentSession.terminationReason = 'final_answer';
 
           // Emit session completed event (skip for background agents)
@@ -1325,7 +1389,7 @@ export class AgentRunner {
             sessionId: agentSession.sessionId,
             parentSessionId: agentSession.parentSessionId,
             agentName,
-            timestamp: new Date(),
+            timestamp: getRuntime().now(),
             data: { session: agentSession, reason: 'final_answer' }
           }, isBackground);
 
@@ -1376,7 +1440,7 @@ export class AgentRunner {
 
         // Complete session with error
         agentSession.status = 'error';
-        agentSession.endTime = new Date();
+        agentSession.endTime = getRuntime().now();
         agentSession.terminationReason = 'error';
 
         // Emit session completed event (skip for background agents)
@@ -1385,7 +1449,7 @@ export class AgentRunner {
           sessionId: agentSession.sessionId,
           parentSessionId: agentSession.parentSessionId,
           agentName,
-          timestamp: new Date(),
+          timestamp: getRuntime().now(),
           data: { session: agentSession, reason: 'error' }
         }, isBackground);
 
@@ -1435,7 +1499,9 @@ export class AgentRunner {
                 config.provider,
                 config.getVisionCapability,
                 config.miniModel,
-                config.nanoModel
+                config.nanoModel,
+                undefined, // No overrides for max iterations handoff
+                config.onBeforeToolExecution
             );
             // Extract the result and session
             const { agentSession: childSession, ...actualResult } = handoffResult;
@@ -1447,7 +1513,7 @@ export class AgentRunner {
 
             // Complete current session and return result with session
             agentSession.status = 'completed';
-            agentSession.endTime = new Date();
+            agentSession.endTime = getRuntime().now();
             agentSession.terminationReason = 'handed_off';
 
             // Emit session completed event (skip for background agents)
@@ -1456,7 +1522,7 @@ export class AgentRunner {
               sessionId: agentSession.sessionId,
               parentSessionId: agentSession.parentSessionId,
               agentName,
-              timestamp: new Date(),
+              timestamp: getRuntime().now(),
               data: { session: agentSession, reason: 'handed_off' }
             }, isBackground);
 
@@ -1469,7 +1535,7 @@ export class AgentRunner {
 
     // Complete session with max iterations error
     agentSession.status = 'error';
-    agentSession.endTime = new Date();
+    agentSession.endTime = getRuntime().now();
     agentSession.terminationReason = 'max_iterations';
 
     // Emit session completed event (skip for background agents)
@@ -1478,7 +1544,7 @@ export class AgentRunner {
       sessionId: agentSession.sessionId,
       parentSessionId: agentSession.parentSessionId,
       agentName,
-      timestamp: new Date(),
+      timestamp: getRuntime().now(),
       data: { session: agentSession, reason: 'max_iterations' }
     }, isBackground);
 

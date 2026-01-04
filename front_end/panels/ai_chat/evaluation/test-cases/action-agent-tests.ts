@@ -647,7 +647,8 @@ export const dateRangePickerTest: TestCase<ActionAgentArgs> = {
     }
   },
   metadata: {
-    tags: ['action', 'daterange', 'date-picker', 'form', 'complex']
+    tags: ['action', 'daterange', 'date-picker', 'form', 'complex'],
+    timeout: 120000,  // 2 minutes for complex date range picker navigation
   }
 };
 

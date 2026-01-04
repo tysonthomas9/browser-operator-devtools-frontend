@@ -5,7 +5,6 @@ import { ChatMessageEntity } from "../../../models/ChatTypes.js";
 import { MODEL_SENTINELS } from "../../../core/Constants.js";
 import { AGENT_VERSION } from "./AgentVersion.js";
 import { createLogger } from "../../../core/Logger.js";
-import * as SDK from '../../../../../core/sdk/sdk.js';
 
 const logger = createLogger('ActionAgent');
 
@@ -88,7 +87,30 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
 ## Method Examples
 - perform_action with method='check' for checkboxes: { "method": "check", "nodeId": 123 }
 - perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": 456, "args": { "text": "United States" } }
-- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": 789, "args": { "checked": true } }`,
+- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": 789, "args": { "checked": true } }
+
+## Date Picker / Calendar Widgets
+When selecting dates from calendar widgets:
+
+**TRY DIRECT INPUT FIRST** (fastest method):
+1. Click the date input field to focus it
+2. Use 'fill' method to type the date directly: { "method": "fill", "nodeId": X, "args": { "text": "03/15/2024" } }
+3. Common date formats: MM/DD/YYYY, YYYY-MM-DD, DD/MM/YYYY
+4. Click elsewhere or press Tab to confirm - the datepicker should accept the typed date
+5. If direct input doesn't work, fall back to calendar navigation below
+
+**CALENDAR NAVIGATION** (when direct input fails):
+1. Click the date input to open the calendar popup
+2. Check the CURRENT displayed month/year vs TARGET date
+3. For dates far from current display:
+   - Look for YEAR navigation: "<<" or ">>" buttons, year dropdown, or clickable year text in header
+   - Click on the month/year header text - many datepickers open a year/month selector
+   - If only month arrows ("<" and ">") exist and target is years away, use direct input instead
+4. Navigate to correct YEAR first, then MONTH
+5. Click the target day number
+6. Verify the date input shows the expected value
+
+IMPORTANT: Direct text input (fill method) is ALWAYS preferred over calendar navigation for dates more than a few months away.`,
     tools: [
       'get_page_content',
       'perform_action',
@@ -142,44 +164,48 @@ ${args.input_data ? `Input Data: ${args.input_data}` : ''}
     ],
     beforeExecute: async (callCtx: CallCtx): Promise<void> => {
       // Auto-navigate away from chrome:// URLs since action agent cannot interact with chrome:// pages
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-      if (target) {
-        try {
-          const urlResult = await target.runtimeAgent().invoke_evaluate({
-            expression: 'window.location.href',
-            returnByValue: true,
-          });
+      const adapter = callCtx.cdpAdapter;
+      if (!adapter) {
+        // Skip in contexts without adapter (e.g., eval runner without browser)
+        return;
+      }
 
-          const currentUrl = urlResult.result?.value as string;
-          if (currentUrl && currentUrl.startsWith('chrome://')) {
-            logger.info(`Action agent invoked on chrome:// URL (${currentUrl}). Auto-navigating to Google...`);
+      try {
+        const urlResult = await adapter.runtimeAgent().invoke<{result?: {value?: string}}>('evaluate', {
+          expression: 'window.location.href',
+          returnByValue: true,
+        });
 
-            // Get navigate_url tool and execute
-            const navigateTool = ToolRegistry.getRegisteredTool('navigate_url');
-            if (navigateTool) {
-              // Create LLMContext from CallCtx for tool execution
-              const llmContext = {
-                apiKey: callCtx.apiKey,
-                provider: callCtx.provider!,
-                model: callCtx.model || callCtx.mainModel || '',
-                getVisionCapability: callCtx.getVisionCapability,
-                miniModel: callCtx.miniModel,
-                nanoModel: callCtx.nanoModel,
-                abortSignal: callCtx.abortSignal
-              };
-              await navigateTool.execute({
-                url: 'https://google.com',
-                reasoning: 'Auto-navigation from chrome:// URL to enable action agent functionality'
-              }, llmContext);
-              logger.info('Auto-navigation to Google completed successfully');
-            } else {
-              logger.warn('navigate_url tool not found, skipping auto-navigation');
-            }
+        const currentUrl = urlResult?.result?.value as string;
+        if (currentUrl && currentUrl.startsWith('chrome://')) {
+          logger.info(`Action agent invoked on chrome:// URL (${currentUrl}). Auto-navigating to Google...`);
+
+          // Get navigate_url tool and execute
+          const navigateTool = ToolRegistry.getRegisteredTool('navigate_url');
+          if (navigateTool) {
+            // Create LLMContext from CallCtx for tool execution
+            const llmContext = {
+              apiKey: callCtx.apiKey,
+              provider: callCtx.provider!,
+              model: callCtx.model || callCtx.mainModel || '',
+              getVisionCapability: callCtx.getVisionCapability,
+              miniModel: callCtx.miniModel,
+              nanoModel: callCtx.nanoModel,
+              abortSignal: callCtx.abortSignal,
+              cdpAdapter: callCtx.cdpAdapter
+            };
+            await navigateTool.execute({
+              url: 'https://google.com',
+              reasoning: 'Auto-navigation from chrome:// URL to enable action agent functionality'
+            }, llmContext);
+            logger.info('Auto-navigation to Google completed successfully');
+          } else {
+            logger.warn('navigate_url tool not found, skipping auto-navigation');
           }
-        } catch (error) {
-          logger.warn('Failed to check/navigate away from chrome:// URL:', error);
-          // Continue with agent execution even if auto-navigation fails
         }
+      } catch (error) {
+        logger.warn('Failed to check/navigate away from chrome:// URL:', error);
+        // Continue with agent execution even if auto-navigation fails
       }
     },
     includeSummaryInAnswer: true,  // Enable summary for action execution to provide insights
