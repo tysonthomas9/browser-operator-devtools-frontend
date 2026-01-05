@@ -350,7 +350,10 @@ async function buildA11yOutline(
 
     const prefix = '  '.repeat(indent);
     const nameStr = name ? `: ${cleanText(name)}` : '';
-    const label = `[${labelId || node.nodeId}] ${displayRole}${nameStr}`;
+    // Check if this node has focus
+    const isFocused = node.properties?.some(p => p.name === 'focused' && p.value?.value === true);
+    const focusMarker = isFocused ? ' [focused]' : '';
+    const label = `[${labelId || node.nodeId}] ${displayRole}${nameStr}${focusMarker}`;
     lines.push(`${prefix}${label}`);
   };
 

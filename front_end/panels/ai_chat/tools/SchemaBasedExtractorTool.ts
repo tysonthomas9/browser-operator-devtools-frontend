@@ -10,6 +10,7 @@ import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
 
 import { NodeIDsToURLsTool, type Tool } from './Tools.js';
+import { isEncodedId } from '../common/context.js';
 
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
@@ -910,23 +911,15 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
   /**
    * Recursively find and replace node IDs with URLs in a data structure
    */
-  private findAndReplaceNodeIds(data: any, nodeIdToUrlMap: Record<number, string>): any {
+  private findAndReplaceNodeIds(data: any, nodeIdToUrlMap: Record<string, string>): any {
     // Handle null/undefined
     if (data === null || data === undefined) {
       return data;
     }
 
-    // Check if it's a numeric value that matches a node ID
-    if (typeof data === 'number' && nodeIdToUrlMap[data]) {
+    // Check if it's an EncodedId string that matches a node ID
+    if (typeof data === 'string' && isEncodedId(data) && nodeIdToUrlMap[data]) {
       return nodeIdToUrlMap[data];
-    }
-
-    // Check if it's a string that represents a numeric node ID
-    if (typeof data === 'string') {
-      const numValue = parseInt(data, 10);
-      if (!isNaN(numValue) && nodeIdToUrlMap[numValue]) {
-        return nodeIdToUrlMap[numValue];
-      }
     }
 
     // Recursively process arrays
@@ -948,24 +941,16 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
   }
 
   /**
-   * Collect all numeric values from a data structure that could be node IDs
+   * Collect all EncodedId strings from a data structure that could be node IDs
    */
-  private collectPotentialNodeIds(data: any, nodeIds: Set<number>): void {
+  private collectPotentialNodeIds(data: any, nodeIds: Set<string>): void {
     if (data === null || data === undefined) {
       return;
     }
 
-    // Check if it's a numeric value
-    if (typeof data === 'number' && data > 0 && Number.isInteger(data)) {
+    // Check if it's an EncodedId string (format: "0-123")
+    if (typeof data === 'string' && isEncodedId(data)) {
       nodeIds.add(data);
-    }
-
-    // Check if it's a string that represents a number
-    if (typeof data === 'string') {
-      const numValue = parseInt(data, 10);
-      if (!isNaN(numValue) && numValue > 0 && Number.isInteger(numValue)) {
-        nodeIds.add(numValue);
-      }
     }
 
     // Recursively process arrays
@@ -992,7 +977,7 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
 
     try {
       // 1. Collect all potential node IDs from the data
-      const nodeIds = new Set<number>();
+      const nodeIds = new Set<string>();
       this.collectPotentialNodeIds(data, nodeIds);
 
       if (nodeIds.size === 0) {
@@ -1012,7 +997,7 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
       }
 
       // 3. Create a mapping for easy lookup
-      const nodeIdToUrlMap: Record<number, string> = {};
+      const nodeIdToUrlMap: Record<string, string> = {};
       for (const item of urlResult.urls) {
         if (item.url) {
           nodeIdToUrlMap[item.nodeId] = item.url;

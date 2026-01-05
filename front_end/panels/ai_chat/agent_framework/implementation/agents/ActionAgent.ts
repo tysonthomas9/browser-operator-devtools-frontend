@@ -106,7 +106,21 @@ For date pickers and date range pickers:
    - Navigate using Prev/Next or month/year selectors
    - Click the target day
 
-Avoid excessive calendar navigation - if target date is far away, use direct input.`,
+Avoid excessive calendar navigation - if target date is far away, use direct input.
+
+## Keyboard Navigation
+For keyboard-based interactions (Tab, Enter, arrow keys):
+
+1. **Check current focus**: The accessibility tree shows \`[focused]\` on the currently focused element
+2. **Focus an element**: Use method='focus' to explicitly set focus: { "method": "focus", "nodeId": "0-123" }
+3. **Press keys**: Use method='press' to send keystrokes: { "method": "press", "nodeId": "0-123", "args": ["Tab"] }
+4. **Verify focus moved**: After pressing Tab, re-fetch the page content to see which element now has \`[focused]\`
+
+Example workflow for Tab navigation:
+- Focus the first element: { "method": "focus", "nodeId": "0-100" }
+- Press Tab: { "method": "press", "nodeId": "0-100", "args": ["Tab"] }
+- Get page content to verify focus moved to next element
+- Press Enter on focused element: { "method": "press", "nodeId": "0-101", "args": ["Enter"] }`,
     tools: [
       'get_page_content',
       'perform_action',

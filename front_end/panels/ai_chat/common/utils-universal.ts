@@ -643,6 +643,8 @@ export async function performAction(
       await fillElement(runtimeAgent, inputAgent, objectId, args);
     } else if (method === 'press') {
       await pressKey(inputAgent, args);
+    } else if (method === 'focus') {
+      await focusElement(runtimeAgent, objectId);
     } else if (method === 'scrollIntoView') {
       await scrollElementIntoView(runtimeAgent, objectId);
     } else if (method === 'selectOption') {
@@ -719,7 +721,7 @@ export async function performActionByBackendNodeId(
 
   // For click, hover, scrollIntoView, and press, we can use Input events directly
   // For other methods, we need to resolve to objectId first
-  if (['fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked'].includes(method)) {
+  if (['fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked', 'focus'].includes(method)) {
     // For iframe nodes (frameOrdinal > 0), we need to resolve with frame context
     if (frameOrdinal !== undefined && frameOrdinal > 0) {
       const frameRegistry = new FrameRegistryUniversal(adapter);
@@ -773,6 +775,8 @@ export async function performActionByBackendNodeId(
     await fillElement(runtimeAgent, inputAgent, objectId, args, executionContextId);
   } else if (method === 'press') {
     await pressKey(inputAgent, args);
+  } else if (method === 'focus' && objectId) {
+    await focusElement(runtimeAgent, objectId);
   } else if (method === 'selectOption' && objectId) {
     await selectOption(runtimeAgent, objectId, args, executionContextId);
   } else if ((method === 'check' || method === 'uncheck' || method === 'setChecked') && objectId) {
@@ -1049,6 +1053,25 @@ async function selectOption(
       }
     `,
     arguments: [{value: optionValue}],
+    returnByValue: true,
+  });
+}
+
+/**
+ * Focus an element
+ */
+async function focusElement(
+    runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
+    objectId: string,
+): Promise<void> {
+  await runtimeAgent.invoke('callFunctionOn', {
+    objectId,
+    functionDeclaration: `
+      function() {
+        this.focus();
+        return document.activeElement === this;
+      }
+    `,
     returnByValue: true,
   });
 }

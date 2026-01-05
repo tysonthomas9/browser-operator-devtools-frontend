@@ -362,7 +362,7 @@ export interface ObjectiveDrivenActionResult {
  */
 export interface NodeIDsToURLsResult {
   urls: Array<{
-    nodeId: number,
+    nodeId: string,
     url?: string,
   }>;
 }
@@ -2004,8 +2004,8 @@ export class PerformActionTool implements Tool<{ method: string, nodeId: number 
     properties: {
       method: {
         type: 'string',
-        description: 'Action to perform (click, rightClick, hover, fill, type, press, scrollIntoView, selectOption, check, uncheck, setChecked, drag)',
-        enum: ['click', 'rightClick', 'hover', 'fill', 'type', 'press', 'scrollIntoView', 'selectOption', 'check', 'uncheck', 'setChecked', 'drag']
+        description: 'Action to perform (click, rightClick, hover, fill, type, press, focus, scrollIntoView, selectOption, check, uncheck, setChecked, drag)',
+        enum: ['click', 'rightClick', 'hover', 'fill', 'type', 'press', 'focus', 'scrollIntoView', 'selectOption', 'check', 'uncheck', 'setChecked', 'drag']
       },
       nodeId: {
         type: 'string',
@@ -2663,11 +2663,11 @@ Important guidelines:
 /**
  * Tool for getting URLs from a list of NodeIDs
  */
-export class NodeIDsToURLsTool implements Tool<{ nodeIds: (string | number)[] }, NodeIDsToURLsResult | ErrorResult> {
+export class NodeIDsToURLsTool implements Tool<{ nodeIds: string[] }, NodeIDsToURLsResult | ErrorResult> {
   name = 'node_ids_to_urls';
   description = 'Gets URLs associated with DOM elements identified by EncodedIds from accessibility tree.';
 
-  async execute(args: { nodeIds: (string | number)[] }, ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
+  async execute(args: { nodeIds: string[] }, ctx?: LLMContext): Promise<NodeIDsToURLsResult | ErrorResult> {
     if (!Array.isArray(args.nodeIds)) {
       return { error: 'nodeIds must be an array of EncodedId strings (e.g., ["0-123", "0-456"])' };
     }
@@ -2682,7 +2682,7 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: (string | number)[] },
       return { error: 'No browser connection available' };
     }
 
-    const results: Array<{ nodeId: string | number, url?: string }> = [];
+    const results: Array<{ nodeId: string, url?: string }> = [];
     const runtimeAgent = adapter.runtimeAgent();
 
     // Process each nodeId separately
@@ -2691,21 +2691,16 @@ export class NodeIDsToURLsTool implements Tool<{ nodeIds: (string | number)[] },
         let backendNodeId: number;
 
         // Handle EncodedId format (e.g., "0-123")
-        if (typeof nodeId === 'string' && isEncodedId(nodeId)) {
-          const parsed = parseEncodedId(nodeId);
-          if (!parsed) {
-            results.push({ nodeId });
-            continue;
-          }
-          backendNodeId = parsed.backendNodeId;
-        } else if (typeof nodeId === 'number') {
-          // Legacy support for numeric nodeIds (deprecated)
-          logger.warn(`[NodeIDsToURLsTool] Numeric nodeId ${nodeId} is deprecated. Use EncodedId format (e.g., "0-${nodeId}").`);
-          backendNodeId = nodeId;
-        } else {
+        if (!isEncodedId(nodeId)) {
           results.push({ nodeId });
           continue;
         }
+        const parsed = parseEncodedId(nodeId);
+        if (!parsed) {
+          results.push({ nodeId });
+          continue;
+        }
+        backendNodeId = parsed.backendNodeId;
 
         // First, get the xpath for the node using universal utils
         const xpath = await UtilsUniversal.getXPathByBackendNodeId(adapter, backendNodeId);
@@ -2999,7 +2994,7 @@ export function getTools(): Array<(
   Tool<{ reasoning: string }, AccessibilityTreeResult | ErrorResult> |
   Tool<{ method: string, nodeId: number, reasoning: string, args?: Record<string, unknown> | unknown[] }, PerformActionResult | ErrorResult> |
   Tool<Record<string, unknown>, FullPageAccessibilityTreeToMarkdownResult | ErrorResult> |
-  Tool<{ nodeIds: number[] }, NodeIDsToURLsResult | ErrorResult> |
+  Tool<{ nodeIds: string[] }, NodeIDsToURLsResult | ErrorResult> |
   Tool<{ reasoning: string, instruction?: string }, HTMLToMarkdownResult | ErrorResult> |
   Tool<{ url: string, reasoning: string, schema?: SchemaDefinition, markdownResponse?: boolean, extractionInstruction?: string }, CombinedExtractionResult | ErrorResult> |
   Tool<FetcherToolArgs, FetcherToolResult> |
