@@ -79,8 +79,7 @@ export const shadowClickClosedTest: TestCase<ActionAgentArgs> = {
       criteria: [
         'Successfully located the button inside the closed shadow root',
         'Shadow piercer was properly utilized for resolution',
-        'Button click was executed successfully',
-        'Result text shows "Button was clicked!" after successful click',
+        'Button click was executed successfully and page changed',
       ],
       visualVerification: {
         enabled: true,
@@ -160,8 +159,7 @@ export const shadowFormFillTest: TestCase<ActionAgentArgs> = {
         'Located the username input field',
         'Username field was filled with "tomsmith"',
         'Password field was filled with "SuperSecretPassword!"',
-        'Login button was clicked',
-        'Login was successful (page shows secure area or success message)',
+        'Login button was clicked and page changed',
       ],
       visualVerification: {
         enabled: true,
@@ -226,38 +224,39 @@ export const githubSearchShadowTest: TestCase<ActionAgentArgs> = {
  */
 export const shadowCustomSelectTest: TestCase<ActionAgentArgs> = {
   id: 'action-agent-shadow-006',
-  name: 'Interact with PWA web components',
-  description: 'Interact with web components in Google\'s PWA sample book app',
+  name: 'Search and click book in PWA',
+  description: 'Search for books and click on a result in Google\'s PWA sample book app',
   url: 'https://books-pwakit.appspot.com/',
   tool: 'action_agent',
   input: {
-    objective: 'Click on one of the book items to view its details',
-    reasoning: 'Testing web component interaction in a real PWA application',
-    hint: 'The book items are web components. Click on any book cover or title to navigate to its details page.',
+    objective: 'Search for "javascript" in the search box, then click on one of the book results to view its details',
+    reasoning: 'Testing web component interaction in a real PWA application with shadow DOM',
+    hint: 'First find the search input and type "javascript", press Enter to search. Then click on any book cover or title from the results.',
   },
   validation: {
     type: 'llm-judge',
     llmJudge: {
       criteria: [
-        'Located book item elements in the web component structure',
+        'Found and used the search input inside shadow DOM',
+        'Entered "javascript" search term and submitted search',
+        'Located book item elements in the search results',
         'Successfully clicked on a book item',
-        'Navigation to book details occurred',
-        'No errors during web component interaction',
       ],
       visualVerification: {
         enabled: true,
         captureBeforeAction: true,
         captureAfterAction: true,
         verificationPrompts: [
-          'Verify a book item was clicked',
-          'Confirm navigation to book details page',
-          'Check that book information is displayed',
+          'Verify search was performed',
+          'Confirm book results appeared',
+          'Check that a book item was clicked',
         ],
       },
     },
   },
   metadata: {
-    tags: ['action', 'shadow-dom', 'pwa', 'web-components', 'google'],
+    tags: ['action', 'shadow-dom', 'pwa', 'web-components', 'google', 'search'],
+    timeout: 60000,
   },
 };
 

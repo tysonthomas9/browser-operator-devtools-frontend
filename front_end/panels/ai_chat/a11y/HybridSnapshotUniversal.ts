@@ -106,6 +106,8 @@ function prefixXPath(parentAbs: string, child: string): string {
 interface DomMaps {
   tagNameMap: Record<EncodedId, string>;
   xpathMap: Record<EncodedId, string>;
+  /** Root DOM node for building outline from DOM structure */
+  rootNode: CDPNode | null;
 }
 
 /**
@@ -140,7 +142,7 @@ async function buildDomMapsAllFrames(
 
   const mainFrameId = frameRegistry.getMainFrameId();
   if (!mainFrameId) {
-    return {tagNameMap, xpathMap};
+    return {tagNameMap, xpathMap, rootNode: null};
   }
 
   const mainOrdinal = frameRegistry.getOrdinal(mainFrameId);
@@ -166,8 +168,10 @@ async function buildDomMapsAllFrames(
     });
 
     if (!docResponse.root) {
-      return {tagNameMap, xpathMap};
+      return {tagNameMap, xpathMap, rootNode: null};
     }
+
+    const rootNode = docResponse.root;
 
     // DFS traversal of the DOM with frame tracking
     interface StackEntry {
@@ -255,11 +259,11 @@ async function buildDomMapsAllFrames(
         });
       }
     }
+    return {tagNameMap, xpathMap, rootNode};
   } catch (error) {
     console.warn('[HybridSnapshotUniversal] Failed to build DOM maps:', error);
+    return {tagNameMap, xpathMap, rootNode: null};
   }
-
-  return {tagNameMap, xpathMap};
 }
 
 // ============================================================================
@@ -288,7 +292,115 @@ interface AXNode {
 }
 
 /**
+ * Query accessibility properties for a single element via queryAXTree.
+ * This API can access elements by backendNodeId, including shadow DOM elements.
+ */
+async function getElementA11yProps(
+    accessibilityAgent: ReturnType<CDPSessionAdapter['accessibilityAgent']>,
+    backendNodeId: number,
+): Promise<{role?: string; name?: string; focused?: boolean; url?: string}> {
+  try {
+    const response = await accessibilityAgent.invoke<{nodes: AXNode[]}>('queryAXTree', {
+      backendNodeId,
+    });
+    if (response.nodes?.[0]) {
+      const node = response.nodes[0];
+      const urlProp = node.properties?.find(p => p.name === 'url');
+      return {
+        role: node.role?.value,
+        name: node.name?.value,
+        focused: node.properties?.some(p => p.name === 'focused' && p.value?.value === true),
+        url: urlProp?.value?.value ? String(urlProp.value.value) : undefined,
+      };
+    }
+  } catch {
+    // Element may not have accessibility info (e.g., text nodes, scripts)
+  }
+  return {};
+}
+
+/**
+ * Build accessibility outline by walking the DOM tree (which includes shadow DOM)
+ * and enriching each element with accessibility properties via queryAXTree.
+ */
+async function buildOutlineFromDOM(
+    adapter: CDPSessionAdapter,
+    rootNode: CDPNode,
+    ordinal: number,
+): Promise<A11yOutline> {
+  const accessibilityAgent = adapter.accessibilityAgent();
+  const lines: string[] = [];
+  const urlMap: Record<EncodedId, string> = {};
+
+  // Interactive element types that should always be included
+  const interactiveTypes = new Set([
+    'a', 'button', 'input', 'select', 'textarea', 'details', 'summary',
+    'audio', 'video', 'img', 'area', 'label', 'option', 'menuitem',
+  ]);
+
+  // Skip these node types entirely
+  const skipTypes = new Set(['script', 'style', 'noscript', 'template', '#comment']);
+
+  const visit = async (node: CDPNode, indent: number): Promise<void> => {
+    const nodeType = node.nodeType;
+    const tagName = node.localName || node.nodeName.toLowerCase();
+
+    // Skip text nodes, comments, and non-element nodes
+    if (nodeType !== 1 || skipTypes.has(tagName)) {
+      // But still recurse into children (for document nodes)
+      for (const child of node.children || []) {
+        await visit(child, indent);
+      }
+      return;
+    }
+
+    const backendNodeId = node.backendNodeId;
+    const encId = makeEncodedId(ordinal, backendNodeId);
+
+    // Get a11y properties for this element
+    const a11y = await getElementA11yProps(accessibilityAgent, backendNodeId);
+
+    // Determine role: use a11y role if available, otherwise use tag name
+    const role = a11y.role || tagName;
+
+    // Skip "generic" or "none" roles that have no name (reduces noise)
+    const isGenericWithoutName = (role === 'generic' || role === 'none') && !a11y.name;
+    const isInteractive = interactiveTypes.has(tagName);
+
+    // Include element if it has a meaningful role/name or is interactive
+    if (!isGenericWithoutName || isInteractive || a11y.name) {
+      const nameStr = a11y.name ? `: ${cleanText(a11y.name)}` : '';
+      const focusMarker = a11y.focused ? ' [focused]' : '';
+      lines.push(`${'  '.repeat(indent)}[${encId}] ${role}${nameStr}${focusMarker}`);
+
+      if (a11y.url) {
+        urlMap[encId as EncodedId] = a11y.url;
+      }
+    }
+
+    // Recurse into children
+    for (const child of node.children || []) {
+      await visit(child, indent + 1);
+    }
+
+    // Recurse into shadow roots (this is where shadow DOM elements are!)
+    for (const shadowRoot of node.shadowRoots || []) {
+      await visit(shadowRoot, indent + 1);
+    }
+
+    // Recurse into content document (iframes)
+    if (node.contentDocument) {
+      await visit(node.contentDocument, indent + 1);
+    }
+  };
+
+  await visit(rootNode, 0);
+  return {outline: lines.join('\n'), urlMap};
+}
+
+/**
  * Build accessibility tree outline for a single frame using CDP.
+ * @deprecated Use buildOutlineFromDOM for shadow DOM support
  */
 async function buildA11yOutline(
     adapter: CDPSessionAdapter,
@@ -437,7 +549,7 @@ export async function captureHybridSnapshotUniversal(
 
   // Build DOM maps for ALL frames in one pass
   // This traverses the full DOM tree including iframe contentDocument nodes
-  const {tagNameMap, xpathMap: combinedXpathMap} = await buildDomMapsAllFrames(
+  const {tagNameMap, xpathMap: combinedXpathMap, rootNode} = await buildDomMapsAllFrames(
       adapter,
       frameRegistry,
       pierce,
@@ -447,24 +559,30 @@ export async function captureHybridSnapshotUniversal(
   const combinedUrlMap: Record<EncodedId, string> = {};
   const perFrame: FrameSnapshot[] = [];
 
-  // Process each frame for accessibility tree (this API supports per-frame)
+  // Get main frame info
+  const mainFrameId = frameRegistry.getMainFrameId();
+  const mainFrameInfo = mainFrameId ? frameRegistry.getFrame(mainFrameId) : null;
+  const mainOrdinal = mainFrameInfo?.ordinal ?? 0;
+
+  // Build outline from DOM tree (includes shadow DOM!)
+  // This walks the full DOM including shadow roots and iframes in one pass
+  let combinedOutline = '';
+  if (rootNode) {
+    const {outline, urlMap} = await buildOutlineFromDOM(
+        adapter,
+        rootNode,
+        mainOrdinal,
+    );
+    combinedOutline = outline;
+    Object.assign(combinedUrlMap, urlMap);
+  }
+
+  // Build per-frame data for compatibility
   for (const frameId of frames) {
     const frameInfo = frameRegistry.getFrame(frameId);
     if (!frameInfo) {
       continue;
     }
-
-    // Build accessibility outline for this frame
-    // The tagNameMap is shared across all frames (keyed by EncodedId)
-    const {outline, urlMap} = await buildA11yOutline(
-        adapter,
-        frameId,
-        frameRegistry,
-        tagNameMap,
-    );
-
-    // Merge URL map
-    Object.assign(combinedUrlMap, urlMap);
 
     // Extract per-frame xpaths for debugging
     const frameXpathMap: Record<EncodedId, string> = {};
@@ -480,9 +598,9 @@ export async function captureHybridSnapshotUniversal(
       frameId,
       ordinal: frameInfo.ordinal,
       url: frameInfo.url,
-      outline,
+      outline: frameId === mainFrameId ? combinedOutline : '',
       xpathMap: frameXpathMap,
-      urlMap,
+      urlMap: {},
     });
   }
 
