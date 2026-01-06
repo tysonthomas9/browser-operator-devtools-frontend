@@ -845,7 +845,7 @@ class APIServer {
     return this.executeToolDirect({
       clientId,
       tabId,
-      tool: 'get_accessibility_tree',
+      tool: 'get_page_content',
       args: {
         maxDepth
       },
