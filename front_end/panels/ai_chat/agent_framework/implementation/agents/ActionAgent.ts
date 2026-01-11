@@ -211,10 +211,15 @@ ${args.input_data ? `Input Data: ${args.input_data}` : ''}
           // Get navigate_url tool and execute
           const navigateTool = ToolRegistry.getRegisteredTool('navigate_url');
           if (navigateTool) {
+            // Ensure provider is available before creating LLMContext
+            if (!callCtx.provider) {
+              logger.warn('Provider not available for auto-navigation, skipping');
+              return;
+            }
             // Create LLMContext from CallCtx for tool execution
             const llmContext = {
               apiKey: callCtx.apiKey,
-              provider: callCtx.provider!,
+              provider: callCtx.provider,
               model: callCtx.model || callCtx.mainModel || '',
               getVisionCapability: callCtx.getVisionCapability,
               miniModel: callCtx.miniModel,

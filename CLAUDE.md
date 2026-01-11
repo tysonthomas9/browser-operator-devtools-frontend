@@ -56,6 +56,19 @@ npm run lint                                      # ESLint
 
 ### Eval Runner (Agent Testing)
 
+**Recommended: Use the eval-runner-analyst agent** to run evals and get detailed analysis:
+
+```
+# In Claude Code, use the Task tool with eval-runner-analyst agent:
+"Run the action agent evals with cerebras gpt-oss-120b"
+"Test action-agent-checkbox-001 and action-agent-form-001"
+"Compare V0 and V1 action agents on iframe tests"
+```
+
+The eval-runner-analyst agent handles the complete workflow: running tests, collecting results, and providing detailed analysis of pass/fail patterns.
+
+**Manual CLI usage** (if needed):
+
 The eval runner automatically loads environment variables from `.env` in the project root.
 
 ```bash
@@ -66,6 +79,9 @@ npx tsx scripts/eval-runner/cli.ts --test action-agent-click-001 --verbose
 # Use Cerebras for fast inference (preferred models: zai-glm-4.6, gpt-oss-120b)
 npx tsx scripts/eval-runner/cli.ts --provider cerebras --model zai-glm-4.6 --tool action_agent
 npx tsx scripts/eval-runner/cli.ts --provider cerebras --model gpt-oss-120b --tool action_agent
+
+# Run V0 agent variant
+npx tsx scripts/eval-runner/cli.ts --tool action_agent --tool-override action_agent_v0 --provider cerebras --model gpt-oss-120b
 
 # Connect to running Browser Operator (bypasses bot detection, uses authenticated sessions)
 npx tsx scripts/eval-runner/cli.ts --tool action_agent --remote-debugging-port 9222 --verbose

@@ -196,8 +196,12 @@ Examples:
       const duration = Date.now() - startTime;
 
       if (!executionResult.success) {
-        // Record failure
-        await this.cache.recordFailure(pattern.id);
+        // Record failure (don't let cache errors block the result)
+        try {
+          await this.cache.recordFailure(pattern.id);
+        } catch (cacheError) {
+          logger.warn('Failed to record cache failure:', cacheError);
+        }
 
         return {
           success: false,
@@ -215,8 +219,12 @@ Examples:
         };
       }
 
-      // Record success
-      await this.cache.recordSuccess(pattern.id);
+      // Record success (don't let cache errors block the result)
+      try {
+        await this.cache.recordSuccess(pattern.id);
+      } catch (cacheError) {
+        logger.warn('Failed to record cache success:', cacheError);
+      }
 
       return {
         success: true,

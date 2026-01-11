@@ -1004,7 +1004,7 @@ export async function performActionByBackendNodeId(
   }
 
   // Verify state for state-changing actions
-  const stateChangingActions = ['check', 'uncheck', 'setChecked', 'fill', 'type', 'selectOption', 'click'];
+  const stateChangingActions = ['check', 'uncheck', 'setChecked', 'fill', 'type', 'selectOption', 'click', 'setValue'];
   if (stateChangingActions.includes(method)) {
     const verification = await verifyElementState(adapter, backendNodeId, method, args);
     return {verification};

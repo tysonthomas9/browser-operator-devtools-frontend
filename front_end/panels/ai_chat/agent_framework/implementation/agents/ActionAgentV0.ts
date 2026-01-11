@@ -80,14 +80,14 @@ After executing an action, the perform_action tool returns objective evidence in
   * Consider if the element might be disabled or hidden
 
 **Example Analysis:**
-Action: clicked search button (nodeId: 123)
+Action: clicked search button (nodeId: "0-123")
 Result: pageChange.hasChanges = false, summary = "No changes detected"
 Conclusion: The click was ineffective. Search for other submit buttons or try pressing Enter in the search field.
 
 **Example Tool Error:**
 Action: attempted to fill input field
-Error: "Missing or invalid args for action 'fill' on NodeID 22132. Expected an object with a string property 'text'. Example: { "text": "your value" }"
-Conclusion: Fix the args format and retry with proper syntax: { "method": "fill", "nodeId": 22132, "args": { "text": "search query" } }
+Error: "Missing or invalid args for action 'fill' on NodeID 0-22132. Expected an object with a string property 'text'. Example: { "text": "your value" }"
+Conclusion: Fix the args format and retry with proper syntax: { "method": "fill", "nodeId": "0-22132", "args": { "text": "search query" } }
 
 ## Important Considerations
 - **NEVER claim success unless pageChange.hasChanges = true**
@@ -102,10 +102,10 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
 - If pageChange shows no changes, immediately try an alternative approach
 
 ## Method Examples
-- perform_action with method='check' for checkboxes: { "method": "check", "nodeId": 123 }
-- perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": 456, "args": { "text": "United States" } }
-- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": 789, "args": { "checked": true } }
-- perform_action with method='setValue' for sliders/range inputs: { "method": "setValue", "nodeId": 567, "args": { "value": 75 } }`,
+- perform_action with method='check' for checkboxes: { "method": "check", "nodeId": "0-123" }
+- perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": "0-456", "args": { "text": "United States" } }
+- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": "0-789", "args": { "checked": true } }
+- perform_action with method='setValue' for sliders/range inputs: { "method": "setValue", "nodeId": "0-567", "args": { "value": 75 } }`,
     tools: [
       'get_page_content_v0',  // Use v0 version of get_page_content
       'perform_action',
