@@ -796,6 +796,8 @@ export const modalDialogTest: TestCase<ActionAgentArgs> = {
   metadata: {
     tags: ['action', 'modal', 'dialog', 'popup', 'overlay'],
     timeout: 60000,  // 1 minute for simple modal close
+    // Wait for modal to become visible after page JS executes
+    waitAfterNavigation: 2000,
   }
 };
 

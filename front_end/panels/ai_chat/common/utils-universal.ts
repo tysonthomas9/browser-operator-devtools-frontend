@@ -904,7 +904,7 @@ export async function performActionByBackendNodeId(
     args: unknown[],
     backendNodeId: number,
     frameOrdinal?: number,
-): Promise<void> {
+): Promise<{verification?: ElementStateVerification}> {
   const runtimeAgent = adapter.runtimeAgent();
   const domAgent = adapter.domAgent();
   const inputAgent = adapter.inputAgent();
@@ -917,7 +917,7 @@ export async function performActionByBackendNodeId(
 
   // Methods that benefit from JavaScript execution (trusted events) rather than CDP Input events
   // Click is included because JS element.click() creates trusted events that bypass bot detection
-  if (['click', 'fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked', 'focus'].includes(method)) {
+  if (['click', 'fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked', 'focus', 'setValue'].includes(method)) {
     // For iframe nodes (frameOrdinal > 0), we need to resolve with frame context
     if (frameOrdinal !== undefined && frameOrdinal > 0) {
       const frameRegistry = new FrameRegistryUniversal(adapter);
@@ -991,11 +991,26 @@ export async function performActionByBackendNodeId(
     await selectOption(runtimeAgent, objectId, args, executionContextId);
   } else if ((method === 'check' || method === 'uncheck' || method === 'setChecked') && objectId) {
     await setCheckedState(runtimeAgent, objectId, args, executionContextId);
+  } else if (method === 'setValue' && objectId) {
+    const result = await setValueElement(runtimeAgent, objectId, args, executionContextId);
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+    logger.info(`[performActionByBackendNodeId] setValue: ${result.message}`);
   } else if (method === 'drag') {
     await dragByBackendNodeId(domAgent, inputAgent, backendNodeId, args);
   } else {
     throw new Error(`Method ${method} not supported for backendNodeId-based action`);
   }
+
+  // Verify state for state-changing actions
+  const stateChangingActions = ['check', 'uncheck', 'setChecked', 'fill', 'type', 'selectOption', 'click'];
+  if (stateChangingActions.includes(method)) {
+    const verification = await verifyElementState(adapter, backendNodeId, method, args);
+    return {verification};
+  }
+
+  return {};
 }
 
 /**
@@ -1418,4 +1433,301 @@ async function setCheckedState(
     arguments: [{value: shouldCheck}],
     returnByValue: true,
   });
+}
+
+// ============================================================================
+// Element State Verification
+// ============================================================================
+
+/**
+ * Element state verification result - returned after state-changing actions
+ * to confirm the action actually succeeded.
+ */
+export interface ElementStateVerification {
+  verified: boolean;
+  actionMethod: string;
+  currentState?: {
+    checked?: boolean;
+    value?: string;
+    selectedOption?: string;
+    selectedValue?: string;
+    elementType?: string;
+  };
+  stateConfirmed: boolean;
+  summary: string;
+}
+
+/**
+ * Verifies the current state of an element after an action.
+ * Used for state-changing actions to confirm the action succeeded.
+ */
+export async function verifyElementState(
+    adapter: CDPSessionAdapter,
+    backendNodeId: number,
+    actionMethod: string,
+    expectedArgs?: unknown[],
+): Promise<ElementStateVerification> {
+  const domAgent = adapter.domAgent();
+  const runtimeAgent = adapter.runtimeAgent();
+
+  try {
+    // Resolve to objectId
+    const resolveResponse = await domAgent.invoke<{object?: {objectId?: string}}>('resolveNode', {
+      backendNodeId,
+    });
+
+    if (!resolveResponse.object?.objectId) {
+      return {
+        verified: false,
+        actionMethod,
+        stateConfirmed: false,
+        summary: 'Could not resolve element for verification',
+      };
+    }
+
+    const objectId = resolveResponse.object.objectId;
+
+    // Get element state based on action type
+    const stateResult = await runtimeAgent.invoke<{result?: {value?: unknown}}>('callFunctionOn', {
+      objectId,
+      functionDeclaration: `
+        function() {
+          const el = this;
+          const state = {
+            elementType: el.type || el.tagName?.toLowerCase() || 'unknown'
+          };
+
+          // Checkbox/Radio state
+          if (el.type === 'checkbox' || el.type === 'radio') {
+            state.checked = el.checked;
+          }
+
+          // Input/Textarea value
+          if ('value' in el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+            state.value = el.value;
+          }
+
+          // Select element
+          if (el.tagName === 'SELECT') {
+            state.selectedOption = el.options[el.selectedIndex]?.text || '';
+            state.selectedValue = el.value;
+          }
+
+          return state;
+        }
+      `,
+      returnByValue: true,
+    });
+
+    const currentState = stateResult.result?.value as ElementStateVerification['currentState'] || {};
+
+    // Determine if state matches expectation
+    let stateConfirmed = false;
+    let summary = '';
+
+    switch (actionMethod) {
+      case 'check':
+        stateConfirmed = currentState.checked === true;
+        summary = stateConfirmed
+            ? 'Checkbox is now CHECKED (verified)'
+            : `Checkbox verification FAILED - checked=${currentState.checked}`;
+        break;
+
+      case 'uncheck':
+        stateConfirmed = currentState.checked === false;
+        summary = stateConfirmed
+            ? 'Checkbox is now UNCHECKED (verified)'
+            : `Checkbox verification FAILED - checked=${currentState.checked}`;
+        break;
+
+      case 'setChecked': {
+        const expectedChecked = Boolean(expectedArgs?.[0]);
+        stateConfirmed = currentState.checked === expectedChecked;
+        summary = stateConfirmed
+            ? `Checkbox state is now ${expectedChecked ? 'CHECKED' : 'UNCHECKED'} (verified)`
+            : `setChecked verification FAILED - expected=${expectedChecked}, actual=${currentState.checked}`;
+        break;
+      }
+
+      case 'fill':
+      case 'type': {
+        const expectedValue = String(expectedArgs?.[0] || '');
+        stateConfirmed = currentState.value === expectedValue;
+        summary = stateConfirmed
+            ? `Input value is "${currentState.value}" (verified)`
+            : `Fill verification FAILED - expected="${expectedValue}", actual="${currentState.value}"`;
+        break;
+      }
+
+      case 'selectOption': {
+        const expectedOption = String(expectedArgs?.[0] || '');
+        stateConfirmed = currentState.selectedOption === expectedOption ||
+                        currentState.selectedValue === expectedOption;
+        summary = stateConfirmed
+            ? `Selected option is "${currentState.selectedOption}" (verified)`
+            : `selectOption verification FAILED - expected="${expectedOption}", actual="${currentState.selectedOption}"`;
+        break;
+      }
+
+      case 'click':
+        // For radio buttons clicked, verify they're now checked
+        if (currentState.elementType === 'radio') {
+          stateConfirmed = currentState.checked === true;
+          summary = stateConfirmed
+              ? 'Radio button is now SELECTED (verified)'
+              : 'Radio button verification FAILED - not selected after click';
+        } else {
+          // For other clicks, we can't verify state easily
+          stateConfirmed = true;
+          summary = 'Click action completed';
+        }
+        break;
+
+      default:
+        summary = `No state verification for action: ${actionMethod}`;
+        stateConfirmed = true;
+    }
+
+    return {
+      verified: true,
+      actionMethod,
+      currentState,
+      stateConfirmed,
+      summary,
+    };
+  } catch (error) {
+    return {
+      verified: false,
+      actionMethod,
+      stateConfirmed: false,
+      summary: `Verification failed: ${error}`,
+    };
+  }
+}
+
+// ============================================================================
+// Set Value for Sliders/Range Inputs
+// ============================================================================
+
+/**
+ * Set value on slider, range input, or jQuery UI slider widget.
+ * Handles three cases:
+ * 1. Native HTML5 range input: Sets element.value directly
+ * 2. jQuery UI slider handle: Finds parent slider widget and calls slider('value', X)
+ * 3. ARIA slider: Sets aria-valuenow and dispatches appropriate events
+ */
+async function setValueElement(
+    runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
+    objectId: string,
+    args: unknown[],
+    executionContextId?: number,
+): Promise<{success: boolean; message: string; actualValue?: number}> {
+  const targetValue = args[0];
+
+  // Validate the value argument
+  if (typeof targetValue !== 'number' && typeof targetValue !== 'string') {
+    return {success: false, message: 'setValue requires a numeric value argument'};
+  }
+
+  const numericValue = typeof targetValue === 'string' ? parseFloat(targetValue) : targetValue;
+
+  if (isNaN(numericValue)) {
+    return {success: false, message: `Invalid numeric value: ${targetValue}`};
+  }
+
+  // CDP requires objectId and executionContextId to be mutually exclusive
+  // When objectId is provided, don't pass executionContextId
+  const result = await runtimeAgent.invoke<{result?: {value?: unknown}}>('callFunctionOn', {
+    objectId,
+    // Note: Do NOT pass executionContextId when objectId is provided - they are mutually exclusive in CDP
+    functionDeclaration: `
+      function(value) {
+        // Helper to dispatch events consistently
+        function dispatchEvents(el) {
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Case 1: Native HTML5 range input
+        if (this instanceof HTMLInputElement && this.type === 'range') {
+          const min = parseFloat(this.min) || 0;
+          const max = parseFloat(this.max) || 100;
+          const clampedValue = Math.max(min, Math.min(max, value));
+          this.value = clampedValue.toString();
+          dispatchEvents(this);
+          return { success: true, message: 'Set native range input to ' + clampedValue, actualValue: clampedValue };
+        }
+
+        // Case 2: Check for jQuery UI slider widget
+        const jQuerySlider = this.closest('.ui-slider') || (this.classList && this.classList.contains('ui-slider') ? this : null);
+        if (jQuerySlider && typeof jQuery !== 'undefined') {
+          try {
+            const $slider = jQuery(jQuerySlider);
+            if ($slider.slider && typeof $slider.slider === 'function') {
+              const options = $slider.slider('option');
+              const min = options?.min ?? parseFloat(jQuerySlider.getAttribute('aria-valuemin')) ?? 0;
+              const max = options?.max ?? parseFloat(jQuerySlider.getAttribute('aria-valuemax')) ?? 100;
+              const clampedValue = Math.max(min, Math.min(max, value));
+              $slider.slider('value', clampedValue);
+              return { success: true, message: 'Set jQuery UI slider to ' + clampedValue, actualValue: clampedValue };
+            }
+          } catch (e) {
+            console.warn('[setValue] jQuery UI slider method failed:', e);
+          }
+        }
+
+        // Case 3: ARIA-based slider (generic)
+        const ariaSlider = this.closest('[role="slider"]') || (this.getAttribute('role') === 'slider' ? this : null);
+        if (ariaSlider) {
+          const min = parseFloat(ariaSlider.getAttribute('aria-valuemin')) || 0;
+          const max = parseFloat(ariaSlider.getAttribute('aria-valuemax')) || 100;
+          const clampedValue = Math.max(min, Math.min(max, value));
+
+          ariaSlider.setAttribute('aria-valuenow', clampedValue.toString());
+
+          // For jQuery UI sliders, also update the handle position visually
+          const handle = ariaSlider.querySelector('.ui-slider-handle') || ariaSlider;
+          if (handle && handle.style) {
+            const percentage = ((clampedValue - min) / (max - min)) * 100;
+            if (ariaSlider.classList.contains('ui-slider-vertical')) {
+              handle.style.bottom = percentage + '%';
+            } else {
+              handle.style.left = percentage + '%';
+            }
+          }
+
+          dispatchEvents(ariaSlider);
+
+          // Try triggering slide event for jQuery UI compatibility
+          if (typeof jQuery !== 'undefined') {
+            try {
+              jQuery(ariaSlider).trigger('slide', { value: clampedValue });
+              jQuery(ariaSlider).trigger('slidechange', { value: clampedValue });
+            } catch (e) {
+              // Ignore if jQuery events fail
+            }
+          }
+
+          return { success: true, message: 'Set ARIA slider to ' + clampedValue, actualValue: clampedValue };
+        }
+
+        // Case 4: Fallback - try setting value property directly
+        if ('value' in this) {
+          const min = parseFloat(this.min || this.getAttribute('aria-valuemin')) || 0;
+          const max = parseFloat(this.max || this.getAttribute('aria-valuemax')) || 100;
+          const clampedValue = Math.max(min, Math.min(max, value));
+          this.value = clampedValue;
+          dispatchEvents(this);
+          return { success: true, message: 'Set element value to ' + clampedValue, actualValue: clampedValue };
+        }
+
+        return { success: false, message: 'Element does not support value setting. Expected range input, jQuery UI slider, or ARIA slider.' };
+      }
+    `,
+    arguments: [{value: numericValue}],
+    returnByValue: true,
+  });
+
+  const returnValue = result.result?.value as {success: boolean; message: string; actualValue?: number} | undefined;
+  return returnValue ?? {success: false, message: 'setValue execution failed'};
 }

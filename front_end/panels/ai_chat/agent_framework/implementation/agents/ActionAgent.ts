@@ -42,6 +42,7 @@ When analyzing page structure, you have access to:
    - For radio buttons: use 'click'
    - For input fields: use 'fill' with appropriate text
    - For dropdown/select elements: use 'selectOption' with the option value or text
+   - For sliders/range inputs: use 'setValue' with numeric value to set precise values
 5. Execute the action using perform_action tool
 6. **CRITICAL: Analyze the pageChange evidence to determine action effectiveness**
 
@@ -92,6 +93,7 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
 - perform_action with method='check' for checkboxes: { "method": "check", "nodeId": "0-456" }
 - perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": "0-789", "args": { "text": "United States" } }
 - perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": "1-234", "args": { "checked": true } }
+- perform_action with method='setValue' for sliders/range inputs: { "method": "setValue", "nodeId": "0-567", "args": { "value": 75 } }
 - For elements in iframes, use the frame ordinal prefix (e.g., "1-456" for frame 1, "2-789" for frame 2)
 
 ## Date/Calendar Widgets

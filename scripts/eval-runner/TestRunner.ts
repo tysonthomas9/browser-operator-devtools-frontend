@@ -207,7 +207,10 @@ export class TestRunner {
         this.testLogger.logExecution('Browser context created');
 
         // Navigate to test URL (resolved)
-        await this.browserExecutor.navigateTo(context.page, testUrl);
+        await this.browserExecutor.navigateTo(context.page, testUrl, {
+          waitForSelector: testCase.metadata.waitForSelector,
+          waitAfterNavigation: testCase.metadata.waitAfterNavigation,
+        });
         this.testLogger.logExecution(`Navigated to: ${testUrl}`);
 
         // Capture DOM snapshot before action

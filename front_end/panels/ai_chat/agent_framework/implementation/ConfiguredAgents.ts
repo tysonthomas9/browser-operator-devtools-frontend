@@ -127,18 +127,22 @@ export async function initializeConfiguredAgents(): Promise<void> {
   const contentWriterAgent = new ConfigurableAgentTool(contentWriterAgentConfig);
   ToolRegistry.registerToolFactory('content_writer_agent', () => contentWriterAgent);
 
-  // Create and register Action Agent
-  const actionAgentConfig = createActionAgentConfig();
-  const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
+  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
+
+  const actionAgentV0Config = createActionAgentV0Config();
+  const actionAgent = new ConfigurableAgentTool({
+    ...actionAgentV0Config,
+    name: 'action_agent',
+  });
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
 
-  // Create and register Action Agent V0 (baseline for comparison)
-  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
-  const actionAgentV0Config = createActionAgentV0Config();
   const actionAgentV0 = new ConfigurableAgentTool(actionAgentV0Config);
   ToolRegistry.registerToolFactory('action_agent_v0', () => actionAgentV0);
 
-  // Create and register Action Agent V2 (with XPath caching for A/B testing)
+  const actionAgentV1Config = createActionAgentConfig();
+  const actionAgentV1 = new ConfigurableAgentTool(actionAgentV1Config);
+  ToolRegistry.registerToolFactory('action_agent_v1', () => actionAgentV1);
+
   const actionAgentV2Config = createActionAgentV2Config();
   const actionAgentV2 = new ConfigurableAgentTool(actionAgentV2Config);
   ToolRegistry.registerToolFactory('action_agent_v2', () => actionAgentV2);

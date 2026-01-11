@@ -252,23 +252,49 @@ export class BrowserExecutor {
 
   /**
    * Navigate to a URL and wait for it to load
+   * @param page - Puppeteer page instance
+   * @param url - URL to navigate to
+   * @param options - Optional wait configuration
    */
-  async navigateTo(page: Page, url: string): Promise<void> {
+  async navigateTo(
+    page: Page,
+    url: string,
+    options?: { waitForSelector?: string; waitAfterNavigation?: number }
+  ): Promise<void> {
     console.log(`   📍 Navigating to: ${url}`);
     await page.goto(url, {
       waitUntil: 'networkidle0',
       timeout: this.config.timeout,
     });
 
-    // Additional wait for dynamic content
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait for specific selector if provided (for dynamic content like modals)
+    if (options?.waitForSelector) {
+      console.log(`   ⏳ Waiting for selector: ${options.waitForSelector}`);
+      try {
+        await page.waitForSelector(options.waitForSelector, {
+          visible: true,
+          timeout: 5000,
+        });
+        console.log(`   ✓ Selector found: ${options.waitForSelector}`);
+      } catch (e) {
+        console.log(`   ⚠️ Selector wait timed out: ${options.waitForSelector}`);
+      }
+    }
+
+    // Additional wait for dynamic content (use custom delay or default 500ms)
+    const delay = options?.waitAfterNavigation ?? 500;
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
 
   /**
    * Navigate to a URL and return an updated adapter
    */
-  async navigateToWithAdapter(context: ExecutionContext, url: string): Promise<CDPSessionAdapter> {
-    await this.navigateTo(context.page, url);
+  async navigateToWithAdapter(
+    context: ExecutionContext,
+    url: string,
+    options?: { waitForSelector?: string; waitAfterNavigation?: number }
+  ): Promise<CDPSessionAdapter> {
+    await this.navigateTo(context.page, url, options);
     // Return a new adapter with the updated URL
     return new DirectCDPAdapter(context.cdp as unknown as CDPClient, url);
   }

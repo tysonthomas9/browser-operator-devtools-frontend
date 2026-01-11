@@ -22,6 +22,10 @@ export interface TestCase<TInput = any> {
     timeout?: number;
     retries?: number;
     flaky?: boolean;
+    /** CSS selector to wait for visibility after navigation (for dynamic content like modals) */
+    waitForSelector?: string;
+    /** Delay in ms after navigation (alternative to waitForSelector) */
+    waitAfterNavigation?: number;
   };
 }
 

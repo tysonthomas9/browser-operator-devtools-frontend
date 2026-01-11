@@ -25,6 +25,8 @@ export interface SearchScoringConfig {
   nameMatchBoost: number;
   /** Bonus for interactive elements like button, link, textbox (default: 20) */
   interactiveBoost: number;
+  /** Bonus for interactive elements inside iframes (default: 15) */
+  iframeInteractiveBoost: number;
 }
 
 /**
@@ -63,6 +65,8 @@ export interface ScoredSearchMatch {
   score: number;
   /** Which field(s) matched the query */
   matchType: 'role' | 'name' | 'both';
+  /** Frame ordinal extracted from EncodedId (0 = main frame, 1+ = iframe) */
+  frameOrdinal: number;
 }
 
 /**
@@ -90,6 +94,7 @@ const DEFAULT_SCORING_CONFIG: SearchScoringConfig = {
   roleMatchBoost: 50,
   nameMatchBoost: 30,
   interactiveBoost: 20,
+  iframeInteractiveBoost: 15,
 };
 
 const DEFAULT_SEARCH_OPTIONS: Required<Omit<SearchOptions, 'scoringConfig'>> = {
@@ -116,6 +121,23 @@ const ID_PATTERN = /\[([^\]]+)\]/;
 const ROLE_PATTERN = /\]\s*(\w+)/;
 const NAME_PATTERN = /(?::\s*|"\s*)([^"\[\]]+?)(?:\s*"|(?:\s*\[focused\])?\s*$)/;
 const INDENT_UNIT = 2;
+
+/**
+ * Extract frame ordinal from EncodedId format "frameOrdinal-backendNodeId"
+ * @param encodedId ID in format "0-123" or "1-456"
+ * @returns Frame ordinal (0 for main frame, 1+ for iframes)
+ */
+export function parseFrameOrdinal(encodedId: string): number {
+  if (!encodedId) {
+    return 0;
+  }
+  const dashIndex = encodedId.indexOf('-');
+  if (dashIndex === -1) {
+    return 0;
+  }
+  const ordinal = parseInt(encodedId.substring(0, dashIndex), 10);
+  return isNaN(ordinal) ? 0 : ordinal;
+}
 
 /**
  * Parses accessibility tree lines into structured format
@@ -264,6 +286,13 @@ export class SearchScorer {
     // Interactive element boost
     if (this.isInteractiveRole(parsed.role)) {
       score += this.config.interactiveBoost;
+
+      // Additional boost for interactive elements inside iframes
+      // This prioritizes actual UI controls in iframes over main frame content
+      const frameOrdinal = parseFrameOrdinal(parsed.id);
+      if (frameOrdinal > 0) {
+        score += this.config.iframeInteractiveBoost;
+      }
     }
 
     return { score, matchType };
@@ -344,6 +373,9 @@ export class AccessibilityTreeSearcher {
         ? this.buildContext(lines, i, opts.contextLinesBefore, opts.contextLinesAfter)
         : '';
 
+      // Extract frame ordinal from the encoded ID
+      const frameOrdinal = parseFrameOrdinal(parsed.id);
+
       matches.push({
         id: parsed.id,
         role: parsed.role,
@@ -351,6 +383,7 @@ export class AccessibilityTreeSearcher {
         context,
         score,
         matchType,
+        frameOrdinal,
       });
     }
 

@@ -57,6 +57,7 @@ When analyzing page structure, you have access to:
    - For radio buttons: use 'click'
    - For input fields: use 'fill' with appropriate text
    - For dropdown/select elements: use 'selectOption' with the option value or text
+   - For sliders/range inputs: use 'setValue' with numeric value to set precise values
 5. Execute the action using perform_action tool
 6. **CRITICAL: Analyze the pageChange evidence to determine action effectiveness**
 
@@ -103,7 +104,8 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
 ## Method Examples
 - perform_action with method='check' for checkboxes: { "method": "check", "nodeId": 123 }
 - perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": 456, "args": { "text": "United States" } }
-- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": 789, "args": { "checked": true } }`,
+- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": 789, "args": { "checked": true } }
+- perform_action with method='setValue' for sliders/range inputs: { "method": "setValue", "nodeId": 567, "args": { "value": 75 } }`,
     tools: [
       'get_page_content_v0',  // Use v0 version of get_page_content
       'perform_action',

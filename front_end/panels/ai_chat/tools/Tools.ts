@@ -363,6 +363,34 @@ export interface AccessibilityTreeResult {
 }
 
 /**
+ * Element state verification result - returned after state-changing actions
+ * to confirm the action actually succeeded.
+ */
+export interface ElementStateVerification {
+  /** Whether verification was performed */
+  verified: boolean;
+  /** The action method that was performed */
+  actionMethod: string;
+  /** Current state of the element after action */
+  currentState?: {
+    /** For checkbox/radio: whether element is checked */
+    checked?: boolean;
+    /** For input/textarea: current value */
+    value?: string;
+    /** For select: currently selected option text */
+    selectedOption?: string;
+    /** For select: currently selected option value */
+    selectedValue?: string;
+    /** Element type (checkbox, radio, text, select, etc.) */
+    elementType?: string;
+  };
+  /** Whether the state matches expected outcome */
+  stateConfirmed: boolean;
+  /** Human-readable summary of verification */
+  summary: string;
+}
+
+/**
  * Type for perform action result
  */
 export interface PerformActionResult extends ImageToolResult {
@@ -380,6 +408,8 @@ export interface PerformActionResult extends ImageToolResult {
     };
   };
   visualCheck?: string; // LLM's assessment of success
+  /** Element state verification for state-changing actions (check, fill, select, etc.) */
+  stateVerification?: ElementStateVerification;
 }
 
 /**
@@ -2403,6 +2433,8 @@ export class PerformActionTool implements Tool<
         actionArgsArray = [(args.args as { text: string }).text];
       } else if (method === "setChecked") {
         actionArgsArray = [(args.args as { checked: boolean }).checked];
+      } else if (method === "setValue") {
+        actionArgsArray = [(args.args as { value: number }).value];
       } else if (method === "drag") {
         actionArgsArray = [args.args];
       } else {
@@ -2428,7 +2460,7 @@ export class PerformActionTool implements Tool<
 
     try {
       // Use backendNodeId-based action for cross-frame support
-      await UtilsUniversal.performActionByBackendNodeId(
+      const actionResult = await UtilsUniversal.performActionByBackendNodeId(
         adapter,
         method,
         actionArgsArray,
@@ -2446,6 +2478,8 @@ export class PerformActionTool implements Tool<
           modified: [],
           hasMore: { added: false, removed: false, modified: false },
         },
+        // Include state verification for state-changing actions
+        stateVerification: actionResult?.verification,
       };
     } catch (error) {
       logger.error("Action failed for EncodedId:", error);
@@ -2459,7 +2493,7 @@ export class PerformActionTool implements Tool<
       method: {
         type: "string",
         description:
-          "Action to perform (click, rightClick, hover, fill, type, press, focus, scrollIntoView, selectOption, check, uncheck, setChecked, drag)",
+          "Action to perform (click, rightClick, hover, fill, type, press, focus, scrollIntoView, selectOption, check, uncheck, setChecked, drag, setValue)",
         enum: [
           "click",
           "rightClick",
@@ -2474,6 +2508,7 @@ export class PerformActionTool implements Tool<
           "uncheck",
           "setChecked",
           "drag",
+          "setValue",
         ],
       },
       nodeId: {
@@ -2486,7 +2521,7 @@ export class PerformActionTool implements Tool<
           {
             type: "object",
             description:
-              'Arguments for the action. For "fill"/"type", requires an object like { "text": "value" }. For "selectOption", requires an object like { "text": "option_value" }. For "setChecked", requires an object like { "checked": true/false }. For "drag", requires an object with either relative offset { "offsetX": 100, "offsetY": 0 } or absolute position { "toX": 500, "toY": 200 }. For "press", requires an array like ["key"]. Other methods (click, hover, check, uncheck, scrollIntoView) typically do not use args.',
+              'Arguments for the action. For "fill"/"type", requires an object like { "text": "value" }. For "selectOption", requires an object like { "text": "option_value" }. For "setChecked", requires an object like { "checked": true/false }. For "setValue", requires an object like { "value": 75 } (numeric for sliders/range inputs). For "drag", requires an object with either relative offset { "offsetX": 100, "offsetY": 0 } or absolute position { "toX": 500, "toY": 200 }. For "press", requires an array like ["key"]. Other methods (click, hover, check, uncheck, scrollIntoView) typically do not use args.',
             properties: {
               text: {
                 type: "string",
@@ -2497,6 +2532,11 @@ export class PerformActionTool implements Tool<
                 type: "boolean",
                 description:
                   "For setChecked method - whether the checkbox should be checked (true) or unchecked (false).",
+              },
+              value: {
+                type: "number",
+                description:
+                  "For setValue method - the numeric value to set on a slider or range input. The value will be clamped to the element's min/max range.",
               },
               offsetX: {
                 type: "number",
