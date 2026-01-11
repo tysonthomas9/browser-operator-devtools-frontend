@@ -32,11 +32,20 @@ import {
 // Import additional CDP-compatible tools
 import { ExecuteCodeTool } from '../../../front_end/panels/ai_chat/tools/ExecuteCodeTool.ts';
 import { HybridAccessibilityTreeTool, ResolveEncodedIdTool } from '../../../front_end/panels/ai_chat/tools/HybridAccessibilityTreeTool.ts';
+import { SchemaBasedExtractorTool } from '../../../front_end/panels/ai_chat/tools/SchemaBasedExtractorTool.ts';
+import { StreamlinedSchemaExtractorTool } from '../../../front_end/panels/ai_chat/tools/StreamlinedSchemaExtractorTool.ts';
+import { SearchTool } from '../../../front_end/panels/ai_chat/tools/SearchTool.ts';
+import { TryCachedActionTool } from '../../../front_end/panels/ai_chat/tools/TryCachedActionTool.ts';
 
 // Import agent configs
 import { createActionAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgent.ts';
+import { createActionAgentV0Config } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgentV0.ts';
+import { createActionAgentV2Config } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgentV2.ts';
 import { createWebTaskAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/WebTaskAgent.ts';
 import { createResearchAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ResearchAgent.ts';
+
+// Import V0 baseline tools for comparison
+import { GetAccessibilityTreeToolV0 } from '../../../front_end/panels/ai_chat/tools/GetAccessibilityTreeToolV0.ts';
 
 // DOM tools registration is lazy-loaded since it requires SDK (browser-only)
 
@@ -71,10 +80,31 @@ export async function setupToolsForEval(): Promise<void> {
   ToolRegistry.registerToolFactory('node_ids_to_urls', () => new NodeIDsToURLsTool());
   ToolRegistry.registerToolFactory('analyze_network', () => new NetworkAnalysisTool());
 
+  // Register schema extraction tools
+  ToolRegistry.registerToolFactory('extract_data', () => new SchemaBasedExtractorTool());
+  ToolRegistry.registerToolFactory('extract_schema_streamlined', () => new StreamlinedSchemaExtractorTool());
+
+  // Register search tool
+  ToolRegistry.registerToolFactory('search', () => new SearchTool());
+
+  // Register cache-check tool for ActionAgentV2
+  ToolRegistry.registerToolFactory('try_cached_action', () => new TryCachedActionTool());
+
   // Register Action Agent
   const actionAgentConfig = createActionAgentConfig();
   const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
+
+  // Register V0 baseline versions for comparison testing
+  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
+  const actionAgentV0Config = createActionAgentV0Config();
+  const actionAgentV0 = new ConfigurableAgentTool(actionAgentV0Config);
+  ToolRegistry.registerToolFactory('action_agent_v0', () => actionAgentV0);
+
+  // Register Action Agent V2 (with XPath caching for A/B testing)
+  const actionAgentV2Config = createActionAgentV2Config();
+  const actionAgentV2 = new ConfigurableAgentTool(actionAgentV2Config);
+  ToolRegistry.registerToolFactory('action_agent_v2', () => actionAgentV2);
 
   // Register Web Task Agent
   const webTaskAgentConfig = createWebTaskAgentConfig();

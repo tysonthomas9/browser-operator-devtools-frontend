@@ -182,6 +182,21 @@ export class FrameRegistryUniversal {
   }
 
   /**
+   * Get frame info by the owner iframe's backendNodeId.
+   * This is useful when traversing DOM and encountering an iframe element.
+   * @param ownerBackendNodeId The backendNodeId of the iframe element
+   * @returns FrameInfo for the frame owned by this iframe, or undefined
+   */
+  getFrameByOwnerBackendNodeId(ownerBackendNodeId: number): FrameInfo | undefined {
+    for (const frame of this.frames.values()) {
+      if (frame.ownerBackendNodeId === ownerBackendNodeId) {
+        return frame;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Check if a frame exists in the registry.
    */
   hasFrame(frameId: string): boolean {

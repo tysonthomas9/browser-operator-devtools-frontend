@@ -3,37 +3,31 @@
 // found in the LICENSE file.
 
 import * as Protocol from '../../../generated/protocol.js';
-import * as Utils from '../common/utils.js';
+import * as UtilsUniversal from '../common/utils-universal.js';
 import { createLogger } from '../core/Logger.js';
-import type { LLMContext } from './Tools.js';
+import type { LLMContext, Tool } from './Tools.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
-
-import { NodeIDsToURLsTool, type Tool } from './Tools.js';
-import { isEncodedId } from '../common/context.js';
+import { getAdapter } from '../cdp/getAdapter.js';
+import type { CDPSessionAdapter } from '../cdp/CDPSessionAdapter.js';
 
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
 
-// Lazy-loaded browser-only dependencies
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
+// Lazy-loaded browser-only dependencies for API key fallback
 let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
-let browserDepsLoaded = false;
+let agentServiceLoaded = false;
 
-async function ensureBrowserDeps(): Promise<boolean> {
+async function ensureAgentService(): Promise<boolean> {
   if (isNodeEnvironment) return false;
-  if (!browserDepsLoaded) {
-    browserDepsLoaded = true;
+  if (!agentServiceLoaded) {
+    agentServiceLoaded = true;
     try {
-      const [sdkModule, agentServiceModule] = await Promise.all([
-        import('../../../core/sdk/sdk.js'),
-        import('../core/AgentService.js'),
-      ]);
-      SDK = sdkModule;
+      const agentServiceModule = await import('../core/AgentService.js');
       AgentService = agentServiceModule.AgentService;
     } catch { return false; }
   }
-  return SDK !== null;
+  return AgentService !== null;
 }
 
 const logger = createLogger('Tool:SchemaBasedExtractor');
@@ -128,8 +122,11 @@ Schema Examples:
 
     // Get API key from context first, fallback to AgentService in browser
     let apiKey = ctx?.apiKey;
-    if (!apiKey && !isNodeEnvironment && AgentService) {
-      apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+    if (!apiKey && !isNodeEnvironment) {
+      await ensureAgentService();
+      if (AgentService) {
+        apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+      }
     }
 
     // Get provider from context
@@ -156,62 +153,24 @@ Schema Examples:
     }
 
     try {
-      // 1. Get primary target and wait for page load
-      if (!(await ensureBrowserDeps()) || !SDK) {
+      // 1. Get CDP adapter (works in both DevTools and eval runner)
+      const adapter = await getAdapter(ctx);
+      if (!adapter) {
         return {
           success: false,
-          error: 'SDK not available (Node.js environment)',
+          error: 'No browser connection available',
           data: null
         };
       }
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-      if (!target) {
-        return {
-          success: false,
-          error: 'No page target available',
-          data: null
-        };
-      }
-
-      // const READINESS_TIMEOUT_MS = 15000; // 15 seconds timeout for page readiness
-      // try {
-      //   logger.info('Checking page readiness (Timeout: ${READINESS_TIMEOUT_MS}ms)...');
-      //   await waitForPageLoad(target, READINESS_TIMEOUT_MS);
-      //   logger.info('Page is ready or timeout reached.');
-      // } catch (readinessError: any) {
-      //    logger.error(`Page readiness check failed: ${readinessError.message}`);
-      //    return {
-      //       success: false,
-      //       data: null,
-      //       error: `Page did not become ready: ${readinessError.message}`
-      //    };
-      // }
-
-      const rootBackendNodeId: Protocol.DOM.BackendNodeId | undefined = undefined;
-      const rootNodeId: Protocol.DOM.NodeId | undefined = undefined;
 
       // 2. Transform schema to replace URL fields with numeric AX Node IDs (strings)
       const [transformedSchema, urlPaths] = this.transformUrlFieldsToIds(schema);
       logger.debug('Transformed Schema:', JSON.stringify(transformedSchema, null, 2));
       logger.debug('URL Paths:', urlPaths);
 
-      // 3. Get raw accessibility tree nodes for the target scope to build URL mapping
-      const accessibilityAgent = target.accessibilityAgent();
-      const axTreeParams: Protocol.Accessibility.GetFullAXTreeRequest = {};
-
-      // We can optionally use NodeId or BackendNodeId for scoping if needed in the future
-      // Both are currently undefined since we're working with the full tree
-      if (rootNodeId) {
-        // NOTE: Depending on CDP version/implementation, scoping by NodeId might be preferred
-        // if backendNodeId scoping doesn't work as expected.
-        // Cast to 'any' if the specific property (nodeId or backendNodeId) isn't strictly typed.
-        (axTreeParams as any).nodeId = rootNodeId;
-      } else if (rootBackendNodeId) {
-        // Fallback to backendNodeId if NodeId wasn't obtained or isn't supported for scoping
-        (axTreeParams as any).backendNodeId = rootBackendNodeId;
-      }
-
-      const rawAxTree = await accessibilityAgent.invoke_getFullAXTree(axTreeParams);
+      // 3. Get raw accessibility tree nodes to build URL mapping
+      const accessibilityAgent = adapter.accessibilityAgent();
+      const rawAxTree = await accessibilityAgent.invoke<{nodes: any[]}>('getFullAXTree', {});
       if (!rawAxTree?.nodes) {
         throw new Error('Failed to get raw accessibility tree nodes');
       }
@@ -219,11 +178,8 @@ Schema Examples:
       const idToUrlMapping = this.buildUrlMapping(rawAxTree.nodes);
       logger.debug(`Built URL mapping with ${Object.keys(idToUrlMapping).length} entries.`);
 
-      // 4. Get the processed accessibility tree text using Utils
-      // NOTE: Utils.getAccessibilityTree currently gets the *full* tree.
-      // If scoping is critical, this might need adjustment or filtering based on the selector.
-      // For now, we use the full tree text for the LLM context.
-      const processedTreeResult = await Utils.getAccessibilityTree(target);
+      // 4. Get the processed accessibility tree text
+      const processedTreeResult = await UtilsUniversal.getAccessibilityTree(adapter);
       const treeText = processedTreeResult.simplified;
       logger.debug('Processed Accessibility Tree Text (length):', treeText.length);
       // logger.debug('[SchemaBasedExtractorTool] Tree Text:', treeText); // Uncomment for full tree text
@@ -390,6 +346,7 @@ Schema Examples:
         data: finalData,
         apiKey: apiKey || '',  // Use empty string for BrowserOperator
         schema, // Original schema to understand what fields are URLs
+        idToUrlMapping, // Pre-built accessibility node ID → URL mapping
       });
 
       logger.debug('Data after URL resolution:',
@@ -910,6 +867,7 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
 
   /**
    * Recursively find and replace node IDs with URLs in a data structure
+   * Handles both numeric IDs (from LLM) and string IDs (from accessibility tree)
    */
   private findAndReplaceNodeIds(data: any, nodeIdToUrlMap: Record<string, string>): any {
     // Handle null/undefined
@@ -917,9 +875,13 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
       return data;
     }
 
-    // Check if it's an EncodedId string that matches a node ID
-    if (typeof data === 'string' && isEncodedId(data) && nodeIdToUrlMap[data]) {
-      return nodeIdToUrlMap[data];
+    // Check if it's a node ID (number or string) that matches a key in the URL map
+    // LLM returns numbers like 19951, accessibility tree uses strings like "19951"
+    if (typeof data === 'number' || typeof data === 'string') {
+      const nodeIdKey = String(data);
+      if (nodeIdToUrlMap[nodeIdKey]) {
+        return nodeIdToUrlMap[nodeIdKey];
+      }
     }
 
     // Recursively process arrays
@@ -941,84 +903,34 @@ Return ONLY a valid JSON object conforming to the required metadata schema.`;
   }
 
   /**
-   * Collect all EncodedId strings from a data structure that could be node IDs
-   */
-  private collectPotentialNodeIds(data: any, nodeIds: Set<string>): void {
-    if (data === null || data === undefined) {
-      return;
-    }
-
-    // Check if it's an EncodedId string (format: "0-123")
-    if (typeof data === 'string' && isEncodedId(data)) {
-      nodeIds.add(data);
-    }
-
-    // Recursively process arrays
-    if (Array.isArray(data)) {
-      data.forEach(item => this.collectPotentialNodeIds(item, nodeIds));
-    }
-
-    // Recursively process objects
-    if (typeof data === 'object' && data !== null) {
-      Object.values(data).forEach(value => this.collectPotentialNodeIds(value, nodeIds));
-    }
-  }
-
-  /**
-   * Resolve URLs in the data using programmatic approach (no LLM calls)
+   * Resolve URLs in the data using the pre-built URL mapping
+   * Uses the accessibility node ID → URL mapping built from the raw AX tree
    */
   private async resolveUrlsWithLLM(options: {
     data: any,
     apiKey: string,
     schema: SchemaDefinition,
+    idToUrlMapping: Record<string, string>,
   }): Promise<any> {
-    const { data, schema } = options;
-    logger.debug('Starting URL resolution programmatically...');
+    const { data, idToUrlMapping } = options;
+    logger.debug('Starting URL resolution using pre-built mapping...');
 
     try {
-      // 1. Collect all potential node IDs from the data
-      const nodeIds = new Set<string>();
-      this.collectPotentialNodeIds(data, nodeIds);
-
-      if (nodeIds.size === 0) {
-        logger.debug('No potential node IDs found in data');
+      if (Object.keys(idToUrlMapping).length === 0) {
+        logger.debug('No URL mappings available, returning original data');
         return data;
       }
 
-      logger.debug(`Found ${nodeIds.size} potential node IDs to check:`, Array.from(nodeIds));
+      logger.debug(`Using pre-built URL mapping with ${Object.keys(idToUrlMapping).length} entries`);
 
-      // 2. Use NodeIDsToURLsTool to get URL mappings
-      const urlTool = new NodeIDsToURLsTool();
-      const urlResult = await urlTool.execute({ nodeIds: Array.from(nodeIds) });
+      // Replace node IDs with URLs in the data
+      // findAndReplaceNodeIds handles both numeric (from LLM) and string (accessibility) IDs
+      const updatedData = this.findAndReplaceNodeIds(data, idToUrlMapping);
 
-      if ('error' in urlResult) {
-        logger.error('Error from NodeIDsToURLsTool:', urlResult.error);
-        return data; // Return original data if tool execution fails
-      }
-
-      // 3. Create a mapping for easy lookup
-      const nodeIdToUrlMap: Record<string, string> = {};
-      for (const item of urlResult.urls) {
-        if (item.url) {
-          nodeIdToUrlMap[item.nodeId] = item.url;
-        }
-      }
-
-      logger.debug(`Created nodeId to URL mapping with ${Object.keys(nodeIdToUrlMap).length} entries`);
-
-      // 4. Use programmatic replacement instead of LLM
-      if (Object.keys(nodeIdToUrlMap).length === 0) {
-        logger.debug('No valid URL mappings found, returning original data');
-        return data;
-      }
-
-      // 5. Replace node IDs with URLs in the data
-      const updatedData = this.findAndReplaceNodeIds(data, nodeIdToUrlMap);
-
-      logger.debug('Successfully replaced nodeIDs with URLs programmatically');
+      logger.debug('Successfully replaced nodeIDs with URLs');
       return updatedData;
     } catch (error) {
-      logger.error('[SchemaBasedExtractorTool] Error in programmatic URL resolution:', error);
+      logger.error('[SchemaBasedExtractorTool] Error in URL resolution:', error);
       return data; // Return original data on error
     }
   }

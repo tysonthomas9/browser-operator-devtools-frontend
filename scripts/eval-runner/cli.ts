@@ -24,8 +24,11 @@ import { TestRunner } from './TestRunner.ts';
 import { ConsoleReporter } from './reporters/ConsoleReporter.ts';
 import { JsonReporter } from './reporters/JsonReporter.ts';
 import { MarkdownReporter } from './reporters/MarkdownReporter.ts';
+import { ComparisonReporter } from './reporters/ComparisonReporter.ts';
 import { domTests } from './test-cases/dom-tests.ts';
 import { Logger, LogLevel } from '../../front_end/panels/ai_chat/core/Logger.ts';
+import { ToolRegistry } from '../../front_end/panels/ai_chat/agent_framework/ConfigurableAgentTool.ts';
+import { setupToolsForEval } from './lib/ToolSetup.ts';
 
 // Test module configuration for dynamic loading
 interface TestModuleConfig {
@@ -39,6 +42,11 @@ const TEST_MODULES: TestModuleConfig[] = [
     path: '../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-tests.ts',
     exports: [{ name: 'actionAgentTests', label: 'action-agent' }],
     label: 'action-agent',
+  },
+  {
+    path: '../../front_end/panels/ai_chat/evaluation/test-cases/search-tool-tests.ts',
+    exports: [{ name: 'searchToolTests', label: 'search-tool' }],
+    label: 'search-tool',
   },
   {
     path: '../../front_end/panels/ai_chat/evaluation/test-cases/action-agent-shadow-dom-tests.ts',
@@ -248,18 +256,19 @@ async function main() {
     .description('CLI Evaluation Runner for Browser Operator agents')
     .version('1.0.0');
 
-  // Accumulator for repeated/comma-separated options
+  // Accumulator for repeated/comma-separated/space-separated options
   const collect = (value: string, previous: string[] = []): string[] => {
-    // Support both comma-separated and repeated flags
-    const newValues = value.split(',').map(v => v.trim()).filter(v => v);
+    // Support comma-separated, space-separated, and repeated flags
+    const newValues = value.split(/[,\s]+/).map(v => v.trim()).filter(v => v);
     return previous.concat(newValues);
   };
 
   program
     // Test selection
     .option('-t, --tool <tool>', 'Filter by tool name (action_agent, web_task_agent, etc.)')
+    .option('--tool-override <tool>', 'Override tool for execution (e.g., run action_agent tests with action_agent_v2)')
     .option('--tag <tags>', 'Filter by tags (AND logic). Comma-separated or repeat flag.', collect, [])
-    .option('--test <ids>', 'Run specific test IDs. Comma-separated or repeat flag.', collect, [])
+    .option('--test <ids...>', 'Run specific test IDs. Space-separated, comma-separated, or repeat flag.')
 
     // Execution
     .option('-p, --parallel', 'Run tests in parallel', false)
@@ -267,6 +276,9 @@ async function main() {
     .option('--timeout <ms>', 'Test timeout in milliseconds', parseInt, 60000)
     .option('-r, --retries <n>', 'Number of retries on failure', parseInt, 1)
     .option('-l, --limit <n>', 'Limit number of tests to run', parseInt)
+
+    // Search tool strategy (for A/B testing alternative selectors)
+    .option('--search-strategy <strategy>', 'SearchTool extraction strategy: xpath-schema (default), semantic-xpath, encoded-id, text-pattern, xpath-llm, css-llm')
 
     // Braintrust
     .option('-e, --experiment <name>', 'Braintrust experiment name (auto-generated if not provided)')
@@ -297,7 +309,10 @@ async function main() {
     // Logging
     .option('--log-dir <dir>', 'Directory for detailed test logs', './eval-logs')
     .option('--detailed-logs', 'Enable detailed per-test logging', true)
-    .option('--no-detailed-logs', 'Disable detailed per-test logging');
+    .option('--no-detailed-logs', 'Disable detailed per-test logging')
+
+    // Version comparison
+    .option('--compare', 'Run comparison between v0 (baseline) and v1 (current) versions', false);
 
   program.parse(process.argv);
 
@@ -313,15 +328,30 @@ async function main() {
     return `eval-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}`;
   };
 
+  // Process test IDs - flatten variadic array and split by comma/space
+  // Also includes any remaining positional arguments after parsing
+  const processTestIds = (ids: string | string[] | undefined, args: string[]): string[] => {
+    const all: string[] = [];
+    if (ids) {
+      const arr = Array.isArray(ids) ? ids : [ids];
+      all.push(...arr);
+    }
+    // Add positional args (remaining arguments after options)
+    all.push(...args);
+    return all.flatMap(id => id.split(/[,\s]+/).map(v => v.trim()).filter(v => v));
+  };
+
   const options: CLIOptions = {
     tool: opts.tool,
+    toolOverride: opts.toolOverride,
     tags: opts.tag,
-    testIds: opts.test,
+    testIds: processTestIds(opts.test, program.args),
     parallel: opts.parallel,
     concurrency: opts.concurrency,
     timeout: opts.timeout,
     retries: opts.retries,
     limit: opts.limit,
+    searchStrategy: opts.searchStrategy,
     experiment: getExperimentName(),
     project: opts.project,
     org: opts.org,
@@ -342,6 +372,7 @@ async function main() {
     remoteDebuggingPort: opts.remoteDebuggingPort,
     logDir: opts.logDir,
     detailedLogs: opts.detailedLogs,
+    compare: opts.compare,
   };
 
   // Configure logging based on verbose flag
@@ -384,6 +415,12 @@ async function main() {
       tests.forEach(t => console.log(`   - ${t.id}: ${t.name}`));
     }
     console.log('');
+
+    // Handle comparison mode
+    if (options.compare) {
+      await runComparison(tests, options);
+      return;
+    }
 
     // Initialize runner
     const runner = new TestRunner(options);
@@ -442,6 +479,105 @@ function printSummary(summary: RunSummary) {
   const passRate = summary.total > 0 ? (summary.passed / summary.total * 100).toFixed(1) : '0.0';
   const icon = summary.failed + summary.errors === 0 ? '✅' : '❌';
   console.log(`${icon} Pass rate: ${passRate}%\n`);
+}
+
+/**
+ * Run version comparison between v0 and v1
+ */
+async function runComparison(tests: TestCase[], options: CLIOptions): Promise<void> {
+  console.log('🔄 Running version comparison mode...\n');
+
+  // Ensure tools are registered before checking for v0 versions
+  await setupToolsForEval();
+
+  // Build v0 tool map dynamically by checking which tools have v0 versions registered
+  const v0ToolMap: Record<string, string> = {};
+  const uniqueTools = new Set(tests.map(t => t.tool));
+
+  for (const toolName of uniqueTools) {
+    const v0ToolName = `${toolName}_v0`;
+    const v0Tool = ToolRegistry.getRegisteredTool(v0ToolName);
+    if (v0Tool) {
+      v0ToolMap[toolName] = v0ToolName;
+    }
+  }
+
+  // Check if any tools have v0 versions
+  if (Object.keys(v0ToolMap).length === 0) {
+    const toolList = Array.from(uniqueTools).join(', ');
+    console.error(`❌ No v0 versions found for any tools: ${toolList}`);
+    console.log('\n   To create a v0 baseline version for a tool:');
+    console.log('   1. Create the v0 implementation (e.g., MyToolV0.ts)');
+    console.log('   2. Register it with: ToolRegistry.registerToolFactory("tool_name_v0", ...)');
+    console.log('\n   Available tools with v0 versions:');
+    for (const name of ToolRegistry.getRegisteredToolNames()) {
+      if (name.endsWith('_v0')) {
+        const baseName = name.replace(/_v0$/, '');
+        console.log(`   - ${baseName} -> ${name}`);
+      }
+    }
+    process.exit(1);
+  }
+
+  console.log('📊 Version mapping:');
+  for (const [v1, v0] of Object.entries(v0ToolMap)) {
+    console.log(`   ${v1} -> ${v0}`);
+  }
+  console.log('');
+
+  // Create v0 test cases by mapping tool names
+  const v0Tests = tests.map(t => ({
+    ...t,
+    id: `${t.id}-v0`,
+    name: `[v0] ${t.name}`,
+    tool: v0ToolMap[t.tool] || t.tool,
+  }));
+
+  // Run v0 tests
+  console.log('━'.repeat(60));
+  console.log('Running v0 (baseline) tests...');
+  console.log('━'.repeat(60) + '\n');
+
+  const v0Options = { ...options, experiment: options.experiment ? `${options.experiment}-v0` : undefined };
+  const v0Runner = new TestRunner(v0Options);
+  await v0Runner.init();
+  const v0Summary = await v0Runner.runTests(v0Tests);
+  await v0Runner.cleanup();
+
+  // Run v1 tests
+  console.log('\n' + '━'.repeat(60));
+  console.log('Running v1 (current) tests...');
+  console.log('━'.repeat(60) + '\n');
+
+  const v1Options = { ...options, experiment: options.experiment ? `${options.experiment}-v1` : undefined };
+  const v1Runner = new TestRunner(v1Options);
+  await v1Runner.init();
+  const v1Summary = await v1Runner.runTests(tests);
+  await v1Runner.cleanup();
+
+  // Map v0 results back to original test IDs for comparison
+  const v0Results = v0Summary.results.map(r => ({
+    ...r,
+    testId: r.testId.replace(/-v0$/, ''),
+    testName: r.testName.replace(/^\[v0\] /, ''),
+  }));
+
+  // Generate comparison
+  const comparisonReporter = new ComparisonReporter(options.verbose);
+  const comparison = comparisonReporter.generateComparison(v0Results, v1Summary.results);
+
+  // Print comparison
+  comparisonReporter.printComparison(comparison);
+
+  // Export to JSON if output specified
+  if (options.output) {
+    const fs = await import('fs');
+    fs.writeFileSync(options.output, comparisonReporter.toJSON(comparison));
+    console.log(`\n📄 Comparison saved to: ${options.output}`);
+  }
+
+  // Exit with appropriate code
+  process.exitCode = comparison.regressed > 0 ? 1 : 0;
 }
 
 // Run

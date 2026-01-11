@@ -21,6 +21,10 @@ export interface SnapshotOptions {
   focusSelector?: string;
   /** Include shadow DOM in the snapshot (default: true) */
   pierceShadow?: boolean;
+  /** Include XPath in tree output for each element (default: false) */
+  includeXPathInTree?: boolean;
+  /** Include CSS classes in tree output for each element (default: false) */
+  includeCssClassesInTree?: boolean;
 }
 
 /**
@@ -292,45 +296,86 @@ interface AXNode {
 }
 
 /**
- * Query accessibility properties for a single element via queryAXTree.
- * This API can access elements by backendNodeId, including shadow DOM elements.
+ * Cached accessibility properties for an element
  */
-async function getElementA11yProps(
+interface A11yProps {
+  role?: string;
+  name?: string;
+  focused?: boolean;
+  url?: string;
+}
+
+/**
+ * Build a map of backendNodeId → accessibility properties using batched calls.
+ * Fetches accessibility data from main frame and optionally all child frames.
+ * This is much faster than calling queryAXTree for each element individually.
+ */
+async function buildA11yMap(
     accessibilityAgent: ReturnType<CDPSessionAdapter['accessibilityAgent']>,
-    backendNodeId: number,
-): Promise<{role?: string; name?: string; focused?: boolean; url?: string}> {
+    frameIds?: string[],
+): Promise<Map<number, A11yProps>> {
+  const map = new Map<number, A11yProps>();
+
+  const addNodesFromResponse = (nodes: AXNode[]): void => {
+    for (const node of nodes || []) {
+      if (node.backendDOMNodeId !== undefined) {
+        const urlProp = node.properties?.find(p => p.name === 'url');
+        map.set(node.backendDOMNodeId, {
+          role: node.role?.value,
+          name: node.name?.value,
+          focused: node.properties?.some(p => p.name === 'focused' && p.value?.value === true),
+          url: urlProp?.value?.value ? String(urlProp.value.value) : undefined,
+        });
+      }
+    }
+  };
+
   try {
-    const response = await accessibilityAgent.invoke<{nodes: AXNode[]}>('queryAXTree', {
-      backendNodeId,
-    });
-    if (response.nodes?.[0]) {
-      const node = response.nodes[0];
-      const urlProp = node.properties?.find(p => p.name === 'url');
-      return {
-        role: node.role?.value,
-        name: node.name?.value,
-        focused: node.properties?.some(p => p.name === 'focused' && p.value?.value === true),
-        url: urlProp?.value?.value ? String(urlProp.value.value) : undefined,
-      };
+    // Fetch main frame accessibility tree
+    const mainResponse = await accessibilityAgent.invoke<{nodes: AXNode[]}>('getFullAXTree', {});
+    addNodesFromResponse(mainResponse.nodes);
+
+    // Also fetch from child frames if provided
+    if (frameIds) {
+      const framePromises = frameIds.map(async frameId => {
+        try {
+          const response = await accessibilityAgent.invoke<{nodes: AXNode[]}>('getFullAXTree', {frameId});
+          addNodesFromResponse(response.nodes);
+        } catch {
+          // Frame may have been removed or is not accessible
+        }
+      });
+      await Promise.all(framePromises);
     }
   } catch {
-    // Element may not have accessibility info (e.g., text nodes, scripts)
+    // Failed to get accessibility tree - return empty map
   }
-  return {};
+  return map;
 }
 
 /**
  * Build accessibility outline by walking the DOM tree (which includes shadow DOM)
- * and enriching each element with accessibility properties via queryAXTree.
+ * and enriching each element with accessibility properties from a batched fetch.
  */
 async function buildOutlineFromDOM(
     adapter: CDPSessionAdapter,
     rootNode: CDPNode,
     ordinal: number,
+    frameIds?: string[],
+    options?: {
+      includeXPathInTree?: boolean;
+      includeCssClassesInTree?: boolean;
+      xpathMap?: Record<EncodedId, string>;
+      frameRegistry?: FrameRegistryUniversal;
+    },
 ): Promise<A11yOutline> {
   const accessibilityAgent = adapter.accessibilityAgent();
   const lines: string[] = [];
   const urlMap: Record<EncodedId, string> = {};
+
+  // Batch-fetch all accessibility data in parallel CDP calls (HUGE performance win!)
+  // Fetches from main frame + all child frames in parallel
+  const a11yMap = await buildA11yMap(accessibilityAgent, frameIds);
 
   // Interactive element types that should always be included
   const interactiveTypes = new Set([
@@ -341,7 +386,7 @@ async function buildOutlineFromDOM(
   // Skip these node types entirely
   const skipTypes = new Set(['script', 'style', 'noscript', 'template', '#comment']);
 
-  const visit = async (node: CDPNode, indent: number): Promise<void> => {
+  const visit = (node: CDPNode, indent: number, currentOrdinal: number): void => {
     const nodeType = node.nodeType;
     const tagName = node.localName || node.nodeName.toLowerCase();
 
@@ -349,16 +394,16 @@ async function buildOutlineFromDOM(
     if (nodeType !== 1 || skipTypes.has(tagName)) {
       // But still recurse into children (for document nodes)
       for (const child of node.children || []) {
-        await visit(child, indent);
+        visit(child, indent, currentOrdinal);
       }
       return;
     }
 
     const backendNodeId = node.backendNodeId;
-    const encId = makeEncodedId(ordinal, backendNodeId);
+    const encId = makeEncodedId(currentOrdinal, backendNodeId);
 
-    // Get a11y properties for this element
-    const a11y = await getElementA11yProps(accessibilityAgent, backendNodeId);
+    // Look up a11y properties from pre-fetched map (no CDP call!)
+    const a11y = a11yMap.get(backendNodeId) || {};
 
     // Determine role: use a11y role if available, otherwise use tag name
     const role = a11y.role || tagName;
@@ -371,7 +416,26 @@ async function buildOutlineFromDOM(
     if (!isGenericWithoutName || isInteractive || a11y.name) {
       const nameStr = a11y.name ? `: ${cleanText(a11y.name)}` : '';
       const focusMarker = a11y.focused ? ' [focused]' : '';
-      lines.push(`${'  '.repeat(indent)}[${encId}] ${role}${nameStr}${focusMarker}`);
+
+      // Optional: Include CSS classes in output
+      let classStr = '';
+      if (options?.includeCssClassesInTree) {
+        const classes = extractClasses(node);
+        if (classes.length > 0) {
+          classStr = ` [class: ${classes.join(' ')}]`;
+        }
+      }
+
+      // Optional: Include XPath in output
+      let xpathStr = '';
+      if (options?.includeXPathInTree && options.xpathMap) {
+        const xpath = options.xpathMap[encId as EncodedId];
+        if (xpath) {
+          xpathStr = ` [xpath: ${xpath}]`;
+        }
+      }
+
+      lines.push(`${'  '.repeat(indent)}[${encId}] ${role}${nameStr}${classStr}${xpathStr}${focusMarker}`);
 
       if (a11y.url) {
         urlMap[encId as EncodedId] = a11y.url;
@@ -380,21 +444,29 @@ async function buildOutlineFromDOM(
 
     // Recurse into children
     for (const child of node.children || []) {
-      await visit(child, indent + 1);
+      visit(child, indent + 1, currentOrdinal);
     }
 
     // Recurse into shadow roots (this is where shadow DOM elements are!)
     for (const shadowRoot of node.shadowRoots || []) {
-      await visit(shadowRoot, indent + 1);
+      visit(shadowRoot, indent + 1, currentOrdinal);
     }
 
     // Recurse into content document (iframes)
     if (node.contentDocument) {
-      await visit(node.contentDocument, indent + 1);
+      // Look up the iframe's frame ordinal from the registry
+      let iframeOrdinal = currentOrdinal;
+      if (options?.frameRegistry && backendNodeId) {
+        const iframeInfo = options.frameRegistry.getFrameByOwnerBackendNodeId(backendNodeId);
+        if (iframeInfo) {
+          iframeOrdinal = iframeInfo.ordinal;
+        }
+      }
+      visit(node.contentDocument, indent + 1, iframeOrdinal);
     }
   };
 
-  await visit(rootNode, 0);
+  visit(rootNode, 0, ordinal);
   return {outline: lines.join('\n'), urlMap};
 }
 
@@ -527,6 +599,20 @@ function cleanText(input: string): string {
   return out.trim();
 }
 
+/**
+ * Extract CSS class names from a DOM node's attributes array.
+ * Attributes are stored as pairs: ['class', 'btn primary', 'id', 'my-btn']
+ */
+function extractClasses(node: CDPNode): string[] {
+  const attributes = node.attributes || [];
+  for (let i = 0; i < attributes.length; i += 2) {
+    if (attributes[i] === 'class') {
+      return attributes[i + 1].split(/\s+/).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 // ============================================================================
 // Main Snapshot Function
 // ============================================================================
@@ -572,6 +658,13 @@ export async function captureHybridSnapshotUniversal(
         adapter,
         rootNode,
         mainOrdinal,
+        frames,  // Pass all frame IDs for batched a11y fetch
+        {
+          includeXPathInTree: options?.includeXPathInTree,
+          includeCssClassesInTree: options?.includeCssClassesInTree,
+          xpathMap: combinedXpathMap,
+          frameRegistry,  // Pass frameRegistry to resolve iframe ordinals
+        },
     );
     combinedOutline = outline;
     Object.assign(combinedUrlMap, urlMap);

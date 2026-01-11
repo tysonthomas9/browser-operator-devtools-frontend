@@ -5,6 +5,7 @@
 export interface CLIOptions {
   // Test selection
   tool?: string;
+  toolOverride?: string;  // Override tool for execution (run action_agent tests with action_agent_v2)
   tags?: string[];
   testIds?: string[];
 
@@ -14,6 +15,9 @@ export interface CLIOptions {
   timeout: number;
   retries: number;
   limit?: number;
+
+  // Search tool strategy (for A/B testing)
+  searchStrategy?: 'xpath-schema' | 'semantic-xpath' | 'encoded-id' | 'text-pattern';
 
   // Braintrust
   experiment?: string;
@@ -44,6 +48,9 @@ export interface CLIOptions {
   // Logging
   logDir: string;
   detailedLogs: boolean;
+
+  // Version comparison
+  compare?: boolean;
 }
 
 export interface TestCase {
@@ -77,6 +84,45 @@ export interface ValidationConfig {
   };
 }
 
+/**
+ * Detailed metrics for a single tool call
+ */
+export interface ToolCallMetric {
+  name: string;
+  durationMs: number;
+  success: boolean;
+  error?: string;
+  inputTokenEstimate?: number;
+  outputTokenEstimate?: number;
+}
+
+/**
+ * Detailed metrics for a single LLM call
+ */
+export interface LLMCallMetric {
+  durationMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  toolCallsRequested: number;
+}
+
+/**
+ * Aggregated execution metrics for comparison
+ */
+export interface ExecutionMetrics {
+  toolCalls: ToolCallMetric[];
+  llmCalls: LLMCallMetric[];
+  totalToolCalls: number;
+  totalLLMCalls: number;
+  totalDurationMs: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  iterations: number;
+  toolCallsByName: Record<string, number>;
+}
+
 export interface TestResult {
   testId: string;
   testName: string;
@@ -96,6 +142,8 @@ export interface TestResult {
     after?: string;
   };
   metadata?: Record<string, unknown>;
+  /** Detailed execution metrics for comparison */
+  metrics?: ExecutionMetrics;
 }
 
 export interface CriteriaResult {
@@ -179,4 +227,62 @@ export function getProviderConfig(provider: LLMProvider, explicitApiKey?: string
         baseURL: undefined,
       };
   }
+}
+
+/**
+ * Comparison result for a single test across versions
+ */
+export interface TestComparisonResult {
+  testId: string;
+  testName: string;
+  v0: TestResult;
+  v1: TestResult;
+  delta: {
+    status: 'improved' | 'regressed' | 'unchanged';
+    durationDelta: number;
+    durationDeltaPercent: number;
+    scoreDelta: number;
+    toolCallsDelta: number;
+    llmCallsDelta: number;
+    tokensDelta: number;
+    iterationsDelta: number;
+  };
+}
+
+/**
+ * Overall comparison summary across all tests
+ */
+export interface ComparisonSummary {
+  totalTests: number;
+  v0: {
+    passRate: number;
+    avgDuration: number;
+    avgToolCalls: number;
+    avgLLMCalls: number;
+    avgTokens: number;
+    avgIterations: number;
+    avgScore: number;
+  };
+  v1: {
+    passRate: number;
+    avgDuration: number;
+    avgToolCalls: number;
+    avgLLMCalls: number;
+    avgTokens: number;
+    avgIterations: number;
+    avgScore: number;
+  };
+  delta: {
+    passRateDelta: number;
+    durationDeltaPercent: number;
+    toolCallsDeltaPercent: number;
+    llmCallsDeltaPercent: number;
+    tokensDeltaPercent: number;
+    iterationsDeltaPercent: number;
+    scoreDelta: number;
+  };
+  improved: number;
+  regressed: number;
+  unchanged: number;
+  results: TestComparisonResult[];
 }

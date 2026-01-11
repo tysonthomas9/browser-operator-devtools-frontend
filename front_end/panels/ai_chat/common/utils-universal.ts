@@ -11,7 +11,8 @@
 
 import type {CDPSessionAdapter} from '../cdp/CDPSessionAdapter.js';
 import {FrameRegistryUniversal} from '../cdp/FrameRegistryUniversal.js';
-import type {AccessibilityNode, TreeResult, BackendIdMaps} from './context.js';
+import type {AccessibilityNode, TreeResult, BackendIdMaps, EncodedId} from './context.js';
+import {makeEncodedId} from './context.js';
 import {XPATH_BUILDER_FUNCTION_STRING} from './xpath-builder.js';
 import {getQuadCenter} from './geometry-helpers.js';
 import {
@@ -408,61 +409,256 @@ async function buildHierarchicalTree(
 }
 
 /**
+ * Transform CDP accessibility node to internal format with EncodedId.
+ * @param node Raw CDP accessibility node
+ * @param frameOrdinal Frame ordinal for EncodedId generation (0 for main frame)
+ * @param axNodeIdToEncodedId Map to track accessibility nodeId → EncodedId for parent/child resolution
+ */
+function transformCdpNode(
+    node: any,
+    frameOrdinal: number,
+    axNodeIdToEncodedId: Map<string, string>,
+): AccessibilityNode | null {
+  const roleValue = node.role && typeof node.role === 'object' && 'value' in node.role
+                        ? node.role.value
+                        : '';
+
+  const nameValue = node.name && typeof node.name === 'object' && 'value' in node.name
+                        ? node.name.value
+                        : undefined;
+
+  const descriptionValue =
+      node.description && typeof node.description === 'object' && 'value' in node.description
+          ? node.description.value
+          : undefined;
+
+  const valueValue = node.value && typeof node.value === 'object' && 'value' in node.value
+                         ? node.value.value
+                         : undefined;
+
+  const backendNodeId =
+      typeof node.backendDOMNodeId === 'number' ? node.backendDOMNodeId : undefined;
+
+  // Skip nodes without backendDOMNodeId as they can't be targeted
+  if (backendNodeId === undefined) {
+    return null;
+  }
+
+  // Create EncodedId for this node
+  const encodedId = makeEncodedId(frameOrdinal, backendNodeId);
+
+  // Store mapping from accessibility nodeId to EncodedId for parent/child resolution
+  if (node.nodeId) {
+    axNodeIdToEncodedId.set(`${frameOrdinal}:${node.nodeId}`, encodedId);
+  }
+
+  return {
+    role: roleValue,
+    name: nameValue,
+    description: descriptionValue,
+    value: valueValue,
+    nodeId: encodedId,  // Use EncodedId instead of accessibility nodeId
+    backendDOMNodeId: backendNodeId,
+    parentId: node.parentId ? `${frameOrdinal}:${node.parentId}` : undefined,
+    childIds: node.childIds?.map((id: string) => `${frameOrdinal}:${id}`),
+    properties: node.properties,
+  };
+}
+
+/**
  * Retrieves the full accessibility tree via CDP and transforms it into a hierarchical structure.
+ * Supports iframe content by fetching accessibility trees from all frames.
  */
 export async function getAccessibilityTree(adapter: CDPSessionAdapter): Promise<TreeResult> {
   try {
-    const scrollableBackendIds = await findScrollableElementIds(adapter);
-
-    const accessibilityAgent = adapter.accessibilityAgent();
-    const response = await accessibilityAgent.invoke<{nodes: any[]}>('getFullAXTree', {});
-    const nodes = response.nodes;
     const startTime = Date.now();
+    const scrollableBackendIds = await findScrollableElementIds(adapter);
+    const accessibilityAgent = adapter.accessibilityAgent();
 
-    // Transform CDP nodes to AccessibilityNode format
-    const accessibilityNodes: AccessibilityNode[] = nodes.map((node: any) => {
-      const roleValue = node.role && typeof node.role === 'object' && 'value' in node.role
-                            ? node.role.value
-                            : '';
+    // Collect all frames using FrameRegistryUniversal
+    const frameRegistry = new FrameRegistryUniversal(adapter);
+    const frames = await frameRegistry.collectFrames();
 
-      const nameValue = node.name && typeof node.name === 'object' && 'value' in node.name
-                            ? node.name.value
-                            : undefined;
+    if (frames.length === 0) {
+      logger.warn('No frames found, falling back to main frame only');
+      // Fallback: fetch main frame only
+      const response = await accessibilityAgent.invoke<{nodes: any[]}>('getFullAXTree', {});
+      const axNodeIdToEncodedId = new Map<string, string>();
+      const accessibilityNodes = response.nodes
+          .map((node: any) => transformCdpNode(node, 0, axNodeIdToEncodedId))
+          .filter((n): n is AccessibilityNode => n !== null);
 
-      const descriptionValue =
-          node.description && typeof node.description === 'object' && 'value' in node.description
-              ? node.description.value
-              : undefined;
+      const hierarchicalTree = await buildHierarchicalTreeWithEncodedIds(
+          accessibilityNodes, axNodeIdToEncodedId, adapter, scrollableBackendIds);
+      logger.info(`got accessibility tree (main frame only) in ${Date.now() - startTime}ms`);
+      return hierarchicalTree;
+    }
 
-      const valueValue = node.value && typeof node.value === 'object' && 'value' in node.value
-                             ? node.value.value
-                             : undefined;
+    // Fetch accessibility trees for all frames in parallel
+    const allAccessibilityNodes: AccessibilityNode[] = [];
+    const axNodeIdToEncodedId = new Map<string, string>();
+    const frameIds: string[] = [];
 
-      const backendNodeId =
-          typeof node.backendDOMNodeId === 'number' ? node.backendDOMNodeId : undefined;
+    const framePromises = frames.map(async (frame) => {
+      try {
+        const response = await accessibilityAgent.invoke<{nodes: any[]}>('getFullAXTree', {
+          frameId: frame.frameId,
+        });
 
-      return {
-        role: roleValue,
-        name: nameValue,
-        description: descriptionValue,
-        value: valueValue,
-        nodeId: node.nodeId,
-        backendDOMNodeId: backendNodeId,
-        parentId: node.parentId,
-        childIds: node.childIds,
-        properties: node.properties,
-      };
+        const nodes = response.nodes
+            .map((node: any) => transformCdpNode(node, frame.ordinal, axNodeIdToEncodedId))
+            .filter((n): n is AccessibilityNode => n !== null);
+
+        return { frameOrdinal: frame.ordinal, frameId: frame.frameId, nodes };
+      } catch (error) {
+        // Frame may be cross-origin or detached - skip silently
+        logger.debug(`Failed to fetch accessibility tree for frame ${frame.frameId}:`, error);
+        return null;
+      }
     });
 
-    const hierarchicalTree =
-        await buildHierarchicalTree(accessibilityNodes, adapter, scrollableBackendIds);
+    const frameResults = await Promise.all(framePromises);
 
-    logger.info(`got accessibility tree in ${Date.now() - startTime}ms`);
+    // Merge nodes from all frames
+    for (const result of frameResults) {
+      if (result) {
+        allAccessibilityNodes.push(...result.nodes);
+        if (result.frameOrdinal > 0) {
+          frameIds.push(result.frameId);
+        }
+      }
+    }
+
+    const hierarchicalTree = await buildHierarchicalTreeWithEncodedIds(
+        allAccessibilityNodes, axNodeIdToEncodedId, adapter, scrollableBackendIds, frameIds);
+
+    logger.info(`got accessibility tree (${frames.length} frames) in ${Date.now() - startTime}ms`);
     return hierarchicalTree;
   } catch (error) {
     logger.error('Error getting accessibility tree', error);
     throw error;
   }
+}
+
+/**
+ * Builds a hierarchical accessibility tree from flat nodes with EncodedId support.
+ * This is an adapted version of buildHierarchicalTree that handles EncodedId parent/child references.
+ */
+async function buildHierarchicalTreeWithEncodedIds(
+    accessibilityNodes: AccessibilityNode[],
+    axNodeIdToEncodedId: Map<string, string>,
+    adapter?: CDPSessionAdapter,
+    scrollableBackendIds?: Set<number>,
+    frameIds?: string[],
+): Promise<TreeResult> {
+  // Build tagNameMap if adapter is provided
+  let tagNameMap: Record<number, string> = {};
+  let xpathMap: Record<number, string> = {};
+
+  if (adapter) {
+    const maps = await buildBackendIdMaps(adapter);
+    tagNameMap = maps.tagNameMap;
+    xpathMap = maps.xpathMap;
+  }
+
+  // Build node map using EncodedId as key
+  const nodeMap = new Map<string, AccessibilityNode>();
+  for (const node of accessibilityNodes) {
+    if (node.nodeId) {
+      nodeMap.set(node.nodeId, node);
+    }
+  }
+
+  // Resolve parent/child references to EncodedIds
+  for (const node of accessibilityNodes) {
+    // Convert parentId from "frameOrdinal:axNodeId" to EncodedId
+    if (node.parentId && typeof node.parentId === 'string') {
+      const encodedParent = axNodeIdToEncodedId.get(node.parentId);
+      node.parentId = encodedParent;
+    }
+
+    // Convert childIds from "frameOrdinal:axNodeId" to EncodedIds
+    if (node.childIds) {
+      node.childIds = node.childIds
+          .map((id: string) => axNodeIdToEncodedId.get(id))
+          .filter((id): id is string => id !== undefined);
+    }
+  }
+
+  // Find root nodes (nodes without parents or with non-existent parents)
+  const rootNodes: AccessibilityNode[] = [];
+  for (const node of accessibilityNodes) {
+    if (!node.parentId || !nodeMap.has(node.parentId)) {
+      rootNodes.push(node);
+    }
+  }
+
+  // Build tree recursively
+  const buildTree = (node: AccessibilityNode): AccessibilityNode => {
+    const children: AccessibilityNode[] = [];
+
+    if (node.childIds) {
+      for (const childId of node.childIds) {
+        const childNode = nodeMap.get(childId);
+        if (childNode) {
+          children.push(buildTree(childNode));
+        }
+      }
+    }
+
+    return {
+      ...node,
+      children: children.length > 0 ? children : undefined,
+      childIds: undefined,
+      parentId: undefined,
+    };
+  };
+
+  const tree = rootNodes.map(buildTree);
+
+  // Build simplified string representation (now uses EncodedId in node.nodeId)
+  const simplified = tree.map(node => formatSimplifiedTree(node)).join('');
+
+  // Build scrollable container nodes list
+  const scrollableContainerNodes: Array<{
+    nodeId: string,
+    role: string,
+    backendDOMNodeId?: number,
+    name?: string,
+  }> = [];
+
+  if (scrollableBackendIds) {
+    for (const node of accessibilityNodes) {
+      if (node.nodeId && node.backendDOMNodeId && scrollableBackendIds.has(node.backendDOMNodeId)) {
+        scrollableContainerNodes.push({
+          nodeId: node.nodeId,
+          role: node.role,
+          backendDOMNodeId: node.backendDOMNodeId,
+          name: node.name,
+        });
+      }
+    }
+  }
+
+  // Build EncodedId → backendDOMNodeId mapping (for backward compatibility)
+  const nodeIdToBackendId: Record<string, number> = {};
+  for (const node of accessibilityNodes) {
+    if (node.nodeId && node.backendDOMNodeId) {
+      nodeIdToBackendId[node.nodeId] = node.backendDOMNodeId;
+    }
+  }
+
+  // Note: iframe content is now included in the main tree (distinguished by EncodedId frame ordinal)
+  // The iframes array is kept empty for backward compatibility - use frameOrdinal > 0 in EncodedId to identify iframe elements
+  return {
+    tree,
+    simplified,
+    iframes: [],
+    scrollableContainerNodes,
+    xpathMap,
+    tagNameMap,
+    nodeIdToBackendId,
+  };
 }
 
 // ============================================================================
@@ -719,9 +915,9 @@ export async function performActionByBackendNodeId(
   let objectId: string | undefined;
   let executionContextId: number | undefined;
 
-  // For click, hover, scrollIntoView, and press, we can use Input events directly
-  // For other methods, we need to resolve to objectId first
-  if (['fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked', 'focus'].includes(method)) {
+  // Methods that benefit from JavaScript execution (trusted events) rather than CDP Input events
+  // Click is included because JS element.click() creates trusted events that bypass bot detection
+  if (['click', 'fill', 'type', 'selectOption', 'check', 'uncheck', 'setChecked', 'focus'].includes(method)) {
     // For iframe nodes (frameOrdinal > 0), we need to resolve with frame context
     if (frameOrdinal !== undefined && frameOrdinal > 0) {
       const frameRegistry = new FrameRegistryUniversal(adapter);
@@ -764,7 +960,21 @@ export async function performActionByBackendNodeId(
 
   // Perform the action
   if (method === 'click') {
-    await clickByBackendNodeId(domAgent, inputAgent, backendNodeId);
+    if (objectId) {
+      // Use JS click for trusted events (same approach as performAction)
+      // This bypasses bot detection on e-commerce sites that check event.isTrusted
+      try {
+        await clickElementWithJS(runtimeAgent, objectId, executionContextId);
+        logger.info(`[performActionByBackendNodeId] JS click succeeded for backendNodeId=${backendNodeId}`);
+      } catch (e) {
+        logger.warn(`[performActionByBackendNodeId] JS click failed, falling back to CDP input events: ${e}`);
+        await clickByBackendNodeId(domAgent, inputAgent, backendNodeId);
+      }
+    } else {
+      // Fallback to CDP input events if objectId resolution failed
+      logger.info(`[performActionByBackendNodeId] No objectId, using CDP input events for backendNodeId=${backendNodeId}`);
+      await clickByBackendNodeId(domAgent, inputAgent, backendNodeId);
+    }
   } else if (method === 'rightClick') {
     await rightClickByBackendNodeId(domAgent, inputAgent, backendNodeId);
   } else if (method === 'hover') {
@@ -877,6 +1087,64 @@ async function clickWithMouseEvents(
 ): Promise<void> {
   const {x, y} = await getElementCenterFromObjectId(domAgent, objectId);
   await dispatchClick(inputAgent, x, y, 'left');
+}
+
+/**
+ * Click element using JavaScript for trusted events.
+ * This creates events with isTrusted=true that bypass bot detection on e-commerce sites.
+ * Scrolls element into view, waits for position to stabilize, then clicks.
+ */
+async function clickElementWithJS(
+    runtimeAgent: ReturnType<CDPSessionAdapter['runtimeAgent']>,
+    objectId: string,
+    executionContextId?: number,
+): Promise<void> {
+  await runtimeAgent.invoke('callFunctionOn', {
+    objectId,
+    executionContextId,
+    functionDeclaration: `
+      function() {
+        if ('scrollIntoView' in this) {
+          this.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        return new Promise(resolve => {
+          const initialRect = this.getBoundingClientRect();
+          let lastTop = initialRect.top;
+          let lastLeft = initialRect.left;
+          let positionStableCount = 0;
+          const maxWaitTime = 1000;
+          const startTime = Date.now();
+
+          const checkPosition = () => {
+            const currentRect = this.getBoundingClientRect();
+            const currentTop = currentRect.top;
+            const currentLeft = currentRect.left;
+
+            if (Math.abs(currentTop - lastTop) < 1 && Math.abs(currentLeft - lastLeft) < 1) {
+              positionStableCount++;
+
+              if (positionStableCount >= 3 || (Date.now() - startTime > maxWaitTime)) {
+                this.click();
+                resolve(true);
+                return;
+              }
+            } else {
+              positionStableCount = 0;
+            }
+
+            lastTop = currentTop;
+            lastLeft = currentLeft;
+            setTimeout(checkPosition, 50);
+          };
+
+          setTimeout(checkPosition, 50);
+        });
+      }
+    `,
+    returnByValue: true,
+    awaitPromise: true,
+  });
 }
 
 async function rightClickElement(

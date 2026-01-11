@@ -13,6 +13,7 @@
  * - NodeIDsToURLsTool (3 tests)
  * - NetworkAnalysisTool (1 test)
  * - ObjectiveDrivenActionTool (2 tests)
+ * - GetPageContent/searchQuery (4 tests)
  */
 
 import type { TestCase } from '../framework/types.js';
@@ -973,6 +974,168 @@ export const objectiveActionFormFillTest: TestCase<ObjectiveDrivenActionArgs> = 
 };
 
 // ============================================================================
+// GetPageContent Search Tests (4)
+// ============================================================================
+
+export interface GetPageContentArgs {
+  reasoning: string;
+  searchQuery?: string;
+  focusElementId?: string;
+  fullPage?: boolean;
+  chunkIndex?: number;
+}
+
+export const getPageContentSearchBasicTest: TestCase<GetPageContentArgs> = {
+  id: 'tool-get-page-content-search-001',
+  name: 'Get Page Content - Search Elements on Simple Page',
+  description: 'Test searchQuery to find elements by text content on a simple page',
+  url: 'https://the-internet.herokuapp.com/',
+  tool: 'get_page_content',
+  input: {
+    reasoning: 'Testing element search functionality on simple page',
+    searchQuery: 'link',
+  },
+  validation: {
+    type: 'llm-judge',
+    llmJudge: {
+      criteria: [
+        'Tool returned a matches array (not empty)',
+        'Each match has an id field',
+        'Each match has a context field showing surrounding lines',
+        'Matches contain elements related to links',
+      ],
+      visualVerification: {
+        enabled: true,
+        captureBeforeAction: true,
+        captureAfterAction: false,
+        verificationPrompts: [
+          'Verify the-internet.herokuapp.com homepage loaded with links',
+        ],
+      },
+    },
+  },
+  metadata: {
+    tags: ['tool', 'get-page-content', 'search', 'accessibility'],
+    timeout: 30000,
+  },
+};
+
+export const getPageContentSearchAmazonTest: TestCase<GetPageContentArgs> = {
+  id: 'tool-get-page-content-search-002',
+  name: 'Get Page Content - Search on Complex Amazon Page',
+  description: 'Test searchQuery works on complex Amazon search results page with shadow DOM',
+  url: 'https://www.amazon.com/s?k=headphones',
+  tool: 'get_page_content',
+  input: {
+    reasoning: 'Testing element search on complex Amazon page with shadow DOM',
+    searchQuery: 'headphones',
+  },
+  validation: {
+    type: 'llm-judge',
+    llmJudge: {
+      criteria: [
+        'Tool returned a matches array',
+        'Matches contain product-related elements mentioning headphones',
+        'Search worked despite complex DOM structure',
+        'Each match includes context showing surrounding accessibility tree',
+      ],
+      visualVerification: {
+        enabled: true,
+        captureBeforeAction: true,
+        captureAfterAction: false,
+        verificationPrompts: [
+          'Verify Amazon search results page loaded with headphones products',
+        ],
+      },
+    },
+  },
+  metadata: {
+    tags: ['tool', 'get-page-content', 'search', 'amazon', 'complex'],
+    timeout: 60000,
+    flaky: true,
+  },
+};
+
+export const getPageContentSearchReviewsTest: TestCase<GetPageContentArgs> = {
+  id: 'tool-get-page-content-search-003',
+  name: 'Get Page Content - Search for Reviews',
+  description: 'Test searchQuery to find review-related elements on Amazon product page',
+  url: 'https://www.amazon.com/dp/B09B8V1LZ3',
+  tool: 'get_page_content',
+  input: {
+    reasoning: 'Testing search for review elements on product page',
+    searchQuery: 'review',
+  },
+  validation: {
+    type: 'llm-judge',
+    llmJudge: {
+      criteria: [
+        'Tool returned matches array',
+        'Matches contain review-related elements',
+        'Found elements like "reviews", "customer reviews", or rating-related text',
+        'Context field shows surrounding accessibility tree structure',
+      ],
+      visualVerification: {
+        enabled: true,
+        captureBeforeAction: true,
+        captureAfterAction: false,
+        verificationPrompts: [
+          'Verify Amazon product page loaded with reviews section',
+        ],
+      },
+    },
+  },
+  metadata: {
+    tags: ['tool', 'get-page-content', 'search', 'amazon', 'reviews'],
+    timeout: 60000,
+    flaky: true,
+  },
+};
+
+export const getPageContentSearchNoResultsTest: TestCase<GetPageContentArgs> = {
+  id: 'tool-get-page-content-search-004',
+  name: 'Get Page Content - No Results Graceful Handling',
+  description: 'Test searchQuery returns empty array gracefully when no matches found',
+  url: 'https://the-internet.herokuapp.com/',
+  tool: 'get_page_content',
+  input: {
+    reasoning: 'Testing graceful handling when search finds no matches',
+    searchQuery: 'xyznonexistent123abcdef',
+  },
+  validation: {
+    type: 'llm-judge',
+    llmJudge: {
+      criteria: [
+        'Tool returned a result without error',
+        'matches array is empty or totalMatches is 0',
+        'Tool handled no-results case gracefully',
+        'Response includes simplified message about zero matches',
+      ],
+      visualVerification: {
+        enabled: false,
+        captureBeforeAction: false,
+        captureAfterAction: false,
+        verificationPrompts: [],
+      },
+    },
+  },
+  metadata: {
+    tags: ['tool', 'get-page-content', 'search', 'edge-case', 'no-results'],
+    timeout: 30000,
+  },
+};
+
+/**
+ * All GetPageContent search tests
+ */
+export const getPageContentSearchTests: TestCase<GetPageContentArgs>[] = [
+  getPageContentSearchBasicTest,
+  getPageContentSearchAmazonTest,
+  getPageContentSearchReviewsTest,
+  getPageContentSearchNoResultsTest,
+];
+
+// ============================================================================
 // Exported Test Collections
 // ============================================================================
 
@@ -1053,4 +1216,5 @@ export const cdpToolTests = [
   ...nodeIdsToUrlsToolTests,
   ...networkAnalysisToolTests,
   ...objectiveActionToolTests,
+  ...getPageContentSearchTests,
 ];

@@ -3,35 +3,32 @@
 // found in the LICENSE file.
 
 import * as Protocol from '../../../generated/protocol.js';
-import * as Utils from '../common/utils.js';
+import * as UtilsUniversal from '../common/utils-universal.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
-import { waitForPageLoad, type Tool, type LLMContext } from './Tools.js';
+import { type Tool, type LLMContext } from './Tools.js';
 import type { LLMProvider } from '../LLM/LLMTypes.js';
 import { ContentChunker } from '../utils/ContentChunker.js';
+import { getAdapter } from '../cdp/getAdapter.js';
+import type { CDPSessionAdapter } from '../cdp/CDPSessionAdapter.js';
 
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
 
-// Lazy-loaded browser-only dependencies
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
+// Lazy-loaded browser-only dependencies for API key fallback
 let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
-let browserDepsLoaded = false;
+let agentServiceLoaded = false;
 
-async function ensureBrowserDeps(): Promise<boolean> {
+async function ensureAgentService(): Promise<boolean> {
   if (isNodeEnvironment) return false;
-  if (!browserDepsLoaded) {
-    browserDepsLoaded = true;
+  if (!agentServiceLoaded) {
+    agentServiceLoaded = true;
     try {
-      const [sdkModule, agentServiceModule] = await Promise.all([
-        import('../../../core/sdk/sdk.js'),
-        import('../core/AgentService.js'),
-      ]);
-      SDK = sdkModule;
+      const agentServiceModule = await import('../core/AgentService.js');
       AgentService = agentServiceModule.AgentService;
     } catch { return false; }
   }
-  return SDK !== null;
+  return AgentService !== null;
 }
 
 const logger = createLogger('Tool:HTMLToMarkdown');
@@ -94,8 +91,11 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
 
     // Get API key from context first, fallback to AgentService in browser
     let apiKey = ctx?.apiKey;
-    if (!apiKey && !isNodeEnvironment && AgentService) {
-      apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+    if (!apiKey && !isNodeEnvironment) {
+      await ensureAgentService();
+      if (AgentService) {
+        apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+      }
     }
 
     // Get provider from context
@@ -113,29 +113,19 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
     }
 
     try {
-      // *** Add wait for page load ***
-      if (!(await ensureBrowserDeps()) || !SDK) {
+      // Get CDP adapter (works in both DevTools and eval runner)
+      const adapter = await getAdapter(ctx);
+      if (!adapter) {
         return {
           success: false,
           markdownContent: null,
-          error: 'SDK not available (Node.js environment)'
+          error: 'No browser connection available'
         };
-      }
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-      if (!target) {
-        throw new Error('No page target available');
-      }
-      try {
-        logger.info('Checking page readiness', { timeoutMs: READINESS_TIMEOUT_MS });
-        await waitForPageLoad(target, READINESS_TIMEOUT_MS);
-        logger.info('Page is ready or timeout reached');
-      } catch (readinessError: any) {
-         logger.error('Page readiness check failed', { error: readinessError.message, stack: readinessError.stack });
       }
 
       // Get the page content from the accessibility tree
       logger.info('Getting page content from accessibility tree');
-      const content = await this.getPageContent(target);
+      const content = await this.getPageContent(adapter);
 
       if (!content) {
         return {
@@ -207,13 +197,9 @@ export class HTMLToMarkdownTool implements Tool<HTMLToMarkdownArgs, HTMLToMarkdo
   /**
    * Get page content from the accessibility tree
    */
-  private async getPageContent(target: any): Promise<string> {
-    if (!target) {
-      throw new Error('No page target available');
-    }
-
-    // Get accessibility tree using existing utility
-    const processedTreeResult = await Utils.getAccessibilityTree(target);
+  private async getPageContent(adapter: CDPSessionAdapter): Promise<string> {
+    // Get accessibility tree using universal utility
+    const processedTreeResult = await UtilsUniversal.getAccessibilityTree(adapter);
     return processedTreeResult.simplified;
   }
 

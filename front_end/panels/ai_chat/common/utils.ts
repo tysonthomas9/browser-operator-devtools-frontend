@@ -7,6 +7,22 @@
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file at https://github.com/browserbase/stagehand/blob/main/LICENSE
 
+/**
+ * @deprecated This file is deprecated. Use utils-universal.ts instead.
+ *
+ * This SDK-only implementation is being phased out in favor of the universal
+ * adapter-based utilities in utils-universal.ts, which work in both DevTools
+ * and eval runner (Node.js) contexts.
+ *
+ * Migration guide:
+ * - Replace: import * as Utils from './utils.js'
+ * - With:    import * as UtilsUniversal from './utils-universal.js'
+ * - Replace: Utils.getAccessibilityTree(target)
+ * - With:    UtilsUniversal.getAccessibilityTree(adapter)
+ *
+ * Use getAdapter(ctx) from '../cdp/getAdapter.js' to get the CDP adapter.
+ */
+
 import type * as SDK from '../../../core/sdk/sdk.js';
 import * as Protocol from '../../../generated/protocol.js';
 import { createLogger } from '../core/Logger.js';

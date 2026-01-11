@@ -263,6 +263,48 @@ export class AgentRunner {
   }
 
   /**
+   * Prune old accessibility tree results to save tokens.
+   * Keeps only the last 2 get_page_content results intact.
+   * Older results are replaced with a redaction notice.
+   *
+   * This prevents context overflow when the agent repeatedly calls get_page_content
+   * on large pages, as each call can add 40k+ tokens to the conversation history.
+   */
+  private static pruneAccessibilityTreeHistory(messages: ChatMessage[]): ChatMessage[] {
+    // Find all get_page_content tool results
+    const treeResultIndices: number[] = [];
+    messages.forEach((msg, i) => {
+      if (msg.entity === ChatMessageEntity.TOOL_RESULT &&
+          (msg as ToolResultMessage).toolName === 'get_page_content') {
+        treeResultIndices.push(i);
+      }
+    });
+
+    // If 2 or fewer, no pruning needed
+    if (treeResultIndices.length <= 2) {
+      return messages;
+    }
+
+    logger.info(`Pruning ${treeResultIndices.length - 2} old accessibility tree results to save tokens`);
+
+    // Clone messages and redact old tree results (keep last 2)
+    const indicesToRedact = new Set(treeResultIndices.slice(0, -2));
+    const pruned = messages.map((msg, i) => {
+      if (indicesToRedact.has(i)) {
+        const original = msg as ToolResultMessage;
+        return {
+          ...original,
+          resultText: '[Accessibility tree redacted to save tokens. Use get_page_content to fetch again if needed.]',
+          resultData: { redacted: true },
+        } as ToolResultMessage;
+      }
+      return msg;
+    });
+
+    return pruned;
+  }
+
+  /**
    * Compute the tool result text shown to the LLM for regular tool outputs (non-ConfigurableAgentResult).
    * Applies sanitization and chooses a placeholder if the result only contained an image payload.
    */
@@ -503,7 +545,16 @@ export class AgentRunner {
       maxIterations,
       modelUsed: modelName,
       iterationCount: 0,
-      descriptor: agentDescriptor
+      descriptor: agentDescriptor,
+      // Initialize native metrics tracking
+      metrics: {
+        llmCallCount: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        toolCallCount: 0,
+        toolCallsByName: {},
+      },
     };
 
     // Use local session variable instead of static
@@ -767,7 +818,10 @@ export class AgentRunner {
 
         const llm = LLMClient.getInstance();
         const provider = config.provider as LLMProvider;
-        const llmMessages = AgentRunner.convertToLLMMessages(messages);
+
+        // Prune old accessibility tree results to prevent context overflow
+        const prunedMessages = AgentRunner.pruneAccessibilityTreeHistory(messages);
+        const llmMessages = AgentRunner.convertToLLMMessages(prunedMessages);
 
         // Sanitize messages for model capabilities (strip images for non-vision models)
         let isVisionForMainCall = false;
@@ -794,10 +848,21 @@ export class AgentRunner {
           agentName: agentName,  // Pass agent identity for provider-specific routing
         });
 
+        // Extract token usage from rawResponse if available
+        const rawUsage = llmResponse.rawResponse?.usage;
+
+        // Accumulate LLM metrics in session
+        if (agentSession.metrics) {
+          agentSession.metrics.llmCallCount++;
+          if (rawUsage) {
+            agentSession.metrics.promptTokens += rawUsage.prompt_tokens || rawUsage.input_tokens || 0;
+            agentSession.metrics.completionTokens += rawUsage.completion_tokens || rawUsage.output_tokens || 0;
+            agentSession.metrics.totalTokens = agentSession.metrics.promptTokens + agentSession.metrics.completionTokens;
+          }
+        }
+
         // Complete the generation observation
         if (generationId && tracingContext?.traceId) {
-          // Extract token usage from rawResponse if available
-          const rawUsage = llmResponse.rawResponse?.usage;
           const usage = rawUsage ? {
             promptTokens: rawUsage.prompt_tokens || rawUsage.input_tokens || 0,
             completionTokens: rawUsage.completion_tokens || rawUsage.output_tokens || 0,
@@ -986,6 +1051,13 @@ export class AgentRunner {
                 : (llmResponse.reasoning?.summary || undefined)
             }
           });
+
+          // Accumulate tool call metrics
+          if (agentSession.metrics) {
+            agentSession.metrics.toolCallCount++;
+            agentSession.metrics.toolCallsByName[toolName] = (agentSession.metrics.toolCallsByName[toolName] || 0) + 1;
+          }
+
           logger.info(`${agentName} LLM requested tool: ${toolName}`);
 
           // Execute tool

@@ -284,6 +284,7 @@ export class TestRunner {
             retryCount,
             url: testCase.url,
           },
+          metrics: agentResult.metrics,
         };
 
         // End test logging
@@ -338,6 +339,71 @@ export class TestRunner {
   }
 
   /**
+   * Deterministic evaluation for search tool results
+   */
+  private evaluateSearchDeterministically(
+    testCase: TestCase,
+    agentResult: unknown
+  ): { passed: boolean; score: number; explanation: string; criteria: CriteriaResult[] } {
+    const criteria: CriteriaResult[] = [];
+    // The search tool result is in agentResult.output (from mapAgentResult)
+    const agent = agentResult as { output?: { results?: Array<{ title?: string; url?: string; snippet?: string; position?: number }> } };
+    const results = agent?.output?.results || [];
+    const minResults = (testCase.input as any)?.maxResults || 3;
+
+    // Check 1: Got results
+    criteria.push({
+      criterion: 'Extracted search results',
+      passed: results.length >= minResults,
+      explanation: `Got ${results.length} results (need ${minResults})`,
+    });
+
+    // Check 2: Each has title and URL (empty arrays should fail)
+    const hasFields = results.length > 0 && results.every(r => (r.title?.length || 0) > 0 && (r.url?.length || 0) > 0);
+    criteria.push({
+      criterion: 'Each result has title and URL',
+      passed: hasFields,
+      explanation: hasFields ? 'All results have title and URL' : 'Some results missing title or URL',
+    });
+
+    // Check 3: URLs are valid (empty arrays should fail)
+    const validUrls = results.length > 0 && results.every(r => {
+      try { new URL(r.url || ''); return true; } catch { return false; }
+    });
+    criteria.push({
+      criterion: 'URLs are valid',
+      passed: validUrls,
+      explanation: validUrls ? 'All URLs are valid' : 'Some URLs are invalid',
+    });
+
+    // Check 4: Has snippets (empty arrays should fail)
+    const hasSnippets = results.length > 0 && results.every(r => (r.snippet?.length || 0) > 20);
+    criteria.push({
+      criterion: 'Results have snippets',
+      passed: hasSnippets,
+      explanation: hasSnippets ? 'All results have snippets' : 'Some results missing snippets',
+    });
+
+    // Check 5: Ordered by position (empty arrays should fail)
+    const ordered = results.length > 0 && results.every((r, i) => r.position === i + 1);
+    criteria.push({
+      criterion: 'Results are ordered',
+      passed: ordered,
+      explanation: ordered ? 'Results correctly ordered' : 'Results not in order',
+    });
+
+    const passedCount = criteria.filter(c => c.passed).length;
+    const score = passedCount / criteria.length;
+
+    return {
+      passed: score === 1.0,
+      score,
+      explanation: `${passedCount}/${criteria.length} criteria passed`,
+      criteria,
+    };
+  }
+
+  /**
    * Evaluate test result with LLM Judge or assertion-based evaluation
    */
   private async evaluateResult(
@@ -350,6 +416,11 @@ export class TestRunner {
     explanation: string;
     criteria: CriteriaResult[];
   }> {
+    // For search tool tests, use deterministic evaluation
+    if (testCase.tool === 'search') {
+      return this.evaluateSearchDeterministically(testCase, agentResult);
+    }
+
     // For DOM tests, use assertion-based evaluation
     if (testCase.tool === 'dom_test' && agentResult && typeof agentResult === 'object') {
       const result = agentResult as { success?: boolean; output?: { assertions?: any[] }; error?: string };

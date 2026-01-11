@@ -120,7 +120,23 @@ Example workflow for Tab navigation:
 - Focus the first element: { "method": "focus", "nodeId": "0-100" }
 - Press Tab: { "method": "press", "nodeId": "0-100", "args": ["Tab"] }
 - Get page content to verify focus moved to next element
-- Press Enter on focused element: { "method": "press", "nodeId": "0-101", "args": ["Enter"] }`,
+- Press Enter on focused element: { "method": "press", "nodeId": "0-101", "args": ["Enter"] }
+
+## Accessibility Tree - Efficient Usage
+By default, get_page_content returns viewport-only content (~40k token max per chunk).
+
+### Search-first pattern (recommended for large pages):
+1. Search: get_page_content({ searchQuery: "search input" }) → returns matching element IDs only (lightweight)
+2. Focus: get_page_content({ focusElementId: "0-456" }) → returns element's subtree only
+3. Act: perform_action({ nodeId: "0-456", ... })
+
+### Parameters:
+- searchQuery: Find elements by role/name/text (returns IDs only, very lightweight)
+- focusElementId: Get subtree of specific element (e.g., modal, sidebar, form)
+- chunkIndex: Get additional chunks if tree was truncated
+- fullPage: true to include elements outside viewport
+
+Note: Older accessibility trees in conversation history are automatically redacted to save tokens. Use get_page_content to fetch current state when needed.`,
     tools: [
       'get_page_content',
       'perform_action',

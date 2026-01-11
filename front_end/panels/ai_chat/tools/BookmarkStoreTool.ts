@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as Utils from '../common/utils.js';
 import { createLogger } from '../core/Logger.js';
 import { HTMLToMarkdownTool } from './HTMLToMarkdownTool.js';
 import { VectorDBClient, type VectorDocument, type VectorStoreResponse } from './VectorDBClient.js';

@@ -11,6 +11,12 @@ import puppeteer, { type Browser, type Page, type CDPSession } from 'puppeteer-c
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+
+/** Default port to probe for existing browser */
+const DEFAULT_DEBUG_PORT = 9222;
+
+/** Timeout for probing existing browser (ms) */
+const PROBE_TIMEOUT = 2000;
 import { DirectCDPAdapter, type CDPClient } from '../../front_end/panels/ai_chat/cdp/DirectCDPAdapter.ts';
 import type { CDPSessionAdapter } from '../../front_end/panels/ai_chat/cdp/CDPSessionAdapter.ts';
 
@@ -35,6 +41,26 @@ export interface ExecutionContext {
   screenshotDir: string;
   /** Captured console errors from the page */
   consoleErrors: string[];
+}
+
+/**
+ * Probe if a browser is available on the given port
+ * Returns true if browser responds, false otherwise
+ */
+async function probeBrowserPort(port: number): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PROBE_TIMEOUT);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch {
+    clearTimeout(timeoutId);
+    return false;
+  }
 }
 
 /**
@@ -115,7 +141,7 @@ export class BrowserExecutor {
       fs.mkdirSync(this.config.screenshotDir, { recursive: true });
     }
 
-    // Connect to existing browser if port specified
+    // Connect to existing browser if port explicitly specified
     if (this.config.remoteDebuggingPort) {
       const browserURL = `http://127.0.0.1:${this.config.remoteDebuggingPort}`;
       console.log(`🔗 Connecting to existing browser: ${browserURL}`);
@@ -130,7 +156,23 @@ export class BrowserExecutor {
       return this.browser;
     }
 
-    // Launch new browser
+    // Try to connect to existing browser on default port
+    const hasExistingBrowser = await probeBrowserPort(DEFAULT_DEBUG_PORT);
+    if (hasExistingBrowser) {
+      const browserURL = `http://127.0.0.1:${DEFAULT_DEBUG_PORT}`;
+      console.log(`🔗 Found existing browser on port ${DEFAULT_DEBUG_PORT}, connecting...`);
+
+      this.browser = await puppeteer.connect({
+        browserURL,
+        defaultViewport: null,
+      });
+
+      this.isConnected = true;
+      console.log(`   ✅ Connected to existing browser`);
+      return this.browser;
+    }
+
+    // No existing browser found, launch new one
     const chromePath = this.config.chromePath || detectChromePath();
     console.log(`🌐 Launching browser: ${chromePath}`);
     console.log(`   Headless: ${this.config.headless}`);

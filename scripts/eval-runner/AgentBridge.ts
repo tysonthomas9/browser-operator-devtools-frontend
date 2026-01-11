@@ -6,7 +6,7 @@
  */
 
 import path from 'path';
-import type { TestCase, CLIOptions } from './types.ts';
+import type { TestCase, CLIOptions, ExecutionMetrics, ToolCallMetric, LLMCallMetric } from './types.ts';
 import type { ExecutionContext } from './BrowserExecutor.ts';
 import { DOMTestExecutor } from './DOMTestExecutor.ts';
 import type { DOMTestCase } from './test-cases/dom-tests.ts';
@@ -26,6 +26,8 @@ interface AgentResult {
   error?: string;
   actions?: ActionRecord[];
   iterations?: number;
+  /** Detailed execution metrics for comparison */
+  metrics?: ExecutionMetrics;
 }
 
 interface ActionRecord {
@@ -80,10 +82,14 @@ export class AgentBridge {
       return this.executeDOMTest(testCase as DOMTestCase, context);
     }
 
-    // Get the real DevTools agent from registry
-    const agent = ToolRegistry.getRegisteredTool(testCase.tool);
+    // Get the real DevTools agent from registry (use toolOverride if specified)
+    const toolName = this.options.toolOverride || testCase.tool;
+    if (this.options.toolOverride && this.options.toolOverride !== testCase.tool) {
+      logger?.logExecution(`Using tool override: ${this.options.toolOverride} (original: ${testCase.tool})`);
+    }
+    const agent = ToolRegistry.getRegisteredTool(toolName);
     if (!agent) {
-      const error = `Unknown agent: ${testCase.tool}. Available: ${ToolRegistry.getRegisteredToolNames().join(', ')}`;
+      const error = `Unknown agent: ${toolName}. Available: ${ToolRegistry.getRegisteredToolNames().join(', ')}`;
       logger?.logExecution(`Agent error: ${error}`);
       return {
         success: false,
@@ -207,6 +213,7 @@ export class AgentBridge {
 
     switch (testCase.tool) {
       case 'action_agent':
+      case 'action_agent_v0':
         // ActionAgent expects: { objective, reasoning, hint?, input_data? }
         return {
           objective: input.objective || input.query || '',
@@ -229,6 +236,18 @@ export class AgentBridge {
           query: input.query || '',
         };
 
+      case 'search':
+        // SearchTool expects: { query, site, maxResults?, strategy?, reasoning }
+        // Inject strategy from CLI options if not specified in test case
+        return {
+          query: input.query || '',
+          site: input.site || '',
+          maxResults: input.maxResults || 10,
+          strategy: input.strategy || this.options.searchStrategy,
+          reasoning: input.reasoning || 'Eval runner test',
+          forceRefresh: input.forceRefresh,
+        };
+
       default:
         // Pass through as-is for other agents
         return input;
@@ -244,7 +263,8 @@ export class AgentBridge {
       return {
         success: false,
         error: result.error,
-        iterations: result.agentSession?.iterations || 1,
+        iterations: result.agentSession?.iterationCount || 1,
+        metrics: this.buildMetrics(result),
       };
     }
 
@@ -272,7 +292,113 @@ export class AgentBridge {
       success: Boolean(success),
       output: result.output || result.message || result,
       actions,
-      iterations: result.agentSession?.iterations || 1,
+      iterations: result.agentSession?.iterationCount || 1,
+      metrics: this.buildMetrics(result),
+    };
+  }
+
+  /**
+   * Build execution metrics from agent session for comparison
+   */
+  private buildMetrics(result: any): ExecutionMetrics {
+    const session = result.agentSession;
+    const nativeMetrics = session?.metrics;
+
+    // Use native metrics if available (preferred - tracked during execution)
+    if (nativeMetrics) {
+      return {
+        toolCalls: [], // Detailed tool call list not needed for comparison
+        llmCalls: [],  // Detailed LLM call list not needed for comparison
+        totalToolCalls: nativeMetrics.toolCallCount || 0,
+        totalLLMCalls: nativeMetrics.llmCallCount || 0,
+        totalDurationMs: nativeMetrics.totalDurationMs || 0,
+        totalTokens: nativeMetrics.totalTokens || 0,
+        promptTokens: nativeMetrics.promptTokens || 0,
+        completionTokens: nativeMetrics.completionTokens || 0,
+        iterations: session?.iterationCount || 1,
+        toolCallsByName: nativeMetrics.toolCallsByName || {},
+      };
+    }
+
+    // Fallback: Reconstruct metrics from messages for backward compatibility
+    return this.reconstructMetricsFromMessages(result);
+  }
+
+  /**
+   * Reconstruct metrics from session messages (fallback for older sessions)
+   */
+  private reconstructMetricsFromMessages(result: any): ExecutionMetrics {
+    const toolCalls: ToolCallMetric[] = [];
+    const llmCalls: LLMCallMetric[] = [];
+    const toolCallsByName: Record<string, number> = {};
+
+    let totalTokens = 0;
+    let promptTokens = 0;
+    let completionTokens = 0;
+
+    // Extract tool calls from agent session messages
+    if (result.agentSession?.messages) {
+      // Build a map of tool call IDs to their results for duration tracking
+      const toolResultMap = new Map<string, any>();
+      for (const message of result.agentSession.messages) {
+        if (message.type === 'tool_result') {
+          const resultContent = message.content as any;
+          toolResultMap.set(resultContent.toolCallId, resultContent);
+        }
+      }
+
+      // Process tool calls
+      for (const message of result.agentSession.messages) {
+        if (message.type === 'tool_call') {
+          const toolCall = message.content as any;
+          const toolResult = toolResultMap.get(toolCall.toolCallId);
+          const toolName = toolCall.toolName || 'unknown';
+
+          toolCalls.push({
+            name: toolName,
+            durationMs: toolResult?.duration || 0,
+            success: !toolResult?.error,
+            error: toolResult?.error,
+          });
+
+          // Count by name
+          toolCallsByName[toolName] = (toolCallsByName[toolName] || 0) + 1;
+        }
+
+        // Extract LLM call metrics from assistant messages
+        if (message.type === 'assistant' && message.usage) {
+          const usage = message.usage;
+          llmCalls.push({
+            durationMs: message.duration || 0,
+            promptTokens: usage.promptTokens || usage.input_tokens || 0,
+            completionTokens: usage.completionTokens || usage.output_tokens || 0,
+            totalTokens: (usage.promptTokens || usage.input_tokens || 0) +
+                        (usage.completionTokens || usage.output_tokens || 0),
+            toolCallsRequested: message.toolCalls?.length || 0,
+          });
+
+          promptTokens += usage.promptTokens || usage.input_tokens || 0;
+          completionTokens += usage.completionTokens || usage.output_tokens || 0;
+        }
+      }
+    }
+
+    totalTokens = promptTokens + completionTokens;
+
+    // Calculate total duration from tool calls
+    const totalDurationMs = toolCalls.reduce((sum, tc) => sum + tc.durationMs, 0);
+
+    return {
+      toolCalls,
+      llmCalls,
+      totalToolCalls: toolCalls.length,
+      totalLLMCalls: llmCalls.length,
+      totalDurationMs,
+      totalTokens,
+      promptTokens,
+      completionTokens,
+      iterations: result.agentSession?.iterationCount || 1,
+      toolCallsByName,
     };
   }
 }

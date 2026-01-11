@@ -6,14 +6,19 @@ import { FetcherTool } from '../../tools/FetcherTool.js';
 import { FinalizeWithCritiqueTool } from '../../tools/FinalizeWithCritiqueTool.js';
 import { SchemaBasedExtractorTool } from '../../tools/SchemaBasedExtractorTool.js';
 import { StreamlinedSchemaExtractorTool } from '../../tools/StreamlinedSchemaExtractorTool.js';
+import { CachedSchemaExtractorTool } from '../../tools/CachedSchemaExtractorTool.js';
 import { BookmarkStoreTool } from '../../tools/BookmarkStoreTool.js';
 import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
 import { SearchMemoryTool, UpdateMemoryTool, ListMemoryBlocksTool, createMemoryAgentConfig } from '../../memory/index.js';
 import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool, RenderWebAppTool, GetWebAppDataTool, RemoveWebAppTool, CreateFileTool, UpdateFileTool, DeleteFileTool, ReadFileTool, ListFilesTool } from '../../tools/Tools.js';
+import { GetAccessibilityTreeToolV0 } from '../../tools/GetAccessibilityTreeToolV0.js';
 import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
 import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ReadabilityExtractorTool } from '../../tools/ReadabilityExtractorTool.js';
+import { SearchTool } from '../../tools/SearchTool.js';
+import { TryCachedActionTool } from '../../tools/TryCachedActionTool.js';
+// CachedFormFillTool removed - replaced by ActionAgentV2's XPath caching
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
 import { ThinkingTool } from '../../tools/ThinkingTool.js';
 import { SaveResearchReportTool } from '../../tools/SaveResearchReportTool.js';
@@ -24,6 +29,8 @@ import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigator
 import { createResearchAgentConfig } from './agents/ResearchAgent.js';
 import { createContentWriterAgentConfig } from './agents/ContentWriterAgent.js';
 import { createActionAgentConfig } from './agents/ActionAgent.js';
+import { createActionAgentV0Config } from './agents/ActionAgentV0.js';
+import { createActionAgentV2Config } from './agents/ActionAgentV2.js';
 import { createActionVerificationAgentConfig } from './agents/ActionVerificationAgent.js';
 import { createClickActionAgentConfig } from './agents/ClickActionAgent.js';
 import { createFormFillActionAgentConfig } from './agents/FormFillActionAgent.js';
@@ -57,6 +64,7 @@ export async function initializeConfiguredAgents(): Promise<void> {
   ToolRegistry.registerToolFactory('fetcher_tool', () => new FetcherTool());
   ToolRegistry.registerToolFactory('extract_data', () => new SchemaBasedExtractorTool());
   ToolRegistry.registerToolFactory('extract_schema_streamlined', () => new StreamlinedSchemaExtractorTool());
+  ToolRegistry.registerToolFactory('extract_cached', () => new CachedSchemaExtractorTool());
   ToolRegistry.registerToolFactory('finalize_with_critique', () => new FinalizeWithCritiqueTool());
   ToolRegistry.registerToolFactory('perform_action', () => new PerformActionTool());
   ToolRegistry.registerToolFactory('get_page_content', () => new GetAccessibilityTreeTool());
@@ -64,6 +72,9 @@ export async function initializeConfiguredAgents(): Promise<void> {
   ToolRegistry.registerToolFactory('take_screenshot', () => new TakeScreenshotTool());
   ToolRegistry.registerToolFactory('html_to_markdown', () => new HTMLToMarkdownTool());
   ToolRegistry.registerToolFactory('readability_extractor', () => new ReadabilityExtractorTool());
+  ToolRegistry.registerToolFactory('search', () => new SearchTool());
+  ToolRegistry.registerToolFactory('try_cached_action', () => new TryCachedActionTool());
+  // cached_form_fill removed - replaced by ActionAgentV2's XPath caching
   ToolRegistry.registerToolFactory('scroll_page', () => new ScrollPageTool());
   ToolRegistry.registerToolFactory('wait_for_page_load', () => new WaitTool());
   ToolRegistry.registerToolFactory('thinking', () => new ThinkingTool());
@@ -120,6 +131,17 @@ export async function initializeConfiguredAgents(): Promise<void> {
   const actionAgentConfig = createActionAgentConfig();
   const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
+
+  // Create and register Action Agent V0 (baseline for comparison)
+  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
+  const actionAgentV0Config = createActionAgentV0Config();
+  const actionAgentV0 = new ConfigurableAgentTool(actionAgentV0Config);
+  ToolRegistry.registerToolFactory('action_agent_v0', () => actionAgentV0);
+
+  // Create and register Action Agent V2 (with XPath caching for A/B testing)
+  const actionAgentV2Config = createActionAgentV2Config();
+  const actionAgentV2 = new ConfigurableAgentTool(actionAgentV2Config);
+  ToolRegistry.registerToolFactory('action_agent_v2', () => actionAgentV2);
 
   // Create and register Action Verification Agent
   const actionVerificationAgentConfig = createActionVerificationAgentConfig();

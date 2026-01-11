@@ -134,10 +134,10 @@ export const ecommerceActionTest: TestCase<ActionAgentArgs> = {
   id: 'action-agent-ecommerce-001',
   name: 'Add Product to Cart',
   description: 'Test clicking "Add to Cart" button on an e-commerce product page',
-  url: 'https://www.homedepot.com/p/Husky-20-Gal-Professional-Duty-Waterproof-Storage-Container-with-Hinged-Lid-in-Red-249160/313799634',
+  url: 'https://www.homedepot.com/p/Leviton-Decora-Smart-Wi-Fi-Dimmer-Switch-in-White-Works-With-Google-Alexa-HomeKit-and-Anywhere-Companions-R02-D26HD-1RW/315781986',
   tool: 'action_agent',
   input: {
-    objective: 'Click the "Add to Cart" button for this storage container',
+    objective: 'Click the "Add to Cart" button for this dimmer switch',
     reasoning: 'Testing e-commerce interaction with product cart functionality'
   },
   validation: {
