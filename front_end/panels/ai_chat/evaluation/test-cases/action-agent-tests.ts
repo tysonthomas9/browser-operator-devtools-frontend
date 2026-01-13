@@ -1300,6 +1300,81 @@ export const searchFilterTest: TestCase<ActionAgentArgs> = {
   }
 };
 
+// Login form with submit test (from the-internet.herokuapp.com)
+export const loginFormWithSubmitTest: TestCase<ActionAgentArgs> = {
+  id: 'action-agent-login-002',
+  name: 'Fill and submit login form',
+  description: 'Fill out a login form with username and password, then submit',
+  url: 'https://the-internet.herokuapp.com/login',
+  tool: 'action_agent',
+  input: {
+    objective: 'Fill the username field with "tomsmith" and the password field with "SuperSecretPassword!" then click the Login button',
+    reasoning: 'Testing form fill and submit capability',
+    hint: 'The form has username and password input fields. These are the valid credentials for this test page.',
+  },
+  validation: {
+    type: 'llm-judge',
+    llmJudge: {
+      criteria: [
+        'Located the username input field',
+        'Username field was filled with "tomsmith"',
+        'Password field was filled with "SuperSecretPassword!"',
+        'Login button was clicked and page changed',
+      ],
+      visualVerification: {
+        enabled: true,
+        captureBeforeAction: true,
+        captureAfterAction: true,
+        verificationPrompts: [
+          'Verify the form fields were filled correctly',
+          'Confirm the login was successful',
+          'Check for success message or secure area page',
+        ],
+      },
+    },
+  },
+  metadata: {
+    tags: ['action', 'form', 'fill', 'input', 'login', 'submit', 'the-internet'],
+  },
+};
+
+// Heroku checkbox toggle test
+export const herokuCheckboxToggleTest: TestCase<ActionAgentArgs> = {
+  id: 'action-agent-checkbox-003',
+  name: 'Toggle Heroku checkbox',
+  description: 'Toggle a checkbox to change its state on the-internet.herokuapp.com',
+  url: 'https://the-internet.herokuapp.com/checkboxes',
+  tool: 'action_agent',
+  input: {
+    objective: 'Click checkbox 1 to toggle its checked state',
+    reasoning: 'Testing interactive checkbox toggle capability',
+    hint: 'There are two checkboxes on the page. Click the first one to toggle it.',
+  },
+  validation: {
+    type: 'llm-judge',
+    llmJudge: {
+      criteria: [
+        'Located the first checkbox element',
+        'Successfully clicked the checkbox',
+        'Checkbox state changed (checked->unchecked or unchecked->checked)',
+        'Visual feedback reflects the new state',
+      ],
+      visualVerification: {
+        enabled: true,
+        captureBeforeAction: true,
+        captureAfterAction: true,
+        verificationPrompts: [
+          'Compare before/after to confirm checkbox state changed',
+          'Verify the checkbox visual state is different',
+        ],
+      },
+    },
+  },
+  metadata: {
+    tags: ['action', 'checkbox', 'toggle', 'interactive', 'the-internet'],
+  },
+};
+
 // All action agent tests
 export const actionAgentTests: TestCase<ActionAgentArgs>[] = [
   // Original tests
@@ -1351,9 +1426,13 @@ export const actionAgentTests: TestCase<ActionAgentArgs>[] = [
   
   // Keyboard Navigation tests
   keyboardNavTest,
-  
+
   // Advanced State tests
-  searchFilterTest
+  searchFilterTest,
+
+  // Heroku/The-Internet tests (moved from shadow-dom tests)
+  loginFormWithSubmitTest,
+  herokuCheckboxToggleTest,
 ];
 
 // Get basic tests for quick validation

@@ -43,6 +43,8 @@ export {
   videoPlayButtonTest,
   keyboardNavTest,
   searchFilterTest,
+  loginFormWithSubmitTest,
+  herokuCheckboxToggleTest,
 } from './action-agent-tests.js';
 
 // ActionAgent Shadow DOM Tests
@@ -51,10 +53,8 @@ export {
   shadowClickOpenTest,
   shadowClickClosedTest,
   shadowNestedClickTest,
-  shadowFormFillTest,
   githubSearchShadowTest,
   shadowCustomSelectTest,
-  shadowToggleTest,
 } from './action-agent-shadow-dom-tests.js';
 
 // ActionAgent Iframe Tests

@@ -5,7 +5,7 @@
 import type {TestCase} from '../framework/types.js';
 
 export interface WebTaskAgentArgs {
-  objective: string;
+  task: string;
   reasoning?: string;
   context?: Record<string, unknown>;
 }
@@ -16,47 +16,51 @@ export interface WebTaskAgentArgs {
 // ============================================================================
 
 /**
- * Test completing a booking workflow through an embedded iframe widget.
+ * Test completing a payment flow through Stripe demo (real iframe).
  */
 export const bookingWidgetIframeTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-iframe-001',
-  name: 'Complete booking in iframe widget',
-  description: 'Book appointment through embedded iframe booking widget',
-  url: 'https://test-pages.example.com/booking-widget.html',
+  name: 'Complete Stripe payment demo',
+  description: 'Complete payment through Stripe demo with embedded payment form',
+  url: 'https://stripe-payments-demo.appspot.com/',
   tool: 'web_task_agent',
   input: {
-    objective: 'Book an appointment for tomorrow at 2 PM using the booking widget',
-    reasoning: 'Testing multi-step booking workflow within an embedded iframe',
+    task: 'Complete the payment demo using test card 4242424242424242, expiry 12/34, CVC 123, and email test@example.com',
+    reasoning: 'Testing payment form interaction within cross-origin iframe on Stripe demo',
   },
   validation: {
     type: 'llm-judge',
     llmJudge: {
       criteria: [
-        'Identified the booking iframe on the page',
-        'Selected the correct date (tomorrow)',
-        'Selected the 2 PM time slot',
-        'Confirmed the booking',
-        'Verified confirmation message appeared',
+        'Navigated to Stripe payments demo page',
+        'Located the payment form (may be in iframe)',
+        'Filled card number with 4242424242424242',
+        'Filled expiry with 12/34 and CVC with 123',
+        'Entered email address',
+        'Submitted the payment form',
+        'Payment was processed or confirmation shown',
       ],
       visualVerification: {
         enabled: true,
         captureBeforeAction: true,
         captureAfterAction: true,
         verificationPrompts: [
-          'Verify the booking widget is visible and interactive',
-          'Confirm date selection was made correctly',
-          'Check that booking confirmation is displayed',
+          'Verify the payment form is visible',
+          'Confirm card details were entered',
+          'Check for payment confirmation or success indicator',
         ],
       },
     },
   },
   metadata: {
-    tags: ['web-task', 'iframe', 'booking', 'workflow', 'form'],
+    tags: ['web-task', 'iframe', 'payment', 'stripe', 'form'],
+    timeout: 60000,
   },
 };
 
 /**
  * Test completing a payment flow through a secure cross-origin iframe.
+ * SKIPPED: Duplicate of iframe-001 (Stripe demo)
  */
 export const paymentGatewayIframeTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-iframe-002',
@@ -64,8 +68,9 @@ export const paymentGatewayIframeTest: TestCase<WebTaskAgentArgs> = {
   description: 'Fill payment form in cross-origin secure iframe',
   url: 'https://test-pages.example.com/checkout.html',
   tool: 'web_task_agent',
+  skip: true,
   input: {
-    objective: 'Complete the payment with card number 4242424242424242, expiry 12/25, CVV 123',
+    task: 'Complete the payment with card number 4242424242424242, expiry 12/25, CVV 123',
     reasoning: 'Testing payment form interaction within cross-origin iframe',
   },
   validation: {
@@ -99,6 +104,7 @@ export const paymentGatewayIframeTest: TestCase<WebTaskAgentArgs> = {
 
 /**
  * Test editing content in Google Docs (complex iframe + shadow DOM).
+ * SKIPPED: Requires authentication
  */
 export const googleDocsEditingTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-iframe-003',
@@ -106,8 +112,9 @@ export const googleDocsEditingTest: TestCase<WebTaskAgentArgs> = {
   description: 'Navigate and edit content in Google Docs (complex iframe + shadow DOM)',
   url: 'https://docs.google.com/document/d/test-doc/edit',
   tool: 'web_task_agent',
+  skip: true,
   input: {
-    objective: 'Add the text "Hello World" at the beginning of the document',
+    task: 'Add the text "Hello World" at the beginning of the document',
     reasoning: 'Testing complex iframe and content editable interactions in Google Docs',
   },
   validation: {
@@ -149,7 +156,7 @@ export const airlineBookingAnaTest: TestCase<WebTaskAgentArgs> = {
   url: 'https://www.ana.co.jp/en/us/',
   tool: 'web_task_agent',
   input: {
-    objective: 'Search for a round-trip flight from New York (JFK) to Tokyo (NRT) for next month',
+    task: 'Search for a round-trip flight from Seattle (SEA) to Tokyo (NRT), departing March 20, 2026 and returning March 30, 2026, for 1 adult passenger',
     reasoning: 'Testing real-world airline booking with complex iframe and widget structure',
   },
   validation: {
@@ -184,6 +191,7 @@ export const airlineBookingAnaTest: TestCase<WebTaskAgentArgs> = {
 
 /**
  * Test filling an embedded survey form in an iframe.
+ * SKIPPED: Fake URL - no good public alternative
  */
 export const embeddedSurveyIframeTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-iframe-005',
@@ -191,8 +199,9 @@ export const embeddedSurveyIframeTest: TestCase<WebTaskAgentArgs> = {
   description: 'Fill out a multi-page survey embedded in an iframe',
   url: 'https://test-pages.example.com/survey-embed.html',
   tool: 'web_task_agent',
+  skip: true,
   input: {
-    objective: 'Complete the customer satisfaction survey with rating 5, positive feedback "Great service!", and submit it',
+    task: 'Complete the customer satisfaction survey with rating 5, positive feedback "Great service!", and submit it',
     reasoning: 'Testing multi-page form workflow within an embedded iframe',
   },
   validation: {
@@ -224,43 +233,43 @@ export const embeddedSurveyIframeTest: TestCase<WebTaskAgentArgs> = {
 };
 
 /**
- * Test interacting with an embedded map widget.
+ * Test interacting with Starbucks store locator (real map widget).
  */
 export const embeddedMapWidgetTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-iframe-006',
-  name: 'Interact with embedded map',
-  description: 'Search for a location and get directions in an embedded Google Maps iframe',
-  url: 'https://test-pages.example.com/store-locator.html',
+  name: 'Starbucks store locator',
+  description: 'Search for Starbucks stores using embedded map',
+  url: 'https://www.starbucks.com/store-locator',
   tool: 'web_task_agent',
   input: {
-    objective: 'Find the nearest store location to "San Francisco" and get directions',
-    reasoning: 'Testing map widget interactions within an embedded iframe',
+    task: 'Search for Starbucks stores near "San Francisco, CA" and find store hours for the first result',
+    reasoning: 'Testing map widget and store locator interactions',
   },
   validation: {
     type: 'llm-judge',
     llmJudge: {
       criteria: [
-        'Located the map iframe or widget',
-        'Entered "San Francisco" as the search location',
-        'Store locations were displayed on the map',
-        'Selected the nearest store',
-        'Directions or store details were shown',
+        'Navigated to Starbucks store locator page',
+        'Entered "San Francisco, CA" in the search field',
+        'Store locations were displayed on the map or list',
+        'Selected or viewed the first store result',
+        'Store hours or details were shown',
       ],
       visualVerification: {
         enabled: true,
         captureBeforeAction: true,
         captureAfterAction: true,
         verificationPrompts: [
-          'Verify map is visible and interactive',
-          'Confirm store locations are marked',
-          'Check that directions or details are displayed',
+          'Verify store locator page loaded',
+          'Confirm store locations are displayed',
+          'Check that store hours or details are visible',
         ],
       },
     },
   },
   metadata: {
-    tags: ['web-task', 'iframe', 'map', 'location', 'widget'],
-    timeout: 45000,
+    tags: ['web-task', 'iframe', 'map', 'starbucks', 'store-locator'],
+    timeout: 60000,
   },
 };
 
@@ -271,6 +280,7 @@ export const embeddedMapWidgetTest: TestCase<WebTaskAgentArgs> = {
 
 /**
  * Test extracting data from multiple frames using hybrid snapshot.
+ * SKIPPED: Fake URL - no good public alternative
  */
 export const multiFrameExtractionTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-hybrid-001',
@@ -278,8 +288,9 @@ export const multiFrameExtractionTest: TestCase<WebTaskAgentArgs> = {
   description: 'Use hybrid snapshot to extract content from main frame and iframes',
   url: 'https://test-pages.example.com/multi-frame-content.html',
   tool: 'web_task_agent',
+  skip: true,
   input: {
-    objective: 'Extract all product names and prices from the page, including those displayed in iframes',
+    task: 'Extract all product names and prices from the page, including those displayed in iframes',
     reasoning: 'Testing hybrid accessibility tree for cross-frame content extraction',
     context: {
       extractionMode: 'multi-frame',
@@ -314,6 +325,7 @@ export const multiFrameExtractionTest: TestCase<WebTaskAgentArgs> = {
 
 /**
  * Test workflow using EncodedId for precise element targeting.
+ * SKIPPED: Fake URL - no good public alternative
  */
 export const encodedIdWorkflowTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-hybrid-002',
@@ -321,8 +333,9 @@ export const encodedIdWorkflowTest: TestCase<WebTaskAgentArgs> = {
   description: 'Complete multi-step workflow referencing elements by EncodedId from accessibility tree',
   url: 'https://test-pages.example.com/encoded-id-workflow.html',
   tool: 'web_task_agent',
+  skip: true,
   input: {
-    objective: 'Fill the registration form and submit it, using the accessibility tree for precise element targeting',
+    task: 'Fill the registration form and submit it, using the accessibility tree for precise element targeting',
     reasoning: 'Testing EncodedId-based element resolution for reliable form interactions',
     context: {
       useEncodedIdTargeting: true,
@@ -357,6 +370,7 @@ export const encodedIdWorkflowTest: TestCase<WebTaskAgentArgs> = {
 
 /**
  * Test navigating dashboard with multiple iframe panels.
+ * SKIPPED: Fake URL - no good public alternative
  */
 export const dashboardMultiIframeTest: TestCase<WebTaskAgentArgs> = {
   id: 'web-task-iframe-007',
@@ -364,8 +378,9 @@ export const dashboardMultiIframeTest: TestCase<WebTaskAgentArgs> = {
   description: 'Interact with a dashboard that has multiple iframe panels',
   url: 'https://test-pages.example.com/dashboard-panels.html',
   tool: 'web_task_agent',
+  skip: true,
   input: {
-    objective: 'Click the "Refresh" button in the analytics panel, then view the sales chart in the reports panel',
+    task: 'Click the "Refresh" button in the analytics panel, then view the sales chart in the reports panel',
     reasoning: 'Testing navigation and interaction across multiple iframe panels',
   },
   validation: {

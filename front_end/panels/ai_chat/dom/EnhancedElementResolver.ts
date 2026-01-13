@@ -96,10 +96,15 @@ async function resolveWithPiercerEnhanced(
 /**
  * Resolve an element by EncodedId.
  * The EncodedId format is "frameOrdinal-backendNodeId".
+ *
+ * @param target - The SDK target
+ * @param encodedId - The encoded element ID
+ * @param cachedRegistry - Optional pre-built FrameRegistry to avoid expensive recreation
  */
 export async function resolveByEncodedId(
   target: SDK.Target.Target,
   encodedId: EncodedId | string,
+  cachedRegistry?: FrameRegistry,
 ): Promise<EnhancedResolutionResult> {
   const parsed = parseEncodedId(encodedId);
   if (!parsed) {
@@ -113,9 +118,11 @@ export async function resolveByEncodedId(
   const {frameOrdinal, backendNodeId} = parsed;
 
   try {
-    // Build frame registry to find the correct frame
-    const frameRegistry = new FrameRegistry(target);
-    await frameRegistry.collectFrames();
+    // Use cached registry or build a new one
+    const frameRegistry = cachedRegistry ?? new FrameRegistry(target);
+    if (!cachedRegistry) {
+      await frameRegistry.collectFrames();
+    }
 
     const frameInfo = frameRegistry.getFrameByOrdinal(frameOrdinal);
     if (!frameInfo) {
@@ -127,6 +134,10 @@ export async function resolveByEncodedId(
     }
 
     // Resolve the node by backend ID
+    // Note: For cross-frame resolution in OOPIFs, executionContextId may be needed.
+    // However, backendNodeId is globally unique and should resolve correctly
+    // in most cases. If issues arise with OOPIF elements, consider adding
+    // executionContextId to FrameInfo and passing it here.
     const domAgent = target.domAgent();
     const resolveResponse = await domAgent.invoke_resolveNode({
       backendNodeId: backendNodeId as Protocol.DOM.BackendNodeId,

@@ -90,16 +90,25 @@ export async function setupToolsForEval(): Promise<void> {
   // Register cache-check tool for ActionAgentV2
   ToolRegistry.registerToolFactory('try_cached_action', () => new TryCachedActionTool());
 
-  // Register Action Agent
-  const actionAgentConfig = createActionAgentConfig();
-  const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
+  // Register V0 baseline tool
+  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
+
+  // Register Action Agent - V0 as default
+  const actionAgentV0Config = createActionAgentV0Config();
+  const actionAgent = new ConfigurableAgentTool({
+    ...actionAgentV0Config,
+    name: 'action_agent',
+  });
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
 
-  // Register V0 baseline versions for comparison testing
-  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
-  const actionAgentV0Config = createActionAgentV0Config();
+  // Also register under v0 name for explicit override
   const actionAgentV0 = new ConfigurableAgentTool(actionAgentV0Config);
   ToolRegistry.registerToolFactory('action_agent_v0', () => actionAgentV0);
+
+  // Register V1 for comparison testing
+  const actionAgentV1Config = createActionAgentConfig();
+  const actionAgentV1 = new ConfigurableAgentTool(actionAgentV1Config);
+  ToolRegistry.registerToolFactory('action_agent_v1', () => actionAgentV1);
 
   // Register Action Agent V2 (with XPath caching for A/B testing)
   const actionAgentV2Config = createActionAgentV2Config();

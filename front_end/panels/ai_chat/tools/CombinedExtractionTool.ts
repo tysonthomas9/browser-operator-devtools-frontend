@@ -14,16 +14,19 @@ let browserDepsLoaded = false;
 
 async function ensureBrowserDeps(): Promise<boolean> {
   if (isNodeEnvironment) return false;
-  if (!browserDepsLoaded) {
-    browserDepsLoaded = true;
-    try {
-      const [sdkModule, agentServiceModule] = await Promise.all([
-        import('../../../core/sdk/sdk.js'),
-        import('../core/AgentService.js'),
-      ]);
-      SDK = sdkModule;
-      AgentService = agentServiceModule.AgentService;
-    } catch { return false; }
+  if (browserDepsLoaded) {
+    return SDK !== null;
+  }
+  try {
+    const [sdkModule, agentServiceModule] = await Promise.all([
+      import('../../../core/sdk/sdk.js'),
+      import('../core/AgentService.js'),
+    ]);
+    SDK = sdkModule;
+    AgentService = agentServiceModule.AgentService;
+    browserDepsLoaded = true;  // Only set after successful import
+  } catch {
+    return false;
   }
   return SDK !== null;
 }

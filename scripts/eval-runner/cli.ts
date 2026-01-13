@@ -293,6 +293,7 @@ async function main() {
     .option('--judge-provider <provider>', 'LLM provider for judge (defaults to openai)', 'openai')
     .option('--judge-model <model>', 'Model for evaluation judge', 'gpt-4o')
     .option('--api-key <key>', 'LLM API key (or set OPENAI_API_KEY/CEREBRAS_API_KEY)')
+    .option('--judge-api-key <key>', 'API key for judge LLM (defaults to judge provider env var)')
 
     // Output
     .option('-f, --format <format>', 'Output format (console, json, markdown)', 'console')
@@ -361,7 +362,7 @@ async function main() {
     judgeProvider: opts.judgeProvider,
     judgeModel: opts.judgeModel,
     apiKey: getProviderConfig(opts.provider as LLMProvider, opts.apiKey).apiKey,
-    judgeApiKey: getProviderConfig(opts.judgeProvider as LLMProvider, opts.apiKey).apiKey,
+    judgeApiKey: getProviderConfig(opts.judgeProvider as LLMProvider, opts.judgeApiKey).apiKey,
     format: opts.format,
     output: opts.output,
     verbose: opts.verbose,

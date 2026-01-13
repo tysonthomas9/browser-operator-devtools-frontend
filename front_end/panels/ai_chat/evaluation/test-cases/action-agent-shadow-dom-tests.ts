@@ -138,47 +138,6 @@ export const shadowNestedClickTest: TestCase<ActionAgentArgs> = {
 };
 
 /**
- * Test filling a form - simplified to use standard login form.
- * Uses the-internet.herokuapp.com which provides stable test pages.
- */
-export const shadowFormFillTest: TestCase<ActionAgentArgs> = {
-  id: 'action-agent-shadow-004',
-  name: 'Fill login form',
-  description: 'Fill out a login form with username and password',
-  url: 'https://the-internet.herokuapp.com/login',
-  tool: 'action_agent',
-  input: {
-    objective: 'Fill the username field with "tomsmith" and the password field with "SuperSecretPassword!" then click the Login button',
-    reasoning: 'Testing form fill and submit capability',
-    hint: 'The form has username and password input fields. These are the valid credentials for this test page.',
-  },
-  validation: {
-    type: 'llm-judge',
-    llmJudge: {
-      criteria: [
-        'Located the username input field',
-        'Username field was filled with "tomsmith"',
-        'Password field was filled with "SuperSecretPassword!"',
-        'Login button was clicked and page changed',
-      ],
-      visualVerification: {
-        enabled: true,
-        captureBeforeAction: true,
-        captureAfterAction: true,
-        verificationPrompts: [
-          'Verify the form fields were filled correctly',
-          'Confirm the login was successful',
-          'Check for success message or secure area page',
-        ],
-      },
-    },
-  },
-  metadata: {
-    tags: ['action', 'form', 'fill', 'input', 'login', 'the-internet'],
-  },
-};
-
-/**
  * Test interacting with GitHub web components (real-world shadow DOM).
  */
 export const githubSearchShadowTest: TestCase<ActionAgentArgs> = {
@@ -260,52 +219,11 @@ export const shadowCustomSelectTest: TestCase<ActionAgentArgs> = {
   },
 };
 
-/**
- * Test interacting with checkboxes on the-internet.herokuapp.com.
- */
-export const shadowToggleTest: TestCase<ActionAgentArgs> = {
-  id: 'action-agent-shadow-007',
-  name: 'Toggle checkbox',
-  description: 'Toggle a checkbox to change its state',
-  url: 'https://the-internet.herokuapp.com/checkboxes',
-  tool: 'action_agent',
-  input: {
-    objective: 'Click checkbox 1 to toggle its checked state',
-    reasoning: 'Testing interactive checkbox toggle capability',
-    hint: 'There are two checkboxes on the page. Click the first one to toggle it.',
-  },
-  validation: {
-    type: 'llm-judge',
-    llmJudge: {
-      criteria: [
-        'Located the first checkbox element',
-        'Successfully clicked the checkbox',
-        'Checkbox state changed (checked->unchecked or unchecked->checked)',
-        'Visual feedback reflects the new state',
-      ],
-      visualVerification: {
-        enabled: true,
-        captureBeforeAction: true,
-        captureAfterAction: true,
-        verificationPrompts: [
-          'Compare before/after to confirm checkbox state changed',
-          'Verify the checkbox visual state is different',
-        ],
-      },
-    },
-  },
-  metadata: {
-    tags: ['action', 'checkbox', 'toggle', 'interactive', 'the-internet'],
-  },
-};
-
 // Export all shadow DOM action tests
 export const shadowDOMActionTests = [
   shadowClickOpenTest,
   shadowClickClosedTest,
   shadowNestedClickTest,
-  shadowFormFillTest,
   githubSearchShadowTest,
   shadowCustomSelectTest,
-  shadowToggleTest,
 ];

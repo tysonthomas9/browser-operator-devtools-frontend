@@ -251,6 +251,64 @@ export class BrowserExecutor {
   }
 
   /**
+   * Wait for page to have meaningful content loaded
+   * Uses content-based verification instead of just network idle
+   * @param page - Puppeteer page instance
+   * @param timeout - Maximum time to wait (ms)
+   * @returns true if page has content, false if timeout
+   */
+  async waitForPageReady(page: Page, timeout: number = 60000): Promise<boolean> {
+    const startTime = Date.now();
+    const checkInterval = 500;
+
+    while (Date.now() - startTime < timeout) {
+      try {
+        const isReady = await page.evaluate(() => {
+          const body = document.body;
+          if (!body) return false;
+
+          // Check for common loading indicators
+          const loadingIndicators = document.querySelectorAll(
+            '[class*="loading"], [class*="spinner"], [class*="skeleton"], ' +
+            '[aria-busy="true"], [data-loading="true"]'
+          );
+
+          // If loading indicators are visible, page isn't ready
+          for (const indicator of loadingIndicators) {
+            const style = window.getComputedStyle(indicator);
+            if (style.display !== 'none' && style.visibility !== 'hidden') {
+              return false;
+            }
+          }
+
+          // Check for meaningful content
+          const textContent = body.innerText?.trim() || '';
+          const hasText = textContent.length > 100;
+
+          // Check for interactive elements
+          const interactiveCount = document.querySelectorAll(
+            'a[href], button, input, select, textarea, [role="button"], [role="link"]'
+          ).length;
+          const hasInteractiveElements = interactiveCount > 3;
+
+          // Page is ready if it has both text content and interactive elements
+          return hasText && hasInteractiveElements;
+        });
+
+        if (isReady) {
+          return true;
+        }
+      } catch {
+        // Ignore evaluation errors (page might be navigating)
+      }
+
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+
+    return false;
+  }
+
+  /**
    * Navigate to a URL and wait for it to load
    * @param page - Puppeteer page instance
    * @param url - URL to navigate to
@@ -259,13 +317,34 @@ export class BrowserExecutor {
   async navigateTo(
     page: Page,
     url: string,
-    options?: { waitForSelector?: string; waitAfterNavigation?: number }
+    options?: {
+      waitForSelector?: string;
+      waitAfterNavigation?: number;
+      /** Use content-based verification instead of just network idle */
+      waitForContent?: boolean;
+      /** Timeout for content verification (default: 60000ms) */
+      contentTimeout?: number;
+    }
   ): Promise<void> {
     console.log(`   📍 Navigating to: ${url}`);
+
+    // Use domcontentloaded for faster initial response, then verify content
     await page.goto(url, {
-      waitUntil: 'networkidle0',
+      waitUntil: options?.waitForContent ? 'domcontentloaded' : 'networkidle0',
       timeout: this.config.timeout,
     });
+
+    // Content-based verification for slow-loading sites
+    if (options?.waitForContent) {
+      const contentTimeout = options.contentTimeout ?? 60000;
+      console.log(`   ⏳ Waiting for page content (up to ${contentTimeout / 1000}s)...`);
+      const isReady = await this.waitForPageReady(page, contentTimeout);
+      if (isReady) {
+        console.log(`   ✓ Page content loaded`);
+      } else {
+        console.log(`   ⚠️ Page content verification timed out`);
+      }
+    }
 
     // Wait for specific selector if provided (for dynamic content like modals)
     if (options?.waitForSelector) {
@@ -292,7 +371,12 @@ export class BrowserExecutor {
   async navigateToWithAdapter(
     context: ExecutionContext,
     url: string,
-    options?: { waitForSelector?: string; waitAfterNavigation?: number }
+    options?: {
+      waitForSelector?: string;
+      waitAfterNavigation?: number;
+      waitForContent?: boolean;
+      contentTimeout?: number;
+    }
   ): Promise<CDPSessionAdapter> {
     await this.navigateTo(context.page, url, options);
     // Return a new adapter with the updated URL

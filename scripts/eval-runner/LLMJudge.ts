@@ -144,6 +144,24 @@ Respond in JSON format:
   }
 
   /**
+   * Format image content based on provider
+   * Anthropic uses a different format than OpenAI-compatible APIs
+   */
+  private formatImageContent(base64Data: string): object {
+    if (this.config.provider === 'anthropic') {
+      return {
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/png', data: base64Data },
+      };
+    }
+    // OpenAI/Cerebras/LiteLLM format
+    return {
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${base64Data}` },
+    };
+  }
+
+  /**
    * Build messages with optional image content
    */
   private async buildMessages(
@@ -159,10 +177,7 @@ Respond in JSON format:
         type: 'text',
         text: '\n\n## Before Screenshot (state before action):',
       });
-      content.push({
-        type: 'image_url',
-        image_url: { url: `data:image/png;base64,${imageData}` },
-      });
+      content.push(this.formatImageContent(imageData));
     }
 
     if (screenshots.afterScreenshot && fs.existsSync(screenshots.afterScreenshot)) {
@@ -171,10 +186,7 @@ Respond in JSON format:
         type: 'text',
         text: '\n\n## After Screenshot (state after action):',
       });
-      content.push({
-        type: 'image_url',
-        image_url: { url: `data:image/png;base64,${imageData}` },
-      });
+      content.push(this.formatImageContent(imageData));
     }
 
     return [{ role: 'user', content }];

@@ -17,6 +17,7 @@ export interface TestCase<TInput = any> {
   tool: string; // Name of the tool to test
   input: TInput; // Tool-specific input
   validation: ValidationConfig;
+  skip?: boolean; // Skip this test case
   metadata: {
     tags: string[];
     timeout?: number;
