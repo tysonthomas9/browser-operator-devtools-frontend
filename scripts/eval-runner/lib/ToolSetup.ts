@@ -39,7 +39,7 @@ import { TryCachedActionTool } from '../../../front_end/panels/ai_chat/tools/Try
 
 // Import agent configs
 import { createActionAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgent.ts';
-import { createActionAgentV0Config } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgentV0.ts';
+import { createActionAgentV1Config } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgentV1.ts';
 import { createActionAgentV2Config } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ActionAgentV2.ts';
 import { createWebTaskAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/WebTaskAgent.ts';
 import { createResearchAgentConfig } from '../../../front_end/panels/ai_chat/agent_framework/implementation/agents/ResearchAgent.ts';
@@ -63,7 +63,7 @@ export async function setupToolsForEval(): Promise<void> {
   ToolRegistry.registerToolFactory('navigate_url', () => new NavigateURLTool());
   ToolRegistry.registerToolFactory('navigate_back', () => new NavigateBackTool());
   ToolRegistry.registerToolFactory('perform_action', () => new PerformActionTool());
-  ToolRegistry.registerToolFactory('get_page_content', () => new GetAccessibilityTreeTool());
+  ToolRegistry.registerToolFactory('get_page_content_v1', () => new GetAccessibilityTreeTool());
   ToolRegistry.registerToolFactory('get_visible_content', () => new GetVisibleAccessibilityTreeTool());
   ToolRegistry.registerToolFactory('search_content', () => new SearchContentTool());
   ToolRegistry.registerToolFactory('take_screenshot', () => new TakeScreenshotTool());
@@ -90,23 +90,16 @@ export async function setupToolsForEval(): Promise<void> {
   // Register cache-check tool for ActionAgentV2
   ToolRegistry.registerToolFactory('try_cached_action', () => new TryCachedActionTool());
 
-  // Register V0 baseline tool
-  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
+  // Register V0 baseline tool (now default 'get_page_content')
+  ToolRegistry.registerToolFactory('get_page_content', () => new GetAccessibilityTreeToolV0());
 
-  // Register Action Agent - V0 as default
-  const actionAgentV0Config = createActionAgentV0Config();
-  const actionAgent = new ConfigurableAgentTool({
-    ...actionAgentV0Config,
-    name: 'action_agent',
-  });
+  // Register Action Agent (default)
+  const actionAgentConfig = createActionAgentConfig();
+  const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
 
-  // Also register under v0 name for explicit override
-  const actionAgentV0 = new ConfigurableAgentTool(actionAgentV0Config);
-  ToolRegistry.registerToolFactory('action_agent_v0', () => actionAgentV0);
-
   // Register V1 for comparison testing
-  const actionAgentV1Config = createActionAgentConfig();
+  const actionAgentV1Config = createActionAgentV1Config();
   const actionAgentV1 = new ConfigurableAgentTool(actionAgentV1Config);
   ToolRegistry.registerToolFactory('action_agent_v1', () => actionAgentV1);
 

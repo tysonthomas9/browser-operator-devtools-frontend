@@ -2134,7 +2134,7 @@ export class GetAccessibilityTreeTool implements Tool<
   GetPageContentArgs,
   ChunkedAccessibilityTreeResult | ErrorResult
 > {
-  name = "get_page_content";
+  name = "get_page_content_v1";
   description =
     "Gets the accessibility tree of the current page. By default returns viewport-only content. Use searchQuery to find elements by role/name/text (lightweight). Use focusElementId to get subtree of a specific element. Large trees are automatically chunked (~30k tokens per chunk).";
 

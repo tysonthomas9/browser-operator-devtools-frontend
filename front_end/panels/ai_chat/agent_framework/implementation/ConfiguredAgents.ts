@@ -29,7 +29,7 @@ import { createDirectURLNavigatorAgentConfig } from './agents/DirectURLNavigator
 import { createResearchAgentConfig } from './agents/ResearchAgent.js';
 import { createContentWriterAgentConfig } from './agents/ContentWriterAgent.js';
 import { createActionAgentConfig } from './agents/ActionAgent.js';
-import { createActionAgentV0Config } from './agents/ActionAgentV0.js';
+import { createActionAgentV1Config } from './agents/ActionAgentV1.js';
 import { createActionAgentV2Config } from './agents/ActionAgentV2.js';
 import { createActionVerificationAgentConfig } from './agents/ActionVerificationAgent.js';
 import { createClickActionAgentConfig } from './agents/ClickActionAgent.js';
@@ -67,7 +67,7 @@ export async function initializeConfiguredAgents(): Promise<void> {
   ToolRegistry.registerToolFactory('extract_cached', () => new CachedSchemaExtractorTool());
   ToolRegistry.registerToolFactory('finalize_with_critique', () => new FinalizeWithCritiqueTool());
   ToolRegistry.registerToolFactory('perform_action', () => new PerformActionTool());
-  ToolRegistry.registerToolFactory('get_page_content', () => new GetAccessibilityTreeTool());
+  ToolRegistry.registerToolFactory('get_page_content_v1', () => new GetAccessibilityTreeTool());
   ToolRegistry.registerToolFactory('search_content', () => new SearchContentTool());
   ToolRegistry.registerToolFactory('take_screenshot', () => new TakeScreenshotTool());
   ToolRegistry.registerToolFactory('html_to_markdown', () => new HTMLToMarkdownTool());
@@ -127,19 +127,13 @@ export async function initializeConfiguredAgents(): Promise<void> {
   const contentWriterAgent = new ConfigurableAgentTool(contentWriterAgentConfig);
   ToolRegistry.registerToolFactory('content_writer_agent', () => contentWriterAgent);
 
-  ToolRegistry.registerToolFactory('get_page_content_v0', () => new GetAccessibilityTreeToolV0());
+  ToolRegistry.registerToolFactory('get_page_content', () => new GetAccessibilityTreeToolV0());
 
-  const actionAgentV0Config = createActionAgentV0Config();
-  const actionAgent = new ConfigurableAgentTool({
-    ...actionAgentV0Config,
-    name: 'action_agent',
-  });
+  const actionAgentConfig = createActionAgentConfig();
+  const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
 
-  const actionAgentV0 = new ConfigurableAgentTool(actionAgentV0Config);
-  ToolRegistry.registerToolFactory('action_agent_v0', () => actionAgentV0);
-
-  const actionAgentV1Config = createActionAgentConfig();
+  const actionAgentV1Config = createActionAgentV1Config();
   const actionAgentV1 = new ConfigurableAgentTool(actionAgentV1Config);
   ToolRegistry.registerToolFactory('action_agent_v1', () => actionAgentV1);
 

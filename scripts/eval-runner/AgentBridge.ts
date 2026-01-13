@@ -213,7 +213,8 @@ export class AgentBridge {
 
     switch (testCase.tool) {
       case 'action_agent':
-      case 'action_agent_v0':
+      case 'action_agent_v1':
+      case 'action_agent_v2':
         // ActionAgent expects: { objective, reasoning, hint?, input_data? }
         return {
           objective: input.objective || input.query || '',

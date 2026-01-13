@@ -28,7 +28,7 @@ const logger = createLogger("GetAccessibilityTreeToolV0");
  * Original implementation with simple interface, adapted for CDP adapter.
  */
 export class GetAccessibilityTreeToolV0 implements Tool<{ reasoning: string }, AccessibilityTreeResult | ErrorResult> {
-  name = 'get_page_content_v0';
+  name = 'get_page_content';
   description = 'V0 BASELINE: Gets the accessibility tree of the current page, providing a hierarchical structure of all accessible elements. Simple interface without search, focus, or chunking features.';
 
   async execute(args: { reasoning: string }, ctx?: LLMContext): Promise<AccessibilityTreeResult | ErrorResult> {

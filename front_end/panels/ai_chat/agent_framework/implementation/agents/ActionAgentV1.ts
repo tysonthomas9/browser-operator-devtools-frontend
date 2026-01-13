@@ -6,14 +6,16 @@ import { MODEL_SENTINELS } from "../../../core/Constants.js";
 import { AGENT_VERSION } from "./AgentVersion.js";
 import { createLogger } from "../../../core/Logger.js";
 
-const logger = createLogger('ActionAgent');
+const logger = createLogger('ActionAgentV1');
 
 /**
- * Create the configuration for the Action Agent
+ * Create the configuration for Action Agent V1
+ *
+ * V1 features enhanced accessibility tree with search/focus capabilities.
  */
-export function createActionAgentConfig(): AgentToolConfig {
+export function createActionAgentV1Config(): AgentToolConfig {
   return {
-    name: 'action_agent',
+    name: 'action_agent_v1',
     version: AGENT_VERSION,
     description: 'Executes a single, low-level browser action with enhanced targeting precision (such as clicking a button, filling a field, selecting an option, or scrolling) on the current web page, based on a clear, actionable objective. ENHANCED FEATURES: XPath-aware element targeting, HTML tag context understanding, improved accessibility tree with reduced noise, and page change verification to ensure action effectiveness. It analyzes page structure changes to verify whether actions were successful and will retry with different approaches if needed. Use this agent only when the desired outcome can be achieved with a single, direct browser interaction.',
     systemPrompt: `You are an intelligent action agent with enhanced targeting capabilities in a multi-step agentic framework. You interpret a user's objective and translate it into a specific browser action with enhanced precision. Your task is to:
@@ -32,11 +34,12 @@ When analyzing page structure, you have access to:
 - Clean accessibility tree with reduced noise for better focus
 
 ## Process Flow
-1. When given an objective, first analyze the page structure using get_page_content tool to access the enhanced accessibility tree or use extract_data to extract the specific element you need to interact with
+1. When given an objective, first analyze the page structure using get_page_content_v1 tool to access the enhanced accessibility tree or use extract_data to extract the specific element you need to interact with
 2. Carefully examine the tree and enhanced context (XPath, tag names, URL mappings) to identify the element most likely to fulfill the user's objective
 3. Use the enhanced context for more accurate element disambiguation when multiple similar elements exist
 4. Determine the appropriate action method based on the element type and objective:
    - For links, buttons: use 'click'
+   - For context menus: use 'rightClick' to trigger a right-click (context menu) event
    - For checkboxes: use 'check' (to check), 'uncheck' (to uncheck), or 'setChecked' (to set to specific state)
    - For radio buttons: use 'click'
    - For input fields: use 'fill' with appropriate text
@@ -86,19 +89,67 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
 - If pageChange shows no changes, immediately try an alternative approach
 
 ## Method Examples
-- perform_action with method='check' for checkboxes: { "method": "check", "nodeId": "0-123" }
-- perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": "0-456", "args": { "text": "United States" } }
-- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": "0-789", "args": { "checked": true } }
-- perform_action with method='setValue' for sliders/range inputs: { "method": "setValue", "nodeId": "0-567", "args": { "value": 75 } }`,
+**IMPORTANT: Always use EncodedId format (e.g., "0-123") from the accessibility tree, not plain numeric IDs.**
+- perform_action with method='click' for buttons/links: { "method": "click", "nodeId": "0-123" }
+- perform_action with method='rightClick' for context menus: { "method": "rightClick", "nodeId": "0-123" }
+- perform_action with method='check' for checkboxes: { "method": "check", "nodeId": "0-456" }
+- perform_action with method='selectOption' for dropdowns: { "method": "selectOption", "nodeId": "0-789", "args": { "text": "United States" } }
+- perform_action with method='setChecked' for specific checkbox state: { "method": "setChecked", "nodeId": "1-234", "args": { "checked": true } }
+- perform_action with method='setValue' for sliders/range inputs: { "method": "setValue", "nodeId": "0-567", "args": { "value": 75 } }
+- For elements in iframes, use the frame ordinal prefix (e.g., "1-456" for frame 1, "2-789" for frame 2)
+
+## Date/Calendar Widgets
+For date pickers and date range pickers:
+
+1. **Prefer direct input**: Use 'fill' to type the date directly
+   - Single date: { "method": "fill", "nodeId": "0-XXX", "args": { "text": "03/15/2024" } }
+   - Date range: { "method": "fill", "nodeId": "0-XXX", "args": { "text": "02/01/2024 - 02/28/2024" } }
+
+2. **Use calendar UI** when direct input fails or for nearby dates:
+   - Click input to open calendar
+   - Navigate using Prev/Next or month/year selectors
+   - Click the target day
+
+Avoid excessive calendar navigation - if target date is far away, use direct input.
+
+## Keyboard Navigation
+For keyboard-based interactions (Tab, Enter, arrow keys):
+
+1. **Check current focus**: The accessibility tree shows \`[focused]\` on the currently focused element
+2. **Focus an element**: Use method='focus' to explicitly set focus: { "method": "focus", "nodeId": "0-123" }
+3. **Press keys**: Use method='press' to send keystrokes: { "method": "press", "nodeId": "0-123", "args": ["Tab"] }
+4. **Verify focus moved**: After pressing Tab, re-fetch the page content to see which element now has \`[focused]\`
+
+Example workflow for Tab navigation:
+- Focus the first element: { "method": "focus", "nodeId": "0-100" }
+- Press Tab: { "method": "press", "nodeId": "0-100", "args": ["Tab"] }
+- Get page content to verify focus moved to next element
+- Press Enter on focused element: { "method": "press", "nodeId": "0-101", "args": ["Enter"] }
+
+## Accessibility Tree - Efficient Usage
+By default, get_page_content_v1 returns viewport-only content (~40k token max per chunk).
+
+### Search-first pattern (recommended for large pages):
+1. Search: get_page_content_v1({ searchQuery: "search input" }) → returns matching element IDs only (lightweight)
+2. Focus: get_page_content_v1({ focusElementId: "0-456" }) → returns element's subtree only
+3. Act: perform_action({ nodeId: "0-456", ... })
+
+### Parameters:
+- searchQuery: Find elements by role/name/text (returns IDs only, very lightweight)
+- focusElementId: Get subtree of specific element (e.g., modal, sidebar, form)
+- chunkIndex: Get additional chunks if tree was truncated
+- fullPage: true to include elements outside viewport
+
+Note: Older accessibility trees in conversation history are automatically redacted to save tokens. Use get_page_content to fetch current state when needed.`,
     tools: [
-      'get_page_content',
+      'get_page_content_v1',
       'perform_action',
       'extract_data',
       'node_ids_to_urls',
       'scroll_page',
       'take_screenshot',
     ],
-    maxIterations: 10,
+    maxIterations: 12,
     modelName: MODEL_SENTINELS.USE_MINI,
     temperature: 0.5,
     schema: {
@@ -124,6 +175,7 @@ Conclusion: Fix the args format and retry with proper syntax: { "method": "fill"
       required: ['objective', 'reasoning']
     },
     prepareMessages: (args: ConfigurableAgentArgs): ChatMessage[] => {
+      // For the action agent, we use the objective as the primary input, not the query field
       return [{
         entity: ChatMessageEntity.USER,
         text: `Objective: ${args.objective}\n
@@ -137,7 +189,7 @@ ${args.input_data ? `Input Data: ${args.input_data}` : ''}
       {
         targetAgentName: 'action_verification_agent',
         trigger: 'llm_tool_call',
-        includeToolResults: ['perform_action', 'get_page_content']
+        includeToolResults: ['perform_action', 'get_page_content_v1']
       }
     ],
     beforeExecute: async (callCtx: CallCtx): Promise<void> => {

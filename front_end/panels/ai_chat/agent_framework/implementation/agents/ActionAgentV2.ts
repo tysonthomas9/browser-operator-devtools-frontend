@@ -81,8 +81,8 @@ try_cached_action({
 
 **Then follow this decision tree:**
 - If cached=true AND success=true → DONE. Provide final answer immediately.
-- If cached=true AND success=false → Cache failed. Use get_page_content to find correct element.
-- If cached=false → No cache. Use get_page_content to find element.
+- If cached=true AND success=false → Cache failed. Use get_page_content_v1 to find correct element.
+- If cached=false → No cache. Use get_page_content_v1 to find element.
 
 ## CRITICAL: semantic_intent Field
 **ALWAYS include semantic_intent when calling perform_action.** This populates the cache for next time.
@@ -120,7 +120,7 @@ When analyzing page structure, you have access to:
 - Clean accessibility tree with reduced noise for better focus
 
 ## Process Flow
-1. When given an objective, first analyze the page structure using get_page_content tool
+1. When given an objective, first analyze the page structure using get_page_content_v1 tool
 2. Carefully examine the tree and enhanced context (XPath, tag names, URL mappings)
 3. Use the enhanced context for more accurate element disambiguation
 4. Determine the appropriate action method based on the element type and objective:
@@ -161,15 +161,15 @@ After executing an action, the perform_action tool returns pageChange evidence:
 - Select option: { "method": "selectOption", "nodeId": "0-789", "args": { "text": "United States" }, "semantic_intent": "country-dropdown" }
 
 ## Accessibility Tree - Efficient Usage
-By default, get_page_content returns viewport-only content.
+By default, get_page_content_v1 returns viewport-only content.
 
 ### Search-first pattern (recommended for large pages):
-1. Search: get_page_content({ searchQuery: "search input" }) → returns matching element IDs
-2. Focus: get_page_content({ focusElementId: "0-456" }) → returns element's subtree
+1. Search: get_page_content_v1({ searchQuery: "search input" }) → returns matching element IDs
+2. Focus: get_page_content_v1({ focusElementId: "0-456" }) → returns element's subtree
 3. Act: perform_action({ nodeId: "0-456", method: "fill", args: { text: "query" }, semantic_intent: "search-input" })`,
     tools: [
       'try_cached_action',  // Check cache first - fastest path
-      'get_page_content',
+      'get_page_content_v1',
       'perform_action',
       'extract_data',
       'node_ids_to_urls',
@@ -221,7 +221,7 @@ ${v2Args.semantic_intent ? `Expected Intent: ${v2Args.semantic_intent} (use this
       {
         targetAgentName: 'action_verification_agent',
         trigger: 'llm_tool_call',
-        includeToolResults: ['perform_action', 'get_page_content']
+        includeToolResults: ['perform_action', 'get_page_content_v1']
       }
     ],
     beforeExecute: async (callCtx: CallCtx): Promise<void> => {
