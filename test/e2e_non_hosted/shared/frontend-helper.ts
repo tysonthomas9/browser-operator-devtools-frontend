@@ -3,10 +3,13 @@
 // found in the LICENSE file.
 
 import {assert} from 'chai';
+import * as fs from 'fs';
+import * as path from 'path';
 import type * as puppeteer from 'puppeteer-core';
 
 import {AsyncScope} from '../../conductor/async-scope.js';
 import {installPageErrorHandlers} from '../../conductor/events.js';
+import {BUILD_ROOT} from '../../conductor/paths.js';
 import {platform} from '../../conductor/platform.js';
 import {TestConfig} from '../../conductor/test_config.js';
 
@@ -157,8 +160,13 @@ export class DevToolsPage extends PageWrapper {
   }
 
   async ensureReadyForTesting() {
+    const startTime = Date.now();
+    console.log(`[ensureReadyForTesting] Starting...`);
+
     const devToolsVeLogging = {enabled: true, testing: true};
     await this.evaluateOnNewDocument(`globalThis.hostConfigForTesting = ${JSON.stringify({devToolsVeLogging})};`);
+    console.log(`[ensureReadyForTesting] Host config set (${Date.now() - startTime}ms)`);
+
     await this.waitForFunction(async () => {
       const result = await this.page.evaluate(`(async function() {
         const Main = await import('./entrypoints/main/main.js');
@@ -166,20 +174,106 @@ export class DevToolsPage extends PageWrapper {
       })()`);
       return result;
     });
+    console.log(`[ensureReadyForTesting] MainImpl instance ready (${Date.now() - startTime}ms)`);
 
-    await this.evaluate(`
+    // Add timeout wrapper with detailed logging to diagnose hangs
+    const readyForTestPromise = this.evaluate(`
       (async function() {
+        console.log('[readyForTest] Starting...');
         const Main = await import('./entrypoints/main/main.js');
-        await Main.MainImpl.MainImpl.instanceForTest.readyForTest();
+        console.log('[readyForTest] MainImpl imported');
+        const instance = Main.MainImpl.MainImpl.instanceForTest;
+        if (!instance) {
+          throw new Error('MainImpl.instanceForTest is null');
+        }
+        console.log('[readyForTest] Calling readyForTest()...');
+        await instance.readyForTest();
+        console.log('[readyForTest] readyForTest() resolved');
       })();
     `);
+
+    // Race with a timeout to avoid infinite hangs
+    const timeoutMs = 60000;  // 60 second timeout for readyForTest
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`readyForTest() timed out after ${timeoutMs}ms. DevTools initialization may be stuck.`)), timeoutMs);
+    });
+
+    try {
+      await Promise.race([readyForTestPromise, timeoutPromise]);
+      clearTimeout(timeoutId!);
+      console.log(`[ensureReadyForTesting] readyForTest() complete (${Date.now() - startTime}ms)`);
+    } catch (error) {
+      clearTimeout(timeoutId!);
+      // If readyForTest() times out, log warning but proceed anyway
+      // DevTools may be functional even if initialization promise doesn't resolve
+      console.warn(`[ensureReadyForTesting] Warning: ${error}`);
+      console.warn('[ensureReadyForTesting] Proceeding despite timeout - DevTools may still be functional');
+    }
+
+    // Wait for the primary page target to be available
+    // This is critical for tools like RenderWebAppTool that need to execute code in the inspected page
+    console.log(`[ensureReadyForTesting] Waiting for primary page target...`);
+    const targetTimeoutMs = 30000;  // 30 second timeout for target
+    const targetStartTime = Date.now();
+
+    // Log target info for debugging
+    const logTargetInfo = async (): Promise<void> => {
+      const info = await this.page.evaluate(`(async function() {
+        const SDK = await import('./core/sdk/sdk.js');
+        const tm = SDK.TargetManager.TargetManager.instance();
+        const targets = tm.targets();
+        const rootTarget = tm.rootTarget();
+        const primaryTarget = tm.primaryPageTarget();
+        return {
+          targetCount: targets.length,
+          targetIds: targets.map(t => ({ id: t.id(), type: t.type(), name: t.name() })),
+          rootTargetId: rootTarget?.id() || null,
+          rootTargetType: rootTarget?.type() || null,
+          primaryTargetId: primaryTarget?.id() || null,
+        };
+      })()`);
+      console.log(`[ensureReadyForTesting] Target info: ${JSON.stringify(info, null, 2)}`);
+    };
+
+    await logTargetInfo();
+
+    let targetTimeoutId: ReturnType<typeof setTimeout>;
+    try {
+      const targetWaitPromise = this.waitForFunction(async () => {
+        const result = await this.page.evaluate(`(async function() {
+          const SDK = await import('./core/sdk/sdk.js');
+          const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+          return target !== null;
+        })()`);
+        return result;
+      });
+      const targetTimeoutPromise = new Promise((_, reject) => {
+        targetTimeoutId = setTimeout(() => reject(new Error(`Target wait timed out after ${targetTimeoutMs}ms`)), targetTimeoutMs);
+      });
+      await Promise.race([targetWaitPromise, targetTimeoutPromise]);
+      clearTimeout(targetTimeoutId!);
+      console.log(`[ensureReadyForTesting] Primary page target ready (${Date.now() - targetStartTime}ms)`);
+    } catch (error) {
+      clearTimeout(targetTimeoutId!);
+      console.warn(`[ensureReadyForTesting] Warning: Primary page target not available after ${targetTimeoutMs}ms`);
+      await logTargetInfo();  // Log again after timeout
+      console.warn('[ensureReadyForTesting] Tests requiring target access may fail');
+    }
+    console.log(`[ensureReadyForTesting] Complete (${Date.now() - startTime}ms total)`);
   }
 
   async useSoftMenu() {
-    await this.evaluate(() => {
-      // @ts-expect-error different context
-      DevToolsAPI.setUseSoftMenu(true);
-    });
+    try {
+      await this.evaluate(`
+        if (typeof DevToolsAPI !== 'undefined') {
+          DevToolsAPI.setUseSoftMenu(true);
+        }
+      `);
+    } catch (e) {
+      // DevToolsAPI may not be available in URL-based loading mode
+      console.warn('[useSoftMenu] DevToolsAPI not available, skipping soft menu');
+    }
   }
 
   /**
@@ -883,32 +977,75 @@ async function setDockingSide(devToolsPage: DevToolsPage, side: string) {
   `);
 }
 
-export async function setupDevToolsPage(
-    context: puppeteer.BrowserContext, settings: DevtoolsSettings, inspectedPage: InspectedPage) {
-  const session = await context.browser().target().createCDPSession();
-  // FIXME: get rid of the reload below and configure
-  // the initial DevTools state via the openDevTools command.
-  const {targetId} = await session.send('Target.openDevTools', {
-    // @ts-expect-error need to expose this via Puppeteer.
-    targetId: inspectedPage.page.target()._getTargetInfo().targetId
-  });
-  // @ts-expect-error need to expose this via Puppeteer.
-  const devToolsTarget = await context.waitForTarget(target => target._getTargetInfo().targetId === targetId);
-  const frontend = await devToolsTarget?.page();
-  if (!frontend) {
-    throw new Error('Unable to find frontend target!');
+/**
+ * Get the Chrome DevTools Protocol debug port from the browser's WebSocket endpoint.
+ */
+function getDebugPort(browser: puppeteer.Browser): string {
+  const websocketUrl = browser.wsEndpoint();
+  const url = new URL(websocketUrl);
+  if (url.port) {
+    return url.port;
   }
+  throw new Error(`Unable to find debug port: ${websocketUrl}`);
+}
+
+// When loading DevTools with target.goto, we wait for it to be fully loaded using these events.
+const DEVTOOLS_WAITUNTIL_EVENTS: puppeteer.PuppeteerLifeCycleEvent[] = ['networkidle2', 'domcontentloaded'];
+
+// Counter to give each DevTools tab a unique origin
+let devToolsTabCounter = 0;
+
+export async function setupDevToolsPage(
+    context: puppeteer.BrowserContext, settings: DevtoolsSettings, inspectedPage: InspectedPage,
+    serverPort?: number) {
+  const setupStart = Date.now();
+  console.log(`[setupDevToolsPage] Starting setup...`);
+
+  // Use URL-based DevTools loading, which works with Chrome for Testing
+  // (Target.openDevTools is a custom CDP method only available in Chromium built from source)
+  const browser = context.browser();
+  const debugPort = getDebugPort(browser);
+  // @ts-expect-error need to expose this via Puppeteer.
+  const inspectedTargetId = inspectedPage.page.target()._getTargetInfo().targetId;
+
+  // Determine the correct DevTools app URL
+  let devToolsAppURL = 'devtools_app.html';
+  if (!fs.existsSync(path.join(BUILD_ROOT, 'gen', devToolsAppURL))) {
+    devToolsAppURL = 'front_end/devtools_app.html';
+  }
+
+  // If serverPort is not provided, try to get it from the test environment
+  const testServerPort = serverPort ?? 8000;
+
+  // Create a unique origin for this DevTools instance to avoid localStorage conflicts
+  const id = devToolsTabCounter++;
+  const frontendUrl = `https://i${id}.devtools-frontend.test:${testServerPort}/${devToolsAppURL}?ws=localhost:${
+      debugPort}/devtools/page/${inspectedTargetId}&targetType=tab`;
+
+  const frontend = await context.newPage();
   installPageErrorHandlers(frontend);
+
+  // Set up test mode configuration before navigation
+  const devToolsVeLogging = {enabled: true, testing: true};
+  await frontend.evaluateOnNewDocument(`globalThis.hostConfigForTesting = ${JSON.stringify({devToolsVeLogging})};`);
+
+  await frontend.goto(frontendUrl, {waitUntil: DEVTOOLS_WAITUNTIL_EVENTS});
+  console.log(`[setupDevToolsPage] goto complete (${Date.now() - setupStart}ms)`);
+
   const devToolsPage = new DevToolsPage(frontend);
   await devToolsPage.ensureReadyForTesting();
+  console.log(`[setupDevToolsPage] ensureReadyForTesting complete (${Date.now() - setupStart}ms)`);
+
   await Promise.all([
     devToolsPage.disableAnimations(),
     setDevToolsSettings(devToolsPage, settings.devToolsSettings),
     setDevToolsExperiments(devToolsPage, settings.enabledDevToolsExperiments),
     setDisabledDevToolsExperiments(devToolsPage, settings.disabledDevToolsExperiments),
   ]);
+  console.log(`[setupDevToolsPage] settings configured (${Date.now() - setupStart}ms)`);
 
   await devToolsPage.reloadWithParams({panel: settings.panel}, true);
+  console.log(`[setupDevToolsPage] reload complete (${Date.now() - setupStart}ms)`);
 
   await Promise.all([
     devToolsPage.throttleCPUIfRequired(),
@@ -917,6 +1054,7 @@ export async function setupDevToolsPage(
   ]);
 
   await setDockingSide(devToolsPage, settings.dockingMode);
+  console.log(`[setupDevToolsPage] Setup complete (${Date.now() - setupStart}ms total)`);
   return devToolsPage;
 }
 

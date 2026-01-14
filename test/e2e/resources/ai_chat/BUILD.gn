@@ -10,5 +10,6 @@ copy_to_gen("ai_chat") {
     "accessibility-iframe-content.html",
     "accessibility-iframe-page.html",
     "accessibility-simple-iframe.html",
+    "sandbox-test-page.html",
   ]
 }

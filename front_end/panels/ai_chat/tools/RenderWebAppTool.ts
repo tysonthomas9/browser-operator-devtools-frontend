@@ -55,11 +55,29 @@ export class RenderWebAppTool implements Tool<RenderWebAppArgs, RenderWebAppResu
       return { error: 'Reasoning is required and must be a string' };
     }
 
-    // Get the primary page target
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    // Get the primary page target, with retry logic for test environments
+    let target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
-      logger.error('No primary page target available');
-      return { error: 'No page target available' };
+      // In test environments, the target may take time to connect
+      // Use exponential backoff: check BEFORE waiting for faster response
+      logger.info('Primary page target not immediately available, waiting...');
+      let totalWait = 0;
+      for (let i = 0; i < 10; i++) {
+        // Check BEFORE waiting (key fix: previous code waited first)
+        target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+        if (target) {
+          logger.info(`Primary page target became available after ${totalWait}ms`);
+          break;
+        }
+        // Exponential backoff: 100, 150, 225, 337, 506, 759, 1000, 1000, 1000, 1000
+        const delay = Math.min(100 * Math.pow(1.5, i), 1000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        totalWait += delay;
+      }
+      if (!target) {
+        logger.error('No primary page target available after retries');
+        return { error: 'No page target available. DevTools may not be fully connected to the inspected page.' };
+      }
     }
 
     // Navigate to blank page for clean CSP environment
@@ -110,6 +128,7 @@ export class RenderWebAppTool implements Tool<RenderWebAppArgs, RenderWebAppResu
             // Create full-screen iframe
             const iframe = document.createElement('iframe');
             iframe.id = webappId;
+            iframe.setAttribute('data-webapp-id', webappId);
             iframe.setAttribute('data-devtools-webapp', 'true');
             iframe.setAttribute('data-reasoning', ${JSON.stringify(reasoning)});
 

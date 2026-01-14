@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("../../../scripts/build/ninja/copy.gni")
 import("../../../scripts/build/ninja/devtools_entrypoint.gni")
 import("../../../scripts/build/ninja/devtools_module.gni")
 import("../../../scripts/build/ninja/generate_css.gni")
@@ -14,6 +15,9 @@ generate_css("css_files") {
     "ui/mcp/mcpConnectorsCatalogDialog.css",
   ]
 }
+
+# Note: Bundler now runs inside the iframe (see previewHtml.ts)
+# No separate bundler worker file needed
 
 devtools_module("ai_chat") {
   sources = [
@@ -162,6 +166,36 @@ devtools_module("ai_chat") {
     "mini_apps/apps/agent_studio/AgentStudioMiniApp.ts",
     "mini_apps/apps/data_studio/DataStudioMiniApp.ts",
     "mini_apps/apps/data_studio/DataStudioSPA.ts",
+    "sandbox_apps/types/SandboxTypes.ts",
+    "sandbox_apps/types/SandboxAppTypes.ts",
+    "sandbox_apps/vfs/VFSManager.ts",
+    "sandbox_apps/bridge/SandboxAppBridge.ts",
+    "sandbox_apps/components/shadcn/sources.ts",
+    "sandbox_apps/apps/index.ts",
+    "sandbox_apps/apps/data-studio/index.ts",
+    "sandbox_apps/apps/data-studio/sources.ts",
+    "sandbox_apps/apps/data-studio/DataStudioApp.ts",
+    "sandbox_apps/apps/data-studio/DataStudioController.ts",
+    "sandbox_apps/controller/SandboxController.ts",
+    "sandbox_apps/protocol/SandboxProtocol.ts",
+    "sandbox_apps/protocol/MessageBus.ts",
+    "sandbox_apps/bundler/bundler-utils.ts",
+    "sandbox_apps/runtime/previewHtml.ts",
+    "sandbox_apps/tools/CreateAppTool.ts",
+    "sandbox_apps/tools/WriteFileTool.ts",
+    "sandbox_apps/tools/DeleteFileTool.ts",
+    "sandbox_apps/tools/BuildAppTool.ts",
+    "sandbox_apps/tools/RunAppTool.ts",
+    "sandbox_apps/tools/StopAppTool.ts",
+    "sandbox_apps/tools/SendDataTool.ts",
+    "sandbox_apps/tools/GetStateTool.ts",
+    "sandbox_apps/tools/ApplyPatchTool.ts",
+    "sandbox_apps/tools/ExecuteSandboxAppActionTool.ts",
+    "sandbox_apps/tools/index.ts",
+    "sandbox_apps/execution/DataStudioStorage.ts",
+    "sandbox_apps/execution/DataStudioExecutor.ts",
+    "sandbox_apps/execution/index.ts",
+    "sandbox_apps/index.ts",
     "agent_framework/ConfigurableAgentTool.ts",
     "agent_framework/AgentRunner.ts",
     "agent_framework/AgentRunnerEventBus.ts",
@@ -226,7 +260,11 @@ devtools_module("ai_chat") {
     "ui/AgentStudioBridge.ts",
     "ui/MiniAppsLauncherSPA.ts",
     "ui/MiniAppsLauncherView.ts",
+    "ui/SandboxAppsLauncherSPA.ts",
+    "ui/SandboxAppsLauncherView.ts",
     "ui/agent_studio/AgentStudioSPA.ts",
+    "sandbox_apps/SandboxAppRegistry.ts",
+    "sandbox_apps/SandboxAppInitialization.ts",
   ]
 
   deps = [
@@ -309,7 +347,11 @@ _ai_chat_sources = [
     "ui/AgentStudioBridge.ts",
     "ui/MiniAppsLauncherSPA.ts",
     "ui/MiniAppsLauncherView.ts",
+    "ui/SandboxAppsLauncherSPA.ts",
+    "ui/SandboxAppsLauncherView.ts",
     "ui/agent_studio/AgentStudioSPA.ts",
+    "sandbox_apps/SandboxAppRegistry.ts",
+    "sandbox_apps/SandboxAppInitialization.ts",
     "ai_chat_impl.ts",
     "models/ChatTypes.ts",
     "core/Graph.ts",
@@ -398,6 +440,33 @@ _ai_chat_sources = [
     "mini_apps/apps/agent_studio/AgentStudioMiniApp.ts",
     "mini_apps/apps/data_studio/DataStudioMiniApp.ts",
     "mini_apps/apps/data_studio/DataStudioSPA.ts",
+    "sandbox_apps/types/SandboxTypes.ts",
+    "sandbox_apps/types/SandboxAppTypes.ts",
+    "sandbox_apps/vfs/VFSManager.ts",
+    "sandbox_apps/bridge/SandboxAppBridge.ts",
+    "sandbox_apps/components/shadcn/sources.ts",
+    "sandbox_apps/apps/index.ts",
+    "sandbox_apps/apps/data-studio/index.ts",
+    "sandbox_apps/apps/data-studio/sources.ts",
+    "sandbox_apps/apps/data-studio/DataStudioApp.ts",
+    "sandbox_apps/apps/data-studio/DataStudioController.ts",
+    "sandbox_apps/controller/SandboxController.ts",
+    "sandbox_apps/protocol/SandboxProtocol.ts",
+    "sandbox_apps/protocol/MessageBus.ts",
+    "sandbox_apps/bundler/bundler-utils.ts",
+    "sandbox_apps/runtime/previewHtml.ts",
+    "sandbox_apps/tools/CreateAppTool.ts",
+    "sandbox_apps/tools/WriteFileTool.ts",
+    "sandbox_apps/tools/DeleteFileTool.ts",
+    "sandbox_apps/tools/BuildAppTool.ts",
+    "sandbox_apps/tools/RunAppTool.ts",
+    "sandbox_apps/tools/StopAppTool.ts",
+    "sandbox_apps/tools/SendDataTool.ts",
+    "sandbox_apps/tools/GetStateTool.ts",
+    "sandbox_apps/tools/ApplyPatchTool.ts",
+    "sandbox_apps/tools/ExecuteSandboxAppActionTool.ts",
+    "sandbox_apps/tools/index.ts",
+    "sandbox_apps/index.ts",
     "agent_framework/ConfigurableAgentTool.ts",
     "agent_framework/AgentRunner.ts",
     "agent_framework/AgentRunnerEventBus.ts",
@@ -575,10 +644,30 @@ ts_library("unittests") {
     "tools/__tests__/ReadFileTool.test.ts",
     "tools/__tests__/ListFilesTool.test.ts",
     "tools/__tests__/FileStorageManager.test.ts",
+    "tools/__tests__/RenderWebAppTool.test.ts",
     "tools/mini_app/__tests__/MiniAppTools.test.ts",
     "mini_apps/__tests__/MiniAppRegistry.test.ts",
     "mini_apps/__tests__/GenericMiniAppBridge.test.ts",
     "mini_apps/__tests__/MiniAppEventBus.test.ts",
+    "mini_apps/__tests__/SPATestHarness.ts",
+    "mini_apps/__tests__/SPATestHarness.test.ts",
+    "sandbox_apps/__tests__/test-utils.ts",
+    "sandbox_apps/__tests__/MockBundler.test.ts",
+    "sandbox_apps/__tests__/VFSManager.test.ts",
+    "sandbox_apps/__tests__/SandboxController.test.ts",
+    "sandbox_apps/__tests__/ApplyPatchTool.test.ts",
+    "sandbox_apps/__tests__/Tools.test.ts",
+    "sandbox_apps/__tests__/SandboxProtocol.test.ts",
+    "sandbox_apps/__tests__/previewHtml.test.ts",
+    "sandbox_apps/__tests__/bundler-utils.test.ts",
+    "sandbox_apps/__tests__/MessageBus.test.ts",
+    "sandbox_apps/__tests__/shadcn.test.ts",
+    "sandbox_apps/__tests__/DataStudioV2.test.ts",
+    "sandbox_apps/__tests__/DataStudioExecution.test.ts",
+    "sandbox_apps/__tests__/DataStudioStorage.test.ts",
+    "sandbox_apps/__tests__/PromiseRaceTimeout.test.ts",
+    "sandbox_apps/__tests__/DataStudioController.test.ts",
+    "sandbox_apps/__tests__/DataStudioBridge.test.ts",
   ]
 
   deps = [

@@ -94,6 +94,9 @@ import { ConversationHistoryList } from './ConversationHistoryList.js';
 import { AgentStudioView } from './AgentStudioView.js';
 // Mini Apps Launcher
 import { MiniAppsLauncherView } from './MiniAppsLauncherView.js';
+// Sandbox Apps Launcher
+import { SandboxAppsLauncherView } from './SandboxAppsLauncherView.js';
+import { initializeSandboxApps } from '../sandbox_apps/SandboxAppInitialization.js';
 
 
 // Model type definition
@@ -2038,6 +2041,11 @@ export class AIChatPanel extends UI.Panel.Panel {
           () => this.#showMiniAppsLauncher(),
           {jslogContext: 'apps'}
         );
+        contextMenu.defaultSection().appendItem(
+          'Sandbox Apps',
+          () => this.#showSandboxAppsLauncher(),
+          {jslogContext: 'sandbox-apps'}
+        );
       },
       true,  // isIconDropdown
       true,  // useSoftMenu
@@ -2327,6 +2335,16 @@ export class AIChatPanel extends UI.Panel.Panel {
    */
   #showMiniAppsLauncher(): void {
     const launcher = new MiniAppsLauncherView();
+    void launcher.show();
+  }
+
+  /**
+   * Shows the Sandbox Apps launcher
+   */
+  #showSandboxAppsLauncher(): void {
+    // Ensure sandbox apps are initialized
+    initializeSandboxApps();
+    const launcher = new SandboxAppsLauncherView();
     void launcher.show();
   }
 

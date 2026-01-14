@@ -28,7 +28,7 @@ function getHTML(): string {
   <title>Data Studio</title>
 </head>
 <body>
-  <div class="data-studio">
+  <div class="data-studio" data-testid="data-studio-shell">
     <!-- Header -->
     <header class="studio-header">
       <div class="header-left">
@@ -37,27 +37,27 @@ function getHTML(): string {
         <span class="table-name" id="table-name"></span>
       </div>
       <div class="header-actions">
-        <button class="btn btn-header" id="save-btn" style="display: none;">
+        <button class="btn btn-header" id="save-btn" data-testid="save-btn" style="display: none;">
           <span class="btn-icon-inline" id="save-icon"></span>
           Save
         </button>
-        <button class="btn btn-header" id="close-table-btn" style="display: none;">
+        <button class="btn btn-header" id="close-table-btn" data-testid="close-table-btn" style="display: none;">
           <span class="btn-icon-inline" id="back-icon"></span>
           Back
         </button>
-        <button class="close-btn" id="close-btn" title="Close Data Studio"></button>
+        <button class="close-btn" id="close-btn" data-testid="close-btn" title="Close Data Studio"></button>
       </div>
     </header>
 
     <!-- Selector View -->
-    <div class="selector-view" id="selector-view">
+    <div class="selector-view" id="selector-view" data-testid="selector-view">
       <div class="selector-content">
         <section class="selector-section">
           <div class="section-header">
             <span class="section-icon" id="tables-icon"></span>
             <h2>Your Tables</h2>
           </div>
-          <div class="table-list" id="saved-tables">
+          <div class="table-list" id="saved-tables" data-testid="saved-tables">
             <div class="empty-message">No saved tables yet</div>
           </div>
         </section>
@@ -69,14 +69,14 @@ function getHTML(): string {
             <span class="section-icon" id="templates-icon"></span>
             <h2>Start from Template</h2>
           </div>
-          <div class="template-list" id="templates">
+          <div class="template-list" id="templates" data-testid="templates">
             <!-- Templates will be rendered here -->
           </div>
         </section>
 
         <section class="selector-section">
           <h2>Or Create Custom</h2>
-          <button class="btn btn-primary btn-large" id="create-custom-btn">
+          <button class="btn btn-primary btn-large" id="create-custom-btn" data-testid="create-custom-btn">
             <span class="btn-icon-inline" id="plus-icon"></span>
             Create Custom Table
           </button>
@@ -85,30 +85,30 @@ function getHTML(): string {
     </div>
 
     <!-- Table View -->
-    <div class="table-view" id="table-view" style="display: none;">
+    <div class="table-view" id="table-view" data-testid="table-view" style="display: none;">
       <!-- Action Bar -->
       <div class="action-bar">
         <div class="action-bar-left">
           <span class="entity-type-label">Entity Type: <strong id="entity-type-display"></strong></span>
-          <button class="btn btn-secondary" id="add-entity-btn">
+          <button class="btn btn-secondary" id="add-entity-btn" data-testid="add-entity-btn">
             <span class="btn-icon-inline" id="add-entity-icon"></span>
             Add <span id="add-entity-label">Entity</span>
           </button>
-          <button class="btn btn-secondary" id="add-agent-btn">
+          <button class="btn btn-secondary" id="add-agent-btn" data-testid="add-agent-btn">
             <span class="btn-icon-inline" id="add-agent-icon"></span>
             Add Agent
           </button>
         </div>
         <div class="action-bar-right">
-          <button class="btn btn-primary" id="run-all-btn">
+          <button class="btn btn-primary" id="run-all-btn" data-testid="run-all-btn">
             <span class="btn-icon-inline" id="play-icon"></span>
             Run All
           </button>
-          <button class="btn btn-warning" id="pause-btn" style="display: none;">
+          <button class="btn btn-warning" id="pause-btn" data-testid="pause-btn" style="display: none;">
             <span class="btn-icon-inline" id="pause-icon"></span>
             Pause
           </button>
-          <button class="btn btn-secondary" id="export-btn">
+          <button class="btn btn-secondary" id="export-btn" data-testid="export-btn">
             <span class="btn-icon-inline" id="export-icon"></span>
             Export
           </button>
@@ -116,16 +116,16 @@ function getHTML(): string {
       </div>
 
       <!-- Data Table -->
-      <div class="table-container">
-        <table class="data-table" id="data-table">
-          <thead id="table-header">
+      <div class="table-container" data-testid="table-container">
+        <table class="data-table" id="data-table" data-testid="data-table">
+          <thead id="table-header" data-testid="table-header">
             <!-- Header will be rendered dynamically -->
           </thead>
-          <tbody id="table-body">
+          <tbody id="table-body" data-testid="table-body">
             <!-- Body will be rendered dynamically -->
           </tbody>
         </table>
-        <div class="empty-table" id="empty-table">
+        <div class="empty-table" id="empty-table" data-testid="empty-table">
           <div class="empty-icon" id="empty-table-icon"></div>
           <h3>No data yet</h3>
           <p>Add entities and agents to start analyzing</p>
@@ -134,7 +134,7 @@ function getHTML(): string {
     </div>
 
     <!-- Create Table Modal -->
-    <div class="modal" id="create-table-modal" style="display: none;">
+    <div class="modal" id="create-table-modal" data-testid="create-table-modal" style="display: none;">
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
@@ -163,7 +163,7 @@ function getHTML(): string {
     </div>
 
     <!-- Add Entity Modal -->
-    <div class="modal" id="add-entity-modal" style="display: none;">
+    <div class="modal" id="add-entity-modal" data-testid="add-entity-modal" style="display: none;">
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
@@ -188,7 +188,7 @@ function getHTML(): string {
     </div>
 
     <!-- Add Agent Modal -->
-    <div class="modal" id="add-agent-modal" style="display: none;">
+    <div class="modal" id="add-agent-modal" data-testid="add-agent-modal" style="display: none;">
       <div class="modal-overlay"></div>
       <div class="modal-content modal-large">
         <div class="modal-header">
@@ -230,7 +230,7 @@ function getHTML(): string {
     </div>
 
     <!-- Cell Detail Modal -->
-    <div class="modal" id="cell-detail-modal" style="display: none;">
+    <div class="modal" id="cell-detail-modal" data-testid="cell-detail-modal" style="display: none;">
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
@@ -251,7 +251,7 @@ function getHTML(): string {
     </div>
 
     <!-- Notification Toast -->
-    <div id="notification" class="notification hidden"></div>
+    <div id="notification" class="notification hidden" data-testid="notification"></div>
   </div>
 </body>
 </html>
@@ -1151,6 +1151,55 @@ function getJS(): string {
     templates: [],
     currentTable: null,
     availableAgents: []
+  };
+
+  // ============================================================================
+  // Test API for Playwright Integration Tests
+  // ============================================================================
+
+  window.__DATA_STUDIO__ = {
+    // State inspection
+    getState: () => state,
+    getResults: () => state.currentTable?.results,
+    getExecutionStatus: () => state.currentTable?.executionStatus,
+    getCurrentTable: () => state.currentTable,
+    getTables: () => state.tables,
+    getTemplates: () => state.templates,
+
+    // State mutation (for test setup)
+    setState: (newState) => { state = { ...state, ...newState }; render(); },
+
+    // Actions (send to DevTools controller)
+    createTable: (tableName, entityType, entityNameLabel) =>
+      sendToDevTools({ type: 'create-table', tableName, entityType, entityNameLabel }),
+    addEntity: (name, context) =>
+      sendToDevTools({ type: 'add-entity', name, context }),
+    removeEntity: (entityId) =>
+      sendToDevTools({ type: 'remove-entity', entityId }),
+    addAgentGroup: (agentName, queryTemplate, outputColumns) =>
+      sendToDevTools({ type: 'add-agent-group', agentName, queryTemplate, outputColumns }),
+    removeAgentGroup: (agentGroupId) =>
+      sendToDevTools({ type: 'remove-agent-group', agentGroupId }),
+    runCell: (entityId, agentGroupId) =>
+      sendToDevTools({ type: 'run-agent-group', entityId, agentGroupId }),
+    runRow: (entityId) =>
+      sendToDevTools({ type: 'run-row', entityId }),
+    runAll: () =>
+      sendToDevTools({ type: 'run-all' }),
+    pauseExecution: () =>
+      sendToDevTools({ type: 'pause-execution' }),
+    saveTable: () =>
+      sendToDevTools({ type: 'save-table' }),
+    loadTable: (tableId) =>
+      sendToDevTools({ type: 'load-table', tableId }),
+    deleteTable: (tableId) =>
+      sendToDevTools({ type: 'delete-table', tableId }),
+    useTemplate: (templateId, tableName) =>
+      sendToDevTools({ type: 'use-template', templateId, tableName }),
+    closeTable: () =>
+      sendToDevTools({ type: 'close-table' }),
+    close: () =>
+      sendToDevTools({ type: 'close' }),
   };
 
   // Track last pushed history state to prevent duplicates

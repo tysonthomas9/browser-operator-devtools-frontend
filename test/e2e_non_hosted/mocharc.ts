@@ -15,6 +15,8 @@ module.exports = {
             path.join(path.dirname(__dirname), 'e2e_non_hosted', 'conductor', 'mocha_hooks.js'),
             'source-map-support/register'
           ],
+  // Custom interface that provides the setup() function for e2e_non_hosted tests
+  ui : path.join(path.dirname(__dirname), 'e2e_non_hosted', 'conductor', 'mocha-interface.js'),
   spec : loadTests(__dirname),
   timeout : TestConfig.debug ? 0 : 10_000,
   retries : TestConfig.retries,

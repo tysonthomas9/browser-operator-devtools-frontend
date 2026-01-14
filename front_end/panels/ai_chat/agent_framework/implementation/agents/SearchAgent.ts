@@ -186,6 +186,8 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
     handoffs: [],
     includeIntermediateStepsOnReturn: false,
     // Structured output schema to force JSON compliance via native LLM response_format
+    // Note: OpenAI strict mode requires additionalProperties: false on ALL nested objects
+    // and does NOT support additionalProperties with a type schema - only false is allowed
     outputSchema: {
       type: 'object',
       properties: {
@@ -201,7 +203,7 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
             properties: {
               entity: { type: 'string' },
               confidence: { type: 'number' },
-              attributes: { type: 'object' },
+              summary: { type: 'string' },
               sources: {
                 type: 'array',
                 items: {
@@ -211,7 +213,8 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
                     url: { type: 'string' },
                     last_verified: { type: 'string' }
                   },
-                  required: ['title', 'url', 'last_verified']
+                  required: ['title', 'url', 'last_verified'],
+                  additionalProperties: false
                 }
               },
               notes: {
@@ -219,7 +222,8 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
                 items: { type: 'string' }
               }
             },
-            required: ['entity', 'confidence', 'attributes', 'sources']
+            required: ['entity', 'confidence', 'summary', 'sources', 'notes'],
+            additionalProperties: false
           }
         },
         gaps: {
@@ -231,7 +235,7 @@ If you absolutely cannot find any reliable leads, return status "failed" with ga
           items: { type: 'string' }
         }
       },
-      required: ['status', 'objective', 'results'],
+      required: ['status', 'objective', 'results', 'gaps', 'next_actions'],
       additionalProperties: false
     },
     createErrorResult: (error: string, steps: ChatMessage[], reason: any) => {

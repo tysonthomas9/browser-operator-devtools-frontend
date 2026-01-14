@@ -5,7 +5,11 @@
 import("../../../scripts/build/typescript/typescript.gni")
 
 ts_e2e_library("ai_chat") {
-  sources = [ "accessibility-tree-integration_test.ts" ]
+  sources = [
+    "accessibility-tree-integration_test.ts",
+    "data-studio-integration_test.ts",
+    "data-studio-table-creation_test.ts",
+  ]
 
   deps = [
     "../../conductor:implementation",

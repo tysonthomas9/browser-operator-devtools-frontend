@@ -105,8 +105,9 @@ export class Launcher {
     ];
     const headless = TestConfig.headless;
     // CDP commands in e2e and interaction should not generally take
-    // more than 20 seconds.
-    const protocolTimeout = TestConfig.debug ? 0 : 20_000;
+    // more than 120 seconds. Increased from 60s to handle DevTools initialization
+    // for AI Chat tests which require module loading and bundler operations.
+    const protocolTimeout = TestConfig.debug ? 0 : 120_000;
     const executablePath = TestConfig.chromeBinary;
 
     const opts: puppeteer.LaunchOptions = {

@@ -60,3 +60,10 @@ test/perf/.generated
 # Dependencies
 node_modules/
 **/.idea/
+
+# Standalone tests (not ready for commit)
+test/standalone/
+
+# Environment files with secrets
+.env
+**/.env
