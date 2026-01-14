@@ -16,6 +16,7 @@ import { AgentRunnerEventBus } from './AgentRunnerEventBus.js';
 import { callLLMWithTracing } from '../tools/LLMTracingWrapper.js';
 import { sanitizeMessagesForModel } from '../LLM/MessageSanitizer.js';
 import { FileStorageManager } from '../tools/FileStorageManager.js';
+import { getRuntime } from './RuntimeContext.js';
 
 const logger = createLogger('AgentRunner');
 
@@ -44,6 +45,10 @@ export interface AgentRunnerConfig {
   agentDescriptor?: AgentDescriptor;
   /** JSON Schema for structured LLM output (uses native LLM response_format) */
   outputSchema?: OutputSchema;
+  /** CDP session adapter for browser interactions (enables running outside DevTools) */
+  cdpAdapter?: import('../cdp/CDPSessionAdapter.js').CDPSessionAdapter;
+  /** Called before each tool execution (for logging/debugging) */
+  onBeforeToolExecution?: (toolName: string, toolArgs: unknown) => Promise<void>;
 }
 
 /**
@@ -66,7 +71,13 @@ export interface AgentRunnerHooks {
  */
 export class AgentRunner {
   private static eventBus: AgentRunnerEventBus | null = null;
-  
+
+  /**
+   * Track cleanup operations in progress to prevent race conditions.
+   * Uses a Set to track which cleanup operations are currently running.
+   */
+  private static cleanupInProgress = new Set<string>();
+
   /**
    * Initialize event bus connection
    */
@@ -77,9 +88,13 @@ export class AgentRunner {
   }
 
   /**
-   * Clears the todo list file if it exists and has content
-   * Called when an agent completes or fails to clean up state
-   * Only clears if the agent has access to the update_todo tool
+   * Clears the todo list file if it exists and has content.
+   * Called when an agent completes or fails to clean up state.
+   * Only clears if the agent has access to the update_todo tool.
+   *
+   * This method is idempotent and race-condition safe:
+   * - Uses a lock to prevent concurrent cleanup operations
+   * - Handles "file not found" errors gracefully (another agent may have deleted it)
    */
   private static async clearTodoList(agentName: string, tools: Array<Tool<any, any>>): Promise<void> {
     // Only clear todos if the agent has the update_todo tool
@@ -89,16 +104,42 @@ export class AgentRunner {
       return;
     }
 
+    // Use a unique key for the cleanup lock (todos.md is shared across all agents)
+    const cleanupKey = 'todos.md';
+
+    // Check if cleanup is already in progress - skip if so
+    if (AgentRunner.cleanupInProgress.has(cleanupKey)) {
+      logger.debug(`Cleanup already in progress for ${cleanupKey}, skipping for ${agentName}`);
+      return;
+    }
+
+    // Acquire the cleanup lock
+    AgentRunner.cleanupInProgress.add(cleanupKey);
+
     try {
       const fileManager = FileStorageManager.getInstance();
       const todosFile = await fileManager.readFile('todos.md');
 
       if (todosFile?.content && todosFile.content.trim().length > 0) {
-        await fileManager.deleteFile('todos.md');
-        logger.info(`Cleared non-empty todo list for ${agentName}`);
+        try {
+          await fileManager.deleteFile('todos.md');
+          logger.info(`Cleared non-empty todo list for ${agentName}`);
+        } catch (deleteError) {
+          // Handle race condition: file may have been deleted by another agent
+          const errorMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+          if (errorMessage.includes('was not found')) {
+            logger.debug(`Todo list already deleted by another agent, skipping for ${agentName}`);
+          } else {
+            // Re-throw unexpected errors
+            throw deleteError;
+          }
+        }
       }
     } catch (error) {
       logger.debug(`Failed to clear todo list for ${agentName}:`, error);
+    } finally {
+      // Always release the cleanup lock
+      AgentRunner.cleanupInProgress.delete(cleanupKey);
     }
   }
 
@@ -224,6 +265,48 @@ export class AgentRunner {
   }
 
   /**
+   * Prune old accessibility tree results to save tokens.
+   * Keeps only the last 2 get_page_content results intact.
+   * Older results are replaced with a redaction notice.
+   *
+   * This prevents context overflow when the agent repeatedly calls get_page_content
+   * on large pages, as each call can add 40k+ tokens to the conversation history.
+   */
+  private static pruneAccessibilityTreeHistory(messages: ChatMessage[]): ChatMessage[] {
+    // Find all get_page_content tool results
+    const treeResultIndices: number[] = [];
+    messages.forEach((msg, i) => {
+      if (msg.entity === ChatMessageEntity.TOOL_RESULT &&
+          (msg as ToolResultMessage).toolName === 'get_page_content') {
+        treeResultIndices.push(i);
+      }
+    });
+
+    // If 2 or fewer, no pruning needed
+    if (treeResultIndices.length <= 2) {
+      return messages;
+    }
+
+    logger.info(`Pruning ${treeResultIndices.length - 2} old accessibility tree results to save tokens`);
+
+    // Clone messages and redact old tree results (keep last 2)
+    const indicesToRedact = new Set(treeResultIndices.slice(0, -2));
+    const pruned = messages.map((msg, i) => {
+      if (indicesToRedact.has(i)) {
+        const original = msg as ToolResultMessage;
+        return {
+          ...original,
+          resultText: '[Accessibility tree redacted to save tokens. Use get_page_content to fetch again if needed.]',
+          resultData: { redacted: true },
+        } as ToolResultMessage;
+      }
+      return msg;
+    });
+
+    return pruned;
+  }
+
+  /**
    * Compute the tool result text shown to the LLM for regular tool outputs (non-ConfigurableAgentResult).
    * Applies sanitization and chooses a placeholder if the result only contained an image payload.
    */
@@ -260,7 +343,8 @@ export class AgentRunner {
     defaultGetVisionCapability?: (modelName: string) => Promise<boolean> | boolean,
     miniModel?: string, // Mini model for smaller/faster operations
     nanoModel?: string, // Nano model for smallest/fastest operations
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string }
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    onBeforeToolExecution?: (toolName: string, toolArgs: unknown) => Promise<void>
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const targetAgentName = handoffConfig.targetAgentName;
     const targetAgentTool = ToolRegistry.getRegisteredTool(targetAgentName);
@@ -271,10 +355,10 @@ export class AgentRunner {
       // Create a minimal session for the error case
       const errorSession: AgentSession = {
         agentName: targetAgentName,
-        sessionId: crypto.randomUUID(),
+        sessionId: getRuntime().generateId(),
         status: 'error',
-        startTime: new Date(),
-        endTime: new Date(),
+        startTime: getRuntime().now(),
+        endTime: getRuntime().now(),
         messages: [],
         nestedSessions: [],
         tools: [],
@@ -360,6 +444,7 @@ export class AgentRunner {
       getVisionCapability: defaultGetVisionCapability,
       miniModel,
       nanoModel,
+      onBeforeToolExecution,
     };
     const targetRunnerHooks: AgentRunnerHooks = {
       prepareInitialMessages: undefined, // History already formed by transform or passthrough
@@ -434,12 +519,13 @@ export class AgentRunner {
     hooks: AgentRunnerHooks,
     executingAgent: ConfigurableAgentTool | null,
     parentSession?: AgentSession, // For natural nesting
-    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string },
+    overrides?: { sessionId?: string; parentSessionId?: string; traceId?: string; background?: boolean },
     abortSignal?: AbortSignal
   ): Promise<ConfigurableAgentResult & { agentSession: AgentSession }> {
     const agentName = executingAgent?.name || 'Unknown';
     logger.info(`Starting execution loop for agent: ${agentName}`);
     const { apiKey, modelName, systemPrompt, tools, maxIterations, temperature, agentDescriptor } = config;
+    const isBackground = overrides?.background === true;
     const { prepareInitialMessages, createSuccessResult, createErrorResult, afterExecute } = hooks;
 
 
@@ -450,10 +536,10 @@ export class AgentRunner {
       agentReasoning: args.reasoning,
       agentDisplayName: executingAgent?.config?.ui?.displayName || agentName,
       agentDescription: executingAgent?.config?.description,
-      sessionId: overrides?.sessionId || crypto.randomUUID(),
+      sessionId: overrides?.sessionId || getRuntime().generateId(),
       parentSessionId: overrides?.parentSessionId || parentSession?.sessionId,
       status: 'running',
-      startTime: new Date(),
+      startTime: getRuntime().now(),
       messages: [],
       nestedSessions: [], // Child sessions nest here naturally
       tools: config.tools.map(t => t.name),
@@ -461,59 +547,66 @@ export class AgentRunner {
       maxIterations,
       modelUsed: modelName,
       iterationCount: 0,
-      descriptor: agentDescriptor
+      descriptor: agentDescriptor,
+      // Initialize native metrics tracking
+      metrics: {
+        llmCallCount: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        toolCallCount: 0,
+        toolCallsByName: {},
+      },
     };
 
     // Use local session variable instead of static
     let currentSession = agentSession;
     
-    // Emit session started event
-    if (AgentRunner.eventBus) {
-      AgentRunner.eventBus.emitProgress({
-        type: 'session_started',
-        sessionId: agentSession.sessionId,
-        parentSessionId: agentSession.parentSessionId,
-        agentName,
-        timestamp: new Date(),
-        data: { session: agentSession }
-      });
-    }
+    // Emit session started event (skip for background agents)
+    AgentRunner.eventBus?.emitProgress({
+      type: 'session_started',
+      sessionId: agentSession.sessionId,
+      parentSessionId: agentSession.parentSessionId,
+      agentName,
+      timestamp: getRuntime().now(),
+      data: { session: agentSession }
+    }, isBackground);
     
     // Create local function that captures the correct session
     const addSessionMessage = (message: Partial<AgentMessage>): void => {
       const fullMessage: AgentMessage = {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
+        id: getRuntime().generateId(),
+        timestamp: getRuntime().now(),
         ...message
       } as AgentMessage;
       
       currentSession.messages.push(fullMessage);
       
-      // Emit progress events based on message type
-      if (AgentRunner.eventBus && fullMessage.type === 'tool_call') {
-        AgentRunner.eventBus.emitProgress({
+      // Emit progress events based on message type (skip for background agents)
+      if (fullMessage.type === 'tool_call') {
+        AgentRunner.eventBus?.emitProgress({
           type: 'tool_started',
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName: currentSession.agentName,
-          timestamp: new Date(),
-          data: { 
+          timestamp: getRuntime().now(),
+          data: {
             session: currentSession,
             toolCall: fullMessage
           }
-        });
-      } else if (AgentRunner.eventBus && fullMessage.type === 'tool_result') {
-        AgentRunner.eventBus.emitProgress({
+        }, isBackground);
+      } else if (fullMessage.type === 'tool_result') {
+        AgentRunner.eventBus?.emitProgress({
           type: 'tool_completed',
           sessionId: currentSession.sessionId,
           parentSessionId: currentSession.parentSessionId,
           agentName: currentSession.agentName,
-          timestamp: new Date(),
+          timestamp: getRuntime().now(),
           data: {
             session: currentSession,
             toolResult: fullMessage
           }
-        });
+        }, isBackground);
       }
     };
 
@@ -592,20 +685,18 @@ export class AgentRunner {
 
         // Complete session with abort
         currentSession.status = 'error';
-        currentSession.endTime = new Date();
+        currentSession.endTime = getRuntime().now();
         currentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
-          AgentRunner.eventBus.emitProgress({
-            type: 'session_completed',
-            sessionId: currentSession.sessionId,
-            parentSessionId: currentSession.parentSessionId,
-            agentName,
-            timestamp: new Date(),
-            data: { session: currentSession, reason: 'aborted' }
-          });
-        }
+        // Emit session completed event (skip for background agents)
+        AgentRunner.eventBus?.emitProgress({
+          type: 'session_completed',
+          sessionId: currentSession.sessionId,
+          parentSessionId: currentSession.parentSessionId,
+          agentName,
+          timestamp: getRuntime().now(),
+          data: { session: currentSession, reason: 'aborted' }
+        }, isBackground);
 
         // Clear todo list on abort
         await AgentRunner.clearTodoList(agentName, tools);
@@ -671,9 +762,9 @@ export class AgentRunner {
         // Get enhanced tracing context for AgentRunner LLM generation
         const tracingContext = getCurrentTracingContext();
         const tracingProvider = createTracingProvider();
-        const generationStartTime = new Date();
+        const generationStartTime = getRuntime().now();
 
-        console.log(`[HIERARCHICAL_TRACING] AgentRunner: Starting LLM generation for ${agentName}:`, {
+        logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Starting LLM generation for ${agentName}:`, {
           hasTracingContext: !!tracingContext,
           traceId: tracingContext?.traceId,
           currentAgentSpanId: tracingContext?.currentAgentSpanId,
@@ -717,7 +808,7 @@ export class AgentRunner {
             }
           }, tracingContext.traceId);
 
-          console.log(`[HIERARCHICAL_TRACING] AgentRunner: Created LLM generation:`, {
+          logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Created LLM generation:`, {
             generationId,
             agentName,
             iteration: iteration + 1,
@@ -729,7 +820,10 @@ export class AgentRunner {
 
         const llm = LLMClient.getInstance();
         const provider = config.provider as LLMProvider;
-        const llmMessages = AgentRunner.convertToLLMMessages(messages);
+
+        // Prune old accessibility tree results to prevent context overflow
+        const prunedMessages = AgentRunner.pruneAccessibilityTreeHistory(messages);
+        const llmMessages = AgentRunner.convertToLLMMessages(prunedMessages);
 
         // Sanitize messages for model capabilities (strip images for non-vision models)
         let isVisionForMainCall = false;
@@ -755,12 +849,25 @@ export class AgentRunner {
           temperature: temperature ?? 0,
           agentName: agentName,  // Pass agent identity for provider-specific routing
           outputSchema: config.outputSchema,  // Pass structured output schema if configured
+          // Pass tracing metadata explicitly for Langfuse integration
+          tracingMetadata: tracingContext?.metadata,
         });
+
+        // Extract token usage from rawResponse if available
+        const rawUsage = llmResponse.rawResponse?.usage;
+
+        // Accumulate LLM metrics in session
+        if (agentSession.metrics) {
+          agentSession.metrics.llmCallCount++;
+          if (rawUsage) {
+            agentSession.metrics.promptTokens += rawUsage.prompt_tokens || rawUsage.input_tokens || 0;
+            agentSession.metrics.completionTokens += rawUsage.completion_tokens || rawUsage.output_tokens || 0;
+            agentSession.metrics.totalTokens = agentSession.metrics.promptTokens + agentSession.metrics.completionTokens;
+          }
+        }
 
         // Complete the generation observation
         if (generationId && tracingContext?.traceId) {
-          // Extract token usage from rawResponse if available
-          const rawUsage = llmResponse.rawResponse?.usage;
           const usage = rawUsage ? {
             promptTokens: rawUsage.prompt_tokens || rawUsage.input_tokens || 0,
             completionTokens: rawUsage.completion_tokens || rawUsage.output_tokens || 0,
@@ -768,7 +875,7 @@ export class AgentRunner {
           } : undefined;
 
           await tracingProvider.updateObservation(generationId, {
-            endTime: new Date(),
+            endTime: getRuntime().now(),
             output: {
               type: 'llm_response',
               hasToolCalls: llmResponse.reasoning?.summary ? true : false,
@@ -790,7 +897,7 @@ export class AgentRunner {
             }
           });
 
-          console.log(`[HIERARCHICAL_TRACING] AgentRunner: Completed LLM generation:`, {
+          logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Completed LLM generation:`, {
             generationId,
             agentName,
             iteration: iteration + 1,
@@ -806,7 +913,7 @@ export class AgentRunner {
         const tracingProvider = createTracingProvider();
         if (generationId && tracingContext?.traceId) {
           await tracingProvider.updateObservation(generationId, {
-            endTime: new Date(),
+            endTime: getRuntime().now(),
             error: error.message || String(error),
             metadata: {
               executionLevel: 'agentrunner',
@@ -838,20 +945,18 @@ export class AgentRunner {
 
         // Complete session with error
         agentSession.status = 'error';
-        agentSession.endTime = new Date();
+        agentSession.endTime = getRuntime().now();
         agentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
-          AgentRunner.eventBus.emitProgress({
-            type: 'session_completed',
-            sessionId: agentSession.sessionId,
-            parentSessionId: agentSession.parentSessionId,
-            agentName,
-            timestamp: new Date(),
-            data: { session: agentSession, reason: 'error' }
-          });
-        }
+        // Emit session completed event (skip for background agents)
+        AgentRunner.eventBus?.emitProgress({
+          type: 'session_completed',
+          sessionId: agentSession.sessionId,
+          parentSessionId: agentSession.parentSessionId,
+          agentName,
+          timestamp: getRuntime().now(),
+          data: { session: agentSession, reason: 'error' }
+        }, isBackground);
 
         // Clear todo list on error
         await AgentRunner.clearTodoList(agentName, tools);
@@ -886,7 +991,7 @@ export class AgentRunner {
 
         if (parsedAction.type === 'tool_call') {
           const { name: toolName, args: toolArgs } = parsedAction;
-          const toolCallId = crypto.randomUUID(); // Generate unique ID for OpenAI format
+          const toolCallId = getRuntime().generateId(); // Generate unique ID for OpenAI format
 
           // Create tool call decision event for AgentRunner
           const tracingContext = getCurrentTracingContext();
@@ -898,7 +1003,7 @@ export class AgentRunner {
               id: toolCallObservationId,
               name: `AgentRunner Tool Call Decision: ${toolName}`,
               type: 'event',
-              startTime: new Date(),
+              startTime: getRuntime().now(),
               parentObservationId: generationId || tracingContext.currentAgentSpanId || tracingContext.parentObservationId,
               input: {
                 toolName,
@@ -916,7 +1021,7 @@ export class AgentRunner {
               }
             }, tracingContext.traceId);
 
-            console.log(`[HIERARCHICAL_TRACING] AgentRunner: Created tool call decision:`, {
+            logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Created tool call decision:`, {
               toolCallObservationId,
               toolName,
               agentName,
@@ -951,6 +1056,13 @@ export class AgentRunner {
                 : (llmResponse.reasoning?.summary || undefined)
             }
           });
+
+          // Accumulate tool call metrics
+          if (agentSession.metrics) {
+            agentSession.metrics.toolCallCount++;
+            agentSession.metrics.toolCallsByName[toolName] = (agentSession.metrics.toolCallsByName[toolName] || 0) + 1;
+          }
+
           logger.info(`${agentName} LLM requested tool: ${toolName}`);
 
           // Execute tool
@@ -987,7 +1099,7 @@ export class AgentRunner {
               }
 
               // Add handoff message to current session
-              const nestedSessionId = crypto.randomUUID();
+              const nestedSessionId = getRuntime().generateId();
               addSessionMessage({
                 type: 'handoff',
                 content: {
@@ -998,6 +1110,15 @@ export class AgentRunner {
                   nestedSessionId
                 }
               });
+
+              // Capture screenshot before handoff execution (if callback provided)
+              if (config.onBeforeToolExecution) {
+                try {
+                  await config.onBeforeToolExecution(toolName, toolArgs);
+                } catch (hookError) {
+                  logger.warn(`onBeforeToolExecution hook failed: ${hookError}`);
+                }
+              }
 
               // Use the shared handoff execution logic, passing LLM's toolArgs and current session
               const handoffResult = await AgentRunner.executeHandoff(
@@ -1013,26 +1134,25 @@ export class AgentRunner {
                   config.getVisionCapability,
                   config.miniModel,
                   config.nanoModel,
-                  { sessionId: nestedSessionId, parentSessionId: currentSession.sessionId, traceId: getCurrentTracingContext()?.traceId }
+                  { sessionId: nestedSessionId, parentSessionId: currentSession.sessionId, traceId: getCurrentTracingContext()?.traceId },
+                  config.onBeforeToolExecution
               );
 
               // LLM tool handoff replaces the current agent's execution entirely
               // Complete current session and return result with session
               agentSession.status = 'completed';
-              agentSession.endTime = new Date();
+              agentSession.endTime = getRuntime().now();
               agentSession.terminationReason = 'handed_off';
 
-              // Emit session completed event
-              if (AgentRunner.eventBus) {
-                AgentRunner.eventBus.emitProgress({
-                  type: 'session_completed',
-                  sessionId: agentSession.sessionId,
-                  parentSessionId: agentSession.parentSessionId,
-                  agentName,
-                  timestamp: new Date(),
-                  data: { session: agentSession, reason: 'handed_off' }
-                });
-              }
+              // Emit session completed event (skip for background agents)
+              AgentRunner.eventBus?.emitProgress({
+                type: 'session_completed',
+                sessionId: agentSession.sessionId,
+                parentSessionId: agentSession.parentSessionId,
+                agentName,
+                timestamp: getRuntime().now(),
+                data: { session: agentSession, reason: 'handed_off' }
+              }, isBackground);
 
               return { ...handoffResult, agentSession };
 
@@ -1043,7 +1163,7 @@ export class AgentRunner {
             const tracingContext = getCurrentTracingContext();
             const tracingProvider = createTracingProvider();
             let toolSpanId: string | undefined;
-            const toolStartTime = new Date();
+            const toolStartTime = getRuntime().now();
 
             if (tracingContext?.traceId) {
               toolSpanId = `tool-exec-agentrunner-${toolName}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -1066,7 +1186,7 @@ export class AgentRunner {
                     parentToolCallDecision: toolCallObservationId
                   }
                 }, tracingContext.traceId);
-                console.log(`[HIERARCHICAL_TRACING] AgentRunner: Created tool execution span:`, {
+                logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Created tool execution span:`, {
                   toolSpanId,
                   toolName,
                   agentName,
@@ -1085,13 +1205,13 @@ export class AgentRunner {
                // This is an agent being called as a tool!
                
                // Pre-allocate child session ID and add placeholder for real-time UI
-               preallocatedChildId = crypto.randomUUID();
+               preallocatedChildId = getRuntime().generateId();
                const childPlaceholder: AgentSession = {
                  sessionId: preallocatedChildId,
                  agentName: toolName,
                  parentSessionId: currentSession.sessionId,
                  status: 'running',
-                 startTime: new Date(),
+                 startTime: getRuntime().now(),
                  messages: [],
                  nestedSessions: [],
                  tools: []
@@ -1109,24 +1229,32 @@ export class AgentRunner {
                  }
                });
                
-               // Emit child agent starting
-               if (AgentRunner.eventBus) {
-                AgentRunner.eventBus.emitProgress({
-                  type: 'child_agent_started',
-                  sessionId: currentSession.sessionId,
-                  parentSessionId: currentSession.parentSessionId,
-                  agentName: currentSession.agentName,
-                  timestamp: new Date(),
-                  data: {
-                    parentSession: currentSession,
-                    childAgentName: toolName,
-                    childSessionId: preallocatedChildId
-                  }
-                });
-              }
+               // Emit child agent starting (skip for background agents)
+               AgentRunner.eventBus?.emitProgress({
+                 type: 'child_agent_started',
+                 sessionId: currentSession.sessionId,
+                 parentSessionId: currentSession.parentSessionId,
+                 agentName: currentSession.agentName,
+                 timestamp: getRuntime().now(),
+                 data: {
+                   parentSession: currentSession,
+                   childAgentName: toolName,
+                   childSessionId: preallocatedChildId
+                 }
+               }, isBackground);
             }
 
             try {
+              // Call pre-execution hook if provided (for screenshots, logging, etc.)
+              if (config.onBeforeToolExecution) {
+                try {
+                  await config.onBeforeToolExecution(toolToExecute.name, toolArgs);
+                } catch (hookError) {
+                  logger.warn(`onBeforeToolExecution hook failed: ${hookError}`);
+                  // Continue with execution even if hook fails
+                }
+              }
+
               logger.info(`${agentName} Executing tool: ${toolToExecute.name}`);
               const execTracingContext = getCurrentTracingContext();
               toolResultData = await toolToExecute.execute(toolArgs as any, ({
@@ -1140,6 +1268,7 @@ export class AgentRunner {
                 overrideSessionId: preallocatedChildId,
                 overrideParentSessionId: currentSession.sessionId,
                 overrideTraceId: execTracingContext?.traceId,
+                cdpAdapter: config.cdpAdapter,
               } as any));
               
               // If this was an agent tool, replace placeholder with actual session
@@ -1191,7 +1320,7 @@ export class AgentRunner {
               if (toolSpanId && tracingContext?.traceId) {
                 try {
                   await tracingProvider.updateObservation(toolSpanId, {
-                    endTime: new Date(),
+                    endTime: getRuntime().now(),
                     output: toolResultData,
                     metadata: {
                       executionLevel: 'agentrunner',
@@ -1206,7 +1335,7 @@ export class AgentRunner {
                       parentToolCallDecision: toolCallObservationId
                     }
                   });
-                  console.log(`[HIERARCHICAL_TRACING] AgentRunner: Completed tool execution span:`, {
+                  logger.debug(`[HIERARCHICAL_TRACING] AgentRunner: Completed tool execution span:`, {
                     toolSpanId,
                     toolName,
                     agentName,
@@ -1229,7 +1358,7 @@ export class AgentRunner {
               if (toolSpanId && tracingContext?.traceId) {
                 try {
                   await tracingProvider.updateObservation(toolSpanId, {
-                    endTime: new Date(),
+                    endTime: getRuntime().now(),
                     error: err.message || String(err),
                     metadata: {
                       executionLevel: 'agentrunner',
@@ -1328,20 +1457,18 @@ export class AgentRunner {
 
           // Complete session naturally
           agentSession.status = 'completed';
-          agentSession.endTime = new Date();
+          agentSession.endTime = getRuntime().now();
           agentSession.terminationReason = 'final_answer';
 
-          // Emit session completed event
-          if (AgentRunner.eventBus) {
-            AgentRunner.eventBus.emitProgress({
-              type: 'session_completed',
-              sessionId: agentSession.sessionId,
-              parentSessionId: agentSession.parentSessionId,
-              agentName,
-              timestamp: new Date(),
-              data: { session: agentSession, reason: 'final_answer' }
-            });
-          }
+          // Emit session completed event (skip for background agents)
+          AgentRunner.eventBus?.emitProgress({
+            type: 'session_completed',
+            sessionId: agentSession.sessionId,
+            parentSessionId: agentSession.parentSessionId,
+            agentName,
+            timestamp: getRuntime().now(),
+            data: { session: agentSession, reason: 'final_answer' }
+          }, isBackground);
 
           // Exit loop and return success with final answer (summary appended if configured)
           const result = createSuccessResult(finalAnswer, messages, 'final_answer');
@@ -1390,20 +1517,18 @@ export class AgentRunner {
 
         // Complete session with error
         agentSession.status = 'error';
-        agentSession.endTime = new Date();
+        agentSession.endTime = getRuntime().now();
         agentSession.terminationReason = 'error';
 
-        // Emit session completed event
-        if (AgentRunner.eventBus) {
-          AgentRunner.eventBus.emitProgress({
-            type: 'session_completed',
-            sessionId: agentSession.sessionId,
-            parentSessionId: agentSession.parentSessionId,
-            agentName,
-            timestamp: new Date(),
-            data: { session: agentSession, reason: 'error' }
-          });
-        }
+        // Emit session completed event (skip for background agents)
+        AgentRunner.eventBus?.emitProgress({
+          type: 'session_completed',
+          sessionId: agentSession.sessionId,
+          parentSessionId: agentSession.parentSessionId,
+          agentName,
+          timestamp: getRuntime().now(),
+          data: { session: agentSession, reason: 'error' }
+        }, isBackground);
 
         // Clear todo list on error
         await AgentRunner.clearTodoList(agentName, tools);
@@ -1451,7 +1576,9 @@ export class AgentRunner {
                 config.provider,
                 config.getVisionCapability,
                 config.miniModel,
-                config.nanoModel
+                config.nanoModel,
+                undefined, // No overrides for max iterations handoff
+                config.onBeforeToolExecution
             );
             // Extract the result and session
             const { agentSession: childSession, ...actualResult } = handoffResult;
@@ -1463,20 +1590,18 @@ export class AgentRunner {
 
             // Complete current session and return result with session
             agentSession.status = 'completed';
-            agentSession.endTime = new Date();
+            agentSession.endTime = getRuntime().now();
             agentSession.terminationReason = 'handed_off';
 
-            // Emit session completed event
-            if (AgentRunner.eventBus) {
-              AgentRunner.eventBus.emitProgress({
-                type: 'session_completed',
-                sessionId: agentSession.sessionId,
-                parentSessionId: agentSession.parentSessionId,
-                agentName,
-                timestamp: new Date(),
-                data: { session: agentSession, reason: 'handed_off' }
-              });
-            }
+            // Emit session completed event (skip for background agents)
+            AgentRunner.eventBus?.emitProgress({
+              type: 'session_completed',
+              sessionId: agentSession.sessionId,
+              parentSessionId: agentSession.parentSessionId,
+              agentName,
+              timestamp: getRuntime().now(),
+              data: { session: agentSession, reason: 'handed_off' }
+            }, isBackground);
 
             return { ...actualResult, agentSession }; // Return the result from the handoff target
         }
@@ -1487,20 +1612,18 @@ export class AgentRunner {
 
     // Complete session with max iterations error
     agentSession.status = 'error';
-    agentSession.endTime = new Date();
+    agentSession.endTime = getRuntime().now();
     agentSession.terminationReason = 'max_iterations';
 
-    // Emit session completed event
-    if (AgentRunner.eventBus) {
-      AgentRunner.eventBus.emitProgress({
-        type: 'session_completed',
-        sessionId: agentSession.sessionId,
-        parentSessionId: agentSession.parentSessionId,
-        agentName,
-        timestamp: new Date(),
-        data: { session: agentSession, reason: 'max_iterations' }
-      });
-    }
+    // Emit session completed event (skip for background agents)
+    AgentRunner.eventBus?.emitProgress({
+      type: 'session_completed',
+      sessionId: agentSession.sessionId,
+      parentSessionId: agentSession.parentSessionId,
+      agentName,
+      timestamp: getRuntime().now(),
+      data: { session: agentSession, reason: 'max_iterations' }
+    }, isBackground);
 
     // Generate summary of agent progress instead of generic error message
     const progressSummary = await this.summarizeAgentProgress(messages, maxIterations, agentName, modelName, 'max_iterations', config.provider, config.getVisionCapability);

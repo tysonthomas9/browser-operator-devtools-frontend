@@ -3,11 +3,81 @@
 // found in the LICENSE file.
 // Cache break: 2025-09-17T22:47:00Z - Add AUTOMATED_MODE bypass for createAgentGraph API key validation
 
-import * as Common from '../../../core/common/common.js';
-import * as i18n from '../../../core/i18n/i18n.js';
-import * as SDK from '../../../core/sdk/sdk.js';
-import * as UI from '../../../ui/legacy/legacy.js';
 import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelChatMessage } from '../models/ChatTypes.js';
+
+// Detect if we're in a Node.js environment (eval runner, tests)
+const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
+
+// Lazy-loaded browser-only dependencies
+let Common: typeof import('../../../core/common/common.js') | null = null;
+let i18n: typeof import('../../../core/i18n/i18n.js') | null = null;
+let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
+let UI: typeof import('../../../ui/legacy/legacy.js') | null = null;
+let browserDepsLoaded = false;
+
+/**
+ * Ensures browser dependencies (SDK, Common, i18n, UI) are loaded.
+ * Returns false in Node.js environment or if loading fails.
+ */
+async function ensureBrowserDeps(): Promise<boolean> {
+  if (isNodeEnvironment) {
+    return false;
+  }
+  if (!browserDepsLoaded) {
+    browserDepsLoaded = true;
+    try {
+      const [commonModule, i18nModule, sdkModule, uiModule] = await Promise.all([
+        import('../../../core/common/common.js'),
+        import('../../../core/i18n/i18n.js'),
+        import('../../../core/sdk/sdk.js'),
+        import('../../../ui/legacy/legacy.js'),
+      ]);
+      Common = commonModule;
+      i18n = i18nModule;
+      SDK = sdkModule;
+      UI = uiModule;
+    } catch {
+      return false;
+    }
+  }
+  return SDK !== null && Common !== null && i18n !== null && UI !== null;
+}
+
+/**
+ * Stub ObjectWrapper for Node.js environment.
+ * Provides the same interface as Common.ObjectWrapper.ObjectWrapper.
+ */
+class NodeObjectWrapperStub<T extends object = object> {
+  private listeners = new Map<string, Set<(event: any) => void>>();
+
+  addEventListener<K extends keyof T>(eventType: K, listener: (event: { data: T[K] }) => void): void {
+    const key = String(eventType);
+    if (!this.listeners.has(key)) {
+      this.listeners.set(key, new Set());
+    }
+    this.listeners.get(key)!.add(listener as any);
+  }
+
+  removeEventListener<K extends keyof T>(eventType: K, listener: (event: { data: T[K] }) => void): void {
+    const key = String(eventType);
+    this.listeners.get(key)?.delete(listener as any);
+  }
+
+  dispatchEventToListeners<K extends keyof T>(eventType: K, data: T[K]): void {
+    const key = String(eventType);
+    const eventListeners = this.listeners.get(key);
+    if (eventListeners) {
+      for (const listener of eventListeners) {
+        try {
+          listener({ data });
+        } catch (e) {
+          console.error('Error in event listener:', e);
+        }
+      }
+    }
+  }
+}
+
 
 import {createAgentGraph} from './Graph.js';
 import { createLogger } from './Logger.js';
@@ -29,6 +99,8 @@ import { BUILD_CONFIG } from './BuildConfig.js';
 import { VisualIndicatorManager } from '../tools/VisualIndicatorTool.js';
 import { ConversationManager } from '../persistence/ConversationManager.js';
 import type { ConversationMetadata } from '../persistence/ConversationTypes.js';
+import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
+import { MemoryModule } from '../memory/index.js';
 
 // Cache break: 2025-09-17T17:54:00Z - Force rebuild with AUTOMATED_MODE bypass
 const logger = createLogger('AgentService');
@@ -48,10 +120,8 @@ export enum Events {
   CONVERSATION_SAVED = 'conversation-saved',
 }
 
-/**
- * Service for interacting with the orchestrator agent
- */
-export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
+// Type for AgentService event map
+type AgentServiceEventMap = {
   [Events.MESSAGES_CHANGED]: ChatMessage[],
   [Events.AGENT_SESSION_STARTED]: AgentSession,
   [Events.AGENT_TOOL_STARTED]: { session: AgentSession, toolCall: AgentMessage },
@@ -61,7 +131,16 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   [Events.CHILD_AGENT_STARTED]: { parentSession: AgentSession, childAgentName: string, childSessionId: string },
   [Events.CONVERSATION_CHANGED]: string | null,
   [Events.CONVERSATION_SAVED]: string,
-}> {
+};
+
+// Get base class at module load time - stub for Node.js
+const AgentServiceBase: new () => NodeObjectWrapperStub<AgentServiceEventMap> = NodeObjectWrapperStub as any;
+
+/**
+ * Service for interacting with the orchestrator agent.
+ * Extends NodeObjectWrapperStub in Node.js, Common.ObjectWrapper.ObjectWrapper in browser.
+ */
+export class AgentService extends AgentServiceBase {
   static instance: AgentService;
 
   #state: AgentState = createInitialState();
@@ -150,7 +229,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     this.#state.messages.push({
       entity: ChatMessageEntity.MODEL,
       action: 'final',
-      answer: i18nString(UIStrings.welcomeMessage),
+      answer: i18nString('welcomeMessage'),
       isFinalAnswer: true,
     });
 
@@ -158,13 +237,20 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     AgentRunner.initializeEventBus();
 
     // Subscribe to AgentRunner events
-    AgentRunnerEventBus.getInstance().addEventListener('agent-progress', this.#handleAgentProgress.bind(this));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    AgentRunnerEventBus.getInstance().addEventListener('agent-progress', this.#handleAgentProgress.bind(this) as any);
 
     // Initialize visual indicator system with reference to AgentService
     VisualIndicatorManager.getInstance().initialize(this);
 
     // Subscribe to configuration changes
     this.#configManager.addChangeListener(this.#handleConfigurationChange.bind(this));
+
+    // Process any old conversations that missed memory extraction
+    // Delay to avoid blocking startup and ensure tools are registered
+    setTimeout(() => {
+      this.processUnprocessedConversations();
+    }, 5000);
   }
 
   /**
@@ -268,15 +354,15 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       };
     }
 
-    // Default: provider requires apiKey
-    if (!apiKey) {
+    // Default: provider requires apiKey (unless in AUTOMATED_MODE where keys come dynamically)
+    if (!apiKey && !BUILD_CONFIG.AUTOMATED_MODE) {
       logger.warn(`Provider ${provider} requires API key`);
       return null;
     }
 
     return {
       provider,
-      apiKey
+      apiKey: apiKey || ''  // Default to empty string for AUTOMATED_MODE
     };
   }
 
@@ -330,7 +416,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
            error.message.includes('endpoint is required'))) {
         throw error;
       }
-      throw new Error(i18nString(UIStrings.agentInitFailed));
+      throw new Error(i18nString('agentInitFailed'));
     }
   }
 
@@ -589,7 +675,9 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
           tracingContext: {
             sessionId: existingContext?.sessionId || this.#sessionId,
             traceId,
-            parentObservationId: parentObservationId
+            parentObservationId: parentObservationId,
+            // Forward metadata from evaluation context for Langfuse session grouping
+            metadata: existingContext?.metadata
           },
           executionId: this.#executionId,
           abortSignal: this.#abortController?.signal,
@@ -816,6 +904,16 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   }
 
   /**
+   * Clears any pending auto-save timeout to prevent memory leaks
+   */
+  #clearAutoSaveTimeout(): void {
+    if (this.#autoSaveTimeoutId !== undefined) {
+      clearTimeout(this.#autoSaveTimeoutId);
+      this.#autoSaveTimeoutId = undefined;
+    }
+  }
+
+  /**
    * Manually saves the current conversation
    */
   async saveConversation(): Promise<string | null> {
@@ -855,7 +953,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
         return false;
       }
 
-      // Abort any running execution
+      // Clear any pending auto-save timeout and abort execution
+      this.#clearAutoSaveTimeout();
       this.cancelRun();
 
       // Load the state
@@ -889,7 +988,11 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    * Starts a new conversation
    */
   async newConversation(): Promise<void> {
-    // Abort any running execution
+    // Capture conversation ID BEFORE clearing (for async memory extraction)
+    const endingConversationId = this.#currentConversationId;
+
+    // Clear any pending auto-save timeout and abort execution
+    this.#clearAutoSaveTimeout();
     this.cancelRun();
 
     // Clear conversation ID
@@ -902,7 +1005,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     this.#state.messages.push({
       entity: ChatMessageEntity.MODEL,
       action: 'final',
-      answer: i18nString(UIStrings.welcomeMessage),
+      answer: i18nString('welcomeMessage'),
       isFinalAnswer: true,
     });
 
@@ -914,6 +1017,126 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
     this.dispatchEventToListeners(Events.CONVERSATION_CHANGED, null);
 
     logger.info('Started new conversation');
+
+    // Fire off memory extraction in background (non-blocking)
+    if (endingConversationId) {
+      this.#processConversationMemory(endingConversationId);
+    }
+  }
+
+  /**
+   * Processes memory for a conversation. Uses claim mechanism to prevent
+   * concurrent processing of the same conversation.
+   */
+  async #processConversationMemory(conversationId: string): Promise<void> {
+    logger.info('[Memory] Starting processing for conversation', {conversationId});
+    // Check if memory is enabled in settings
+    if (!MemoryModule.getInstance().isEnabled()) {
+      logger.info('[Memory] Skipping - memory disabled in settings');
+      return;
+    }
+
+    // Try to claim - if another instance is processing, skip
+    const claimed = await this.#conversationManager.tryClaimForMemoryProcessing(conversationId);
+    if (!claimed) {
+      logger.info('[Memory] Skipping - already processing or completed', {conversationId});
+      return;
+    }
+
+    try {
+      // Load the conversation to get messages
+      const loaded = await this.#conversationManager.loadConversation(conversationId);
+      if (!loaded || loaded.state.messages.length < 4) {
+        // Mark as completed (nothing to extract)
+        await this.#conversationManager.markMemoryCompleted(conversationId);
+        logger.info('[Memory] Skipping - conversation too short', {conversationId, messageCount: loaded?.state.messages.length || 0});
+        return;
+      }
+
+      // Format conversation summary
+      const conversationSummary = loaded.state.messages
+        .filter(m => m.entity === ChatMessageEntity.USER || m.entity === ChatMessageEntity.MODEL)
+        .slice(-20)
+        .map(m => {
+          const role = m.entity === ChatMessageEntity.USER ? 'User' : 'Assistant';
+          const text = m.entity === ChatMessageEntity.USER
+            ? (m as {text: string}).text
+            : ((m as ModelChatMessage).answer || '');
+          return `${role}: ${text}`;
+        })
+        .join('\n');
+
+      const memoryAgent = ToolRegistry.getToolInstance('memory_agent');
+      if (!memoryAgent) {
+        await this.#conversationManager.markMemoryFailed(conversationId);
+        logger.warn('[Memory] memory_agent not found in registry');
+        return;
+      }
+
+      const config = this.#configManager.getConfiguration();
+      logger.info('[Memory] Processing conversation', {
+        conversationId,
+        provider: config.provider,
+        model: config.mainModel,
+        miniModel: config.miniModel,
+        summaryLength: conversationSummary.length
+      });
+
+      const result = await memoryAgent.execute({
+        conversation_summary: conversationSummary,
+        reasoning: 'Extracting facts from conversation',
+      }, {
+        apiKey: config.apiKey,
+        provider: config.provider,
+        model: config.mainModel,
+        miniModel: config.miniModel,
+        nanoModel: config.nanoModel,
+        background: true,  // Don't show in UI
+      });
+
+      logger.info('[Memory] Agent execution result', {
+        conversationId,
+        success: result.success,
+        outputLength: result.output?.length || 0,
+        outputPreview: result.output?.substring(0, 500),
+        error: result.error,
+        terminationReason: result.terminationReason,
+        toolCallsCount: result.toolCalls?.length || 0,
+        toolCalls: result.toolCalls?.map((tc: any) => ({ name: tc.name, args: tc.args })) || [],
+      });
+
+      await this.#conversationManager.markMemoryCompleted(conversationId);
+      logger.info('[Memory] Completed', {conversationId});
+
+    } catch (err) {
+      logger.error('[Memory] Failed:', err);
+      await this.#conversationManager.markMemoryFailed(conversationId);
+    }
+  }
+
+  /**
+   * Processes any old conversations that never had memory extracted.
+   * Call this on initialization or periodically.
+   */
+  async processUnprocessedConversations(): Promise<void> {
+    const pending = await this.#conversationManager.getConversationsNeedingMemoryProcessing();
+
+    // Skip the currently active conversation and limit to avoid overload
+    const toProcess = pending
+      .filter(conv => conv.id !== this.#currentConversationId)
+      .slice(0, 3);
+
+    for (const conv of toProcess) {
+      // Don't await - process in parallel
+      this.#processConversationMemory(conv.id);
+    }
+
+    if (pending.length > 0) {
+      logger.info('[Memory] Processing unprocessed conversations', {
+        total: pending.length,
+        processing: toProcess.length,
+      });
+    }
   }
 
   /**
@@ -975,6 +1198,8 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    */
   cancelRun(): void {
     logger.info('Cancelling current agent execution (without clearing messages)');
+    // Clear any pending auto-save timeout
+    this.#clearAutoSaveTimeout();
     if (this.#executionId) {
       const controller = AgentService.getExecutionController(this.#executionId);
       try { controller?.abort(); } catch {}
@@ -999,6 +1224,10 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    * Gets the current page URL from the target
    */
   async #getCurrentPageUrl(): Promise<string> {
+    // Ensure browser deps are loaded
+    if (!(await ensureBrowserDeps()) || !SDK) {
+      return '';
+    }
     let pageUrl = '';
     const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (target) {
@@ -1022,6 +1251,10 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
    * Gets the current page title from the target
    */
   async #getCurrentPageTitle(): Promise<string> {
+    // Ensure browser deps are loaded
+    if (!(await ensureBrowserDeps()) || !SDK) {
+      return '';
+    }
     let pageTitle = '';
     const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (target) {
@@ -1078,7 +1311,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
   /**
    * Handle progress events from AgentRunner
    */
-  #handleAgentProgress(event: Common.EventTarget.EventTargetEvent<import('../agent_framework/AgentRunnerEventBus.js').AgentRunnerProgressEvent>): void {
+  #handleAgentProgress(event: { data: import('../agent_framework/AgentRunnerEventBus.js').AgentRunnerProgressEvent }): void {
     const progressEvent = event.data;
     
     switch (progressEvent.type) {
@@ -1216,6 +1449,7 @@ export class AgentService extends Common.ObjectWrapper.ObjectWrapper<{
       }, 5000);
     }
   }
+
 }
 
 // Define UI strings object to manage i18n strings
@@ -1230,23 +1464,45 @@ const UIStrings = {
   agentInitFailed: 'Failed to initialize agent.',
 } as const;
 
-const str_ = i18n.i18n.registerUIStrings('panels/ai_chat/core/AgentService.ts', UIStrings);
-const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
-
-// Register as a module
-Common.Revealer.registerRevealer({
-  contextTypes() {
-    return [AgentService];
-  },
-  async loadRevealer() {
-    return {
-      reveal: async(agentService: AgentService): Promise<void> => {
-        if (!(agentService instanceof AgentService)) {
-          return;
-        }
-        // Reveal the AI Chat panel
-        await UI.ViewManager.ViewManager.instance().showView('ai-chat');
-      }
-    };
+// i18n function - returns raw string in Node environment, localized string in browser
+function i18nString(key: keyof typeof UIStrings): string {
+  if (isNodeEnvironment || !i18n) {
+    return UIStrings[key];
   }
-});
+  // Lazily initialize i18n registration on first call
+  if (!i18nInitialized) {
+    i18nInitialized = true;
+    str_ = i18n.i18n.registerUIStrings('panels/ai_chat/core/AgentService.ts', UIStrings);
+  }
+  if (!str_) {
+    return UIStrings[key];
+  }
+  return i18n.i18n.getLocalizedString(str_, UIStrings[key]);
+}
+let i18nInitialized = false;
+let str_: ReturnType<typeof import('../../../core/i18n/i18n.js').i18n.registerUIStrings> | null = null;
+
+// Register as a module (browser-only)
+if (!isNodeEnvironment) {
+  // Defer registration to ensure browser deps are loaded
+  void ensureBrowserDeps().then(() => {
+    if (Common && UI) {
+      Common.Revealer.registerRevealer({
+        contextTypes() {
+          return [AgentService];
+        },
+        async loadRevealer() {
+          return {
+            reveal: async(agentService: AgentService): Promise<void> => {
+              if (!(agentService instanceof AgentService)) {
+                return;
+              }
+              // Reveal the AI Chat panel
+              await UI?.ViewManager.ViewManager.instance().showView('ai-chat');
+            }
+          };
+        }
+      });
+    }
+  });
+}

@@ -239,6 +239,8 @@ export function createAgentNode(modelName: string, provider: LLMProvider, temper
               })),
               temperature: this.temperature,
               agentName: agentName,
+              // Pass tracing metadata explicitly from state context for Langfuse integration
+              tracingMetadata: state.context?.tracingContext?.metadata,
             });
             
             // Parse the response
@@ -1067,3 +1069,4 @@ export function createFinalNode(): Runnable<AgentState, AgentState> {
   }();
   return finalNode;
 }
+

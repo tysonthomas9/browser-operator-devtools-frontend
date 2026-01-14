@@ -47,11 +47,18 @@ RUN git remote add upstream https://github.com/BrowserOperator/browser-operator-
 RUN git fetch upstream
 RUN git checkout upstream/main
 
-# Force automated mode (matches parent Dockerfile.devtools approach - rock-solid)
-RUN sed -i 's/AUTOMATED_MODE: false/AUTOMATED_MODE: true/' \
-    front_end/panels/ai_chat/core/BuildConfig.ts || true
+# Copy local LLM changes on top of the upstream code
+# This allows iterative development without breaking BUILD.gn compatibility
+COPY front_end/panels/ai_chat/LLM /workspace/devtools/devtools-frontend/front_end/panels/ai_chat/LLM
 
-# Build Browser Operator version with current changes
+# AUTOMATED_MODE: Default true for API mode (Type 2/3). Override with --build-arg AUTOMATED_MODE=false for Type 1.
+ARG AUTOMATED_MODE=true
+RUN if [ "$AUTOMATED_MODE" = "true" ]; then \
+      sed -i 's/AUTOMATED_MODE: false/AUTOMATED_MODE: true/' \
+      front_end/panels/ai_chat/core/BuildConfig.ts; \
+    fi
+
+# Build Browser Operator version with local changes
 RUN npm run build
 
 # ==============================================================================

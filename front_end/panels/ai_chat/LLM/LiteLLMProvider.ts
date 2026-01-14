@@ -222,6 +222,12 @@ export class LiteLLMProvider extends LLMBaseProvider {
         logger.debug('Using structured output with schema:', options.outputSchema);
       }
 
+      // Add tracing metadata for Langfuse integration
+      // LiteLLM forwards this to Langfuse callbacks
+      if (options?.tracingMetadata) {
+        payloadBody.metadata = options.tracingMetadata;
+      }
+
       logger.info('Request payload:', payloadBody);
 
       const data = await this.makeAPIRequest(payloadBody);

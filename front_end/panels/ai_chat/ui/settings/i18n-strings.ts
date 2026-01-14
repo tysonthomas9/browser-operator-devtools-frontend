@@ -509,6 +509,18 @@ export const UIStrings = {
    *@description Models count hint text
    */
   modelsCountHint: '{n} model(s)',
+  /**
+   *@description Memory section label
+   */
+  memoryLabel: 'Memory',
+  /**
+   *@description Memory enabled label
+   */
+  memoryEnabled: 'Enable Memory',
+  /**
+   *@description Memory enabled hint
+   */
+  memoryEnabledHint: 'Automatically extract and remember facts from conversations for future sessions',
 };
 
 /**

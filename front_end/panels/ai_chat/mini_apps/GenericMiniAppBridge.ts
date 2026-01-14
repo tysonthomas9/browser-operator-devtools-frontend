@@ -201,9 +201,6 @@ export class GenericMiniAppBridge implements MiniAppBridge {
   private handleBindingCalled(event: { data: Protocol.Runtime.BindingCalledEvent }): void {
     const { data } = event;
 
-    // Log ALL binding calls for debugging
-    logger.info(`>>> GenericMiniAppBridge received binding call: "${data.name}" (expected: "${this.bindingName}")`);
-
     // Only handle our binding
     if (data.name !== this.bindingName) {
       return;
@@ -211,7 +208,7 @@ export class GenericMiniAppBridge implements MiniAppBridge {
 
     try {
       const action = JSON.parse(data.payload) as SPAToDevToolsAction;
-      logger.info(`>>> GenericMiniAppBridge handling action for "${this.appId}":`, action.type);
+      logger.info(`Received action from SPA "${this.appId}":`, action.type);
 
       if (this.actionHandler) {
         // Handle async actions

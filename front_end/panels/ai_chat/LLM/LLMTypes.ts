@@ -217,6 +217,14 @@ export interface LLMCallOptions {
    * responses conform to this schema at the token generation level.
    */
   outputSchema?: OutputSchema;
+  // Tracing metadata for Langfuse integration via LiteLLM
+  tracingMetadata?: {
+    session_id?: string;
+    trace_id?: string;
+    generation_name?: string;
+    tags?: string[];
+    [key: string]: any;
+  };
 }
 
 /**

@@ -256,6 +256,17 @@ export class ChatView extends HTMLElement {
         this.#lastSuggestionHost = null;
       }
     } catch {}
+
+    // Explicitly clean up child elements that have intervals
+    // This ensures proper cleanup in test environments
+    const todoList = this.#shadow.querySelector('ai-todo-list');
+    if (todoList && 'disconnectedCallback' in todoList) {
+      (todoList as any).disconnectedCallback();
+    }
+    const fileList = this.#shadow.querySelector('ai-file-list-display');
+    if (fileList && 'disconnectedCallback' in fileList) {
+      (fileList as any).disconnectedCallback();
+    }
   }
 
   // Test-only helper to introspect cached live agent sessions
