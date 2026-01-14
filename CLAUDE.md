@@ -80,8 +80,8 @@ npx tsx scripts/eval-runner/cli.ts --test action-agent-click-001 --verbose
 npx tsx scripts/eval-runner/cli.ts --provider cerebras --model zai-glm-4.6 --tool action_agent
 npx tsx scripts/eval-runner/cli.ts --provider cerebras --model gpt-oss-120b --tool action_agent
 
-# Run V0 agent variant
-npx tsx scripts/eval-runner/cli.ts --tool action_agent --tool-override action_agent_v0 --provider cerebras --model gpt-oss-120b
+# Run V1 agent variant (with enhanced features)
+npx tsx scripts/eval-runner/cli.ts --tool action_agent --tool-override action_agent_v1 --provider cerebras --model gpt-oss-120b
 
 # Connect to running Browser Operator (bypasses bot detection, uses authenticated sessions)
 npx tsx scripts/eval-runner/cli.ts --tool action_agent --remote-debugging-port 9222 --verbose

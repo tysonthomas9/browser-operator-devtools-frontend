@@ -9,50 +9,65 @@ const logger = createLogger('PageInfoManager');
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
 
-// Dynamic imports for browser-only dependencies (SDK, etc.)
-// These are only loaded when needed and only in browser context
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let Utils: typeof import('../common/utils.js') | null = null;
-let VisitHistoryManager: typeof import('../tools/VisitHistoryManager.js').VisitHistoryManager | null = null;
-let FileStorageManager: typeof import('../tools/FileStorageManager.js').FileStorageManager | null = null;
-let MemoryBlockManager: typeof import('../memory/index.js').MemoryBlockManager | null = null;
-let injectShadowPiercer: typeof import('../dom/ShadowPiercer.js').injectShadowPiercer | null = null;
+// Browser dependencies type
+type BrowserDeps = {
+  SDK: typeof import('../../../core/sdk/sdk.js');
+  UtilsUniversal: typeof import('../common/utils-universal.js');
+  SDKTargetAdapter: typeof import('../cdp/SDKTargetAdapter.js').SDKTargetAdapter;
+  VisitHistoryManager: typeof import('../tools/VisitHistoryManager.js').VisitHistoryManager;
+  FileStorageManager: typeof import('../tools/FileStorageManager.js').FileStorageManager;
+  MemoryBlockManager: typeof import('../memory/index.js').MemoryBlockManager;
+  injectShadowPiercer: typeof import('../dom/ShadowPiercer.js').injectShadowPiercer;
+};
 
-// Initialize browser-only dependencies
-async function initializeBrowserDependencies(): Promise<boolean> {
+let cachedBrowserDeps: BrowserDeps | null = null;
+let browserDepsLoading: Promise<BrowserDeps | null> | null = null;
+
+/**
+ * Gets browser dependencies. Returns null in Node.js environment or if loading fails.
+ */
+async function getBrowserDeps(): Promise<BrowserDeps | null> {
   if (isNodeEnvironment) {
     logger.debug('Skipping browser dependencies in Node environment');
-    return false;
+    return null;
   }
+  if (cachedBrowserDeps) return cachedBrowserDeps;
+  if (browserDepsLoading) return browserDepsLoading;
 
-  try {
-    const [sdkModule, utilsModule, visitHistoryModule, fileStorageModule, memoryModule, shadowPiercerModule] = await Promise.all([
-      import('../../../core/sdk/sdk.js'),
-      import('../common/utils.js'),
-      import('../tools/VisitHistoryManager.js'),
-      import('../tools/FileStorageManager.js'),
-      import('../memory/index.js'),
-      import('../dom/ShadowPiercer.js'),
-    ]);
+  browserDepsLoading = (async () => {
+    try {
+      const [sdkModule, utilsUniversalModule, sdkTargetAdapterModule, visitHistoryModule, fileStorageModule, memoryModule, shadowPiercerModule] = await Promise.all([
+        import('../../../core/sdk/sdk.js'),
+        import('../common/utils-universal.js'),
+        import('../cdp/SDKTargetAdapter.js'),
+        import('../tools/VisitHistoryManager.js'),
+        import('../tools/FileStorageManager.js'),
+        import('../memory/index.js'),
+        import('../dom/ShadowPiercer.js'),
+      ]);
 
-    SDK = sdkModule;
-    Utils = utilsModule;
-    VisitHistoryManager = visitHistoryModule.VisitHistoryManager;
-    FileStorageManager = fileStorageModule.FileStorageManager;
-    MemoryBlockManager = memoryModule.MemoryBlockManager;
-    injectShadowPiercer = shadowPiercerModule.injectShadowPiercer;
+      cachedBrowserDeps = {
+        SDK: sdkModule,
+        UtilsUniversal: utilsUniversalModule,
+        SDKTargetAdapter: sdkTargetAdapterModule.SDKTargetAdapter,
+        VisitHistoryManager: visitHistoryModule.VisitHistoryManager,
+        FileStorageManager: fileStorageModule.FileStorageManager,
+        MemoryBlockManager: memoryModule.MemoryBlockManager,
+        injectShadowPiercer: shadowPiercerModule.injectShadowPiercer,
+      };
 
-    logger.debug('Browser dependencies loaded successfully');
-    return true;
-  } catch (error) {
-    logger.warn('Failed to load browser dependencies:', error);
-    return false;
-  }
+      logger.debug('Browser dependencies loaded successfully');
+      browserDepsLoading = null;
+      return cachedBrowserDeps;
+    } catch (error) {
+      logger.warn('Failed to load browser dependencies:', error);
+      browserDepsLoading = null;
+      return null;
+    }
+  })();
+
+  return browserDepsLoading;
 }
-
-// Flag to track if we've tried to initialize
-let browserDepsInitialized = false;
-let browserDepsAvailable = false;
 
 // Add PageInfoManager class after imports but before other code
 export class PageInfoManager {
@@ -62,6 +77,7 @@ export class PageInfoManager {
   private iframeContent: Array<{ role: string, name?: string, contentSimplified?: string }> | null = null;
   private listeners = new Set<(info: { url: string, title: string } | null) => void>();
   private initialized = false;
+  private deps: BrowserDeps | null = null;
 
   static getInstance(): PageInfoManager {
     if (!PageInfoManager.instance) {
@@ -89,25 +105,19 @@ export class PageInfoManager {
       return;
     }
 
-    // Load browser dependencies if not already loaded
-    if (!browserDepsInitialized) {
-      browserDepsInitialized = true;
-      browserDepsAvailable = await initializeBrowserDependencies();
-    }
-
-    if (!browserDepsAvailable || !SDK) {
+    // Load browser dependencies
+    this.deps = await getBrowserDeps();
+    if (!this.deps) {
       logger.debug('Browser dependencies not available');
       return;
     }
 
+    const { SDK } = this.deps;
+
     // Set up navigation event listeners
-    if (!SDK) {
-      logger.warn('SDK not loaded, skipping target observation');
-      return;
-    }
     SDK.TargetManager.TargetManager.instance().observeTargets({
       targetAdded: (target) => {
-        if (SDK && target.type() === SDK.Target.Type.FRAME) {
+        if (this.deps && target.type() === this.deps.SDK.Target.Type.FRAME) {
           this.updatePageInfo();
           // Inject shadow piercer for shadow DOM access
           this.injectShadowPiercerForTarget(target);
@@ -122,7 +132,7 @@ export class PageInfoManager {
       () => {
         this.updatePageInfo();
         // Re-inject shadow piercer after navigation
-        const target = SDK?.TargetManager.TargetManager.instance().primaryPageTarget();
+        const target = this.deps?.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
         if (target) {
           this.injectShadowPiercerForTarget(target);
         }
@@ -142,11 +152,11 @@ export class PageInfoManager {
    * The piercer patches Element.attachShadow to capture closed shadow roots.
    */
   private async injectShadowPiercerForTarget(target: any): Promise<void> {
-    if (!injectShadowPiercer) {
+    if (!this.deps?.injectShadowPiercer) {
       return;
     }
     try {
-      await injectShadowPiercer(target);
+      await this.deps.injectShadowPiercer(target);
       logger.debug('Shadow piercer injected for target:', target.id());
     } catch (error) {
       logger.warn('Failed to inject shadow piercer:', error);
@@ -160,12 +170,12 @@ export class PageInfoManager {
   async updatePageInfoWithFullTree(): Promise<void> {
     await this.ensureInitialized();
 
-    // In Node environment, just return - page context comes from cdpAdapter
-    if (isNodeEnvironment || !SDK) {
+    // In Node environment or deps not loaded, just return - page context comes from cdpAdapter
+    if (isNodeEnvironment || !this.deps) {
       return;
     }
 
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = this.deps.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
       this.setInfo(null);
       return;
@@ -195,13 +205,13 @@ export class PageInfoManager {
   }
 
   private async updatePageInfo(): Promise<void> {
-    // Skip in Node environment
-    if (isNodeEnvironment || !SDK) {
+    // Skip in Node environment or if deps not loaded
+    if (isNodeEnvironment || !this.deps) {
       return;
     }
 
     try {
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      const target = this.deps.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       if (!target) {
         this.setInfo(null);
         return;
@@ -227,14 +237,16 @@ export class PageInfoManager {
   }
 
   private async fetchAccessibilityTree(target: any): Promise<void> {
-    // Skip if Utils not available (Node environment)
-    if (!Utils) {
+    // Skip if deps not available (Node environment)
+    if (!this.deps) {
       return;
     }
 
     try {
-      // Call the getVisibleAccessibilityTree function from Utils
-      const treeResult = await Utils.getVisibleAccessibilityTree(target);
+      // Create an adapter from the SDK target
+      const adapter = new this.deps.SDKTargetAdapter(target);
+      // Call the getVisibleAccessibilityTree function from UtilsUniversal
+      const treeResult = await this.deps.UtilsUniversal.getVisibleAccessibilityTree(adapter);
 
       // Store the simplified tree
       this.accessibilityTree = treeResult.simplified;
@@ -255,9 +267,9 @@ export class PageInfoManager {
 
       // Keep this storeVisit call - it has the most complete data (page info + accessibility tree)
       const pageInfo = this.getCurrentInfo();
-      if (pageInfo?.url && VisitHistoryManager) {
+      if (pageInfo?.url) {
         // Store with the accessibility tree
-        VisitHistoryManager.getInstance().storeVisit(pageInfo, this.accessibilityTree);
+        this.deps.VisitHistoryManager.getInstance().storeVisit(pageInfo, this.accessibilityTree);
       }
     } catch (error) {
       logger.error('Error fetching accessibility tree:', error);
@@ -319,11 +331,14 @@ export async function enhancePromptWithPageContext(basePrompt: string): Promise<
   const accessibilityTree = PageInfoManager.getInstance().getAccessibilityTree();
   const iframeContent = PageInfoManager.getInstance().getIframeContent();
 
+  // Load browser deps for FileStorageManager and MemoryBlockManager
+  const deps = await getBrowserDeps();
+
   // Get current session files (only if FileStorageManager is available)
   let files: any[] = [];
-  if (FileStorageManager) {
+  if (deps?.FileStorageManager) {
     try {
-      const fileManager = FileStorageManager.getInstance();
+      const fileManager = deps.FileStorageManager.getInstance();
       files = await fileManager.listFiles();
     } catch (error) {
       logger.warn('Failed to fetch files for context:', error);
@@ -332,9 +347,9 @@ export async function enhancePromptWithPageContext(basePrompt: string): Promise<
 
   // Get memory context (global across sessions) - only if MemoryBlockManager is available
   let memoryContext = '';
-  if (MemoryBlockManager) {
+  if (deps?.MemoryBlockManager) {
     try {
-      const memoryManager = new MemoryBlockManager();
+      const memoryManager = new deps.MemoryBlockManager();
       memoryContext = await memoryManager.compileMemoryContext();
     } catch (error) {
       logger.warn('Failed to fetch memory context:', error);

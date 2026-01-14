@@ -13,7 +13,8 @@ import {
   formatSimplifiedTree,
   getFormattedSubtreeByNodeId,
   findScrollableElementIds
-} from './utils.js';
+} from './utils-universal.js';
+import {SDKTargetAdapter} from '../cdp/SDKTargetAdapter.js';
 import type {AccessibilityNode} from './context.js';
 
 describe('utils', () => {
@@ -323,9 +324,11 @@ describe('utils', () => {
 
   describeWithMockConnection('getAccessibilityTree', () => {
     let target: SDK.Target.Target;
+    let adapter: SDKTargetAdapter;
 
     beforeEach(() => {
       target = createTarget();
+      adapter = new SDKTargetAdapter(target);
     });
 
     it('should retrieve and process accessibility tree', async () => {
@@ -392,7 +395,7 @@ describe('utils', () => {
         };
       });
 
-      const result = await getAccessibilityTree(target);
+      const result = await getAccessibilityTree(adapter);
 
       assert.isNotNull(result);
       assert.isArray(result.tree);
@@ -438,7 +441,7 @@ describe('utils', () => {
         }
       }));
 
-      const result = await getAccessibilityTree(target);
+      const result = await getAccessibilityTree(adapter);
 
       assert.isNotNull(result);
       assert.isArray(result.tree);
@@ -522,7 +525,7 @@ describe('utils', () => {
         result: { type: 'object', value: [] }
       }));
 
-      const result = await getAccessibilityTree(target);
+      const result = await getAccessibilityTree(adapter);
 
       assert.strictEqual(result.iframes.length, 1);
       assert.strictEqual(result.iframes[0].role, 'Iframe');
@@ -575,7 +578,7 @@ describe('utils', () => {
         };
       });
 
-      const scrollableIds = await findScrollableElementIds(target);
+      const scrollableIds = await findScrollableElementIds(adapter);
 
       assert.isTrue(scrollableIds.has(123));
       assert.isTrue(scrollableIds.has(124));

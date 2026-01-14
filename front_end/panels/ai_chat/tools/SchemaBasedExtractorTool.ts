@@ -10,25 +10,10 @@ import { callLLMWithTracing } from './LLMTracingWrapper.js';
 import { LLMResponseParser } from '../LLM/LLMResponseParser.js';
 import { getAdapter } from '../cdp/getAdapter.js';
 import type { CDPSessionAdapter } from '../cdp/CDPSessionAdapter.js';
+import { getAgentService } from './agent-service-deps.js';
 
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
-
-// Lazy-loaded browser-only dependencies for API key fallback
-let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
-let agentServiceLoaded = false;
-
-async function ensureAgentService(): Promise<boolean> {
-  if (isNodeEnvironment) return false;
-  if (!agentServiceLoaded) {
-    agentServiceLoaded = true;
-    try {
-      const agentServiceModule = await import('../core/AgentService.js');
-      AgentService = agentServiceModule.AgentService;
-    } catch { return false; }
-  }
-  return AgentService !== null;
-}
 
 const logger = createLogger('Tool:SchemaBasedExtractor');
 
@@ -123,9 +108,9 @@ Schema Examples:
     // Get API key from context first, fallback to AgentService in browser
     let apiKey = ctx?.apiKey;
     if (!apiKey && !isNodeEnvironment) {
-      await ensureAgentService();
-      if (AgentService) {
-        apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+      const agentServiceDeps = await getAgentService();
+      if (agentServiceDeps) {
+        apiKey = agentServiceDeps.AgentService.getInstance().getApiKey() ?? undefined;
       }
     }
 

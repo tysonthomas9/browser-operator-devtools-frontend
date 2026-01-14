@@ -9,7 +9,8 @@ import {describeWithMockConnection, setMockConnectionResponseHandler} from '../.
 
 import {
   performAction
-} from './utils.js';
+} from './utils-universal.js';
+import {SDKTargetAdapter} from '../cdp/SDKTargetAdapter.js';
 
 describe('action-utils', () => {
   beforeEach(() => {
@@ -18,9 +19,11 @@ describe('action-utils', () => {
 
   describeWithMockConnection('performAction', () => {
     let target: SDK.Target.Target;
+    let adapter: SDKTargetAdapter;
 
     beforeEach(() => {
       target = createTarget();
+      adapter = new SDKTargetAdapter(target);
     });
 
     it('should perform action with valid parameters', async () => {
@@ -48,7 +51,7 @@ describe('action-utils', () => {
       }));
 
       // Should not throw
-      await performAction(target, method, args, xpath);
+      await performAction(adapter, method, args, xpath);
 
       assert.include(evaluatedExpression, xpath);
     });
@@ -79,7 +82,7 @@ describe('action-utils', () => {
       }));
 
       // Should not throw
-      await performAction(target, method, args, xpath, iframeNodeId);
+      await performAction(adapter, method, args, xpath, iframeNodeId);
 
       assert.include(evaluatedExpression, xpath);
     });
@@ -95,7 +98,7 @@ describe('action-utils', () => {
 
       // Should handle error gracefully and not throw
       try {
-        await performAction(target, method, args, xpath);
+        await performAction(adapter, method, args, xpath);
       } catch (error) {
         // Expected to potentially throw since it's an async operation
         assert.instanceOf(error, Error);
@@ -115,14 +118,14 @@ describe('action-utils', () => {
 
       // Should handle gracefully
       try {
-        await performAction(target, method, args, xpath);
+        await performAction(adapter, method, args, xpath);
       } catch (error) {
         // May throw due to invalid xpath
         assert.instanceOf(error, Error);
       }
     });
 
-    it('should handle missing target', async () => {
+    it('should handle missing adapter', async () => {
       const method = 'click';
       const args = ['selector', 'button'];
       const xpath = '/html/body/button[1]';
@@ -155,7 +158,7 @@ describe('action-utils', () => {
       }));
 
       try {
-        await performAction(target, method, args, xpath);
+        await performAction(adapter, method, args, xpath);
       } catch (error) {
         // May throw due to empty method
         assert.instanceOf(error, Error);
@@ -183,7 +186,7 @@ describe('action-utils', () => {
       }));
 
       // Should not throw for empty args
-      await performAction(target, method, args, xpath);
+      await performAction(adapter, method, args, xpath);
     });
 
     it('should handle complex args array', async () => {
@@ -207,7 +210,7 @@ describe('action-utils', () => {
       }));
 
       // Should handle complex arguments
-      await performAction(target, method, args, xpath);
+      await performAction(adapter, method, args, xpath);
     });
   });
 });

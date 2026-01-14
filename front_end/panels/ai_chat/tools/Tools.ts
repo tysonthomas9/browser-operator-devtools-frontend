@@ -9,6 +9,7 @@ import {
   preloadBrowserDeps,
   type AdapterContext,
 } from "../cdp/getAdapter.js";
+import { getAgentService } from "./agent-service-deps.js";
 import type { CDPSessionAdapter } from "../cdp/CDPSessionAdapter.js";
 import {
   isEncodedId,
@@ -35,13 +36,12 @@ const isNodeEnvironment =
 let SDK: typeof import("../../../core/sdk/sdk.js") | null = null;
 let Common: typeof import("../../../core/common/common.js") | null = null;
 let Logs: typeof import("../../../models/logs/logs.js") | null = null;
-let Utils: typeof import("../common/utils.js") | null = null;
 let AgentService: typeof import("../core/AgentService.js").AgentService | null =
   null;
 let browserDepsLoaded = false;
 
 /**
- * Ensures browser dependencies (SDK, Common, Logs, Utils) are loaded.
+ * Ensures browser dependencies (SDK, Common, Logs) are loaded.
  * Returns false in Node.js environment or if loading fails.
  */
 async function ensureToolsBrowserDeps(): Promise<boolean> {
@@ -57,19 +57,16 @@ async function ensureToolsBrowserDeps(): Promise<boolean> {
         sdkModule,
         commonModule,
         logsModule,
-        utilsModule,
         agentServiceModule,
       ] = await Promise.all([
         import("../../../core/sdk/sdk.js"),
         import("../../../core/common/common.js"),
         import("../../../models/logs/logs.js"),
-        import("../common/utils.js"),
         import("../core/AgentService.js"),
       ]);
       SDK = sdkModule;
       Common = commonModule;
       Logs = logsModule;
-      Utils = utilsModule;
       AgentService = agentServiceModule.AgentService;
     } catch {
       return false;
@@ -2966,9 +2963,9 @@ Important guidelines:
     // Get API key from context first (for eval runner), fallback to AgentService
     let apiKey = ctx?.apiKey;
     if (!apiKey && !isNodeEnvironment) {
-      await ensureToolsBrowserDeps();
-      if (AgentService) {
-        apiKey = AgentService.getInstance().getApiKey() ?? undefined;
+      const agentServiceDeps = await getAgentService();
+      if (agentServiceDeps) {
+        apiKey = agentServiceDeps.AgentService.getInstance().getApiKey() ?? undefined;
       }
     }
     const providerForAction = ctx?.provider;

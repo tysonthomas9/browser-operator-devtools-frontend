@@ -4,25 +4,7 @@
 
 import { ChatMessageEntity } from '../models/ChatTypes.js';
 import { createLogger } from '../core/Logger.js';
-
-// Detect if we're in a Node.js environment (eval runner, tests)
-const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
-
-// Lazy-loaded browser-only AgentService dependency
-let AgentService: typeof import('../core/AgentService.js').AgentService | null = null;
-let agentServiceLoaded = false;
-
-async function ensureAgentService(): Promise<boolean> {
-  if (isNodeEnvironment) return false;
-  if (!agentServiceLoaded) {
-    agentServiceLoaded = true;
-    try {
-      const module = await import('../core/AgentService.js');
-      AgentService = module.AgentService;
-    } catch { return false; }
-  }
-  return AgentService !== null;
-}
+import { getAgentService } from './agent-service-deps.js';
 
 const logger = createLogger('FinalizeWithCritiqueTool');
 
@@ -97,8 +79,8 @@ export class FinalizeWithCritiqueTool implements Tool<FinalizeWithCritiqueArgs, 
 
     try {
       // Check if AgentService is available (browser only)
-      await ensureAgentService();
-      if (!AgentService) {
+      const agentServiceDeps = await getAgentService();
+      if (!agentServiceDeps) {
         // In Node.js environment, just accept without critique
         logger.info('AgentService not available (Node.js environment), accepting answer');
         return {
@@ -110,7 +92,7 @@ export class FinalizeWithCritiqueTool implements Tool<FinalizeWithCritiqueArgs, 
       }
 
       // Get the current state from AgentService
-      const agentService = AgentService.getInstance();
+      const agentService = agentServiceDeps.AgentService.getInstance();
       const state = agentService.getState();
       const apiKey = ctx?.apiKey || agentService.getApiKey();
 

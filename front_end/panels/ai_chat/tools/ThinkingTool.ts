@@ -6,23 +6,7 @@ import type { Tool, LLMContext } from './Tools.js';
 import { TakeScreenshotTool, GetAccessibilityTreeTool } from './Tools.js';
 import { createLogger } from '../core/Logger.js';
 import { callLLMWithTracing } from './LLMTracingWrapper.js';
-
-// Detect if we're in a Node.js environment (eval runner, tests)
-const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
-
-// Lazy-loaded browser-only SDK dependency
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let sdkLoaded = false;
-
-async function ensureSDK(): Promise<boolean> {
-  if (isNodeEnvironment) return false;
-  if (!sdkLoaded) {
-    sdkLoaded = true;
-    try { SDK = await import('../../../core/sdk/sdk.js'); }
-    catch { return false; }
-  }
-  return SDK !== null;
-}
+import { getSDK } from './sdk-deps.js';
 
 const logger = createLogger('ThinkingTool');
 
@@ -107,10 +91,11 @@ export class ThinkingTool implements Tool<ThinkingArgs, ThinkingResult | { error
       }
 
       // Get page metadata
-      if (!(await ensureSDK()) || !SDK) {
+      const sdk = await getSDK();
+      if (!sdk) {
         return { error: 'SDK not available (Node.js environment)' };
       }
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       if (!target) {
         return { error: 'No page target available' };
       }
@@ -141,10 +126,11 @@ export class ThinkingTool implements Tool<ThinkingArgs, ThinkingResult | { error
       }
 
       // Get page metadata
-      if (!(await ensureSDK()) || !SDK) {
+      const sdk = await getSDK();
+      if (!sdk) {
         return { error: 'SDK not available (Node.js environment)' };
       }
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       if (!target) {
         return { error: 'No page target available' };
       }

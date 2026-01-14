@@ -9,7 +9,8 @@ import {describeWithMockConnection, setMockConnectionResponseHandler} from '../.
 
 import {
   getVisibleAccessibilityTree
-} from './utils.js';
+} from './utils-universal.js';
+import {SDKTargetAdapter} from '../cdp/SDKTargetAdapter.js';
 import type {AccessibilityNode} from './context.js';
 
 describe('accessibility-utils', () => {
@@ -19,9 +20,11 @@ describe('accessibility-utils', () => {
 
   describeWithMockConnection('getVisibleAccessibilityTree', () => {
     let target: SDK.Target.Target;
+    let adapter: SDKTargetAdapter;
 
     beforeEach(() => {
       target = createTarget();
+      adapter = new SDKTargetAdapter(target);
     });
 
     it('should get visible accessibility tree with viewport elements', async () => {
@@ -110,7 +113,7 @@ describe('accessibility-utils', () => {
         };
       });
 
-      const result = await getVisibleAccessibilityTree(target);
+      const result = await getVisibleAccessibilityTree(adapter);
 
       assert.isNotNull(result);
       assert.property(result, 'tree');
@@ -167,7 +170,7 @@ describe('accessibility-utils', () => {
         };
       });
 
-      const result = await getVisibleAccessibilityTree(target);
+      const result = await getVisibleAccessibilityTree(adapter);
 
       assert.isNotNull(result);
       assert.isArray(result.tree);
@@ -220,7 +223,7 @@ describe('accessibility-utils', () => {
         };
       });
 
-      const result = await getVisibleAccessibilityTree(target);
+      const result = await getVisibleAccessibilityTree(adapter);
 
       // Should still return a result even if viewport detection fails
       assert.isNotNull(result);
@@ -298,7 +301,7 @@ describe('accessibility-utils', () => {
         };
       });
 
-      const result = await getVisibleAccessibilityTree(target);
+      const result = await getVisibleAccessibilityTree(adapter);
 
       assert.isNotNull(result);
       
@@ -396,7 +399,7 @@ describe('accessibility-utils', () => {
         };
       });
 
-      const result = await getVisibleAccessibilityTree(target);
+      const result = await getVisibleAccessibilityTree(adapter);
 
       assert.isNotNull(result);
       

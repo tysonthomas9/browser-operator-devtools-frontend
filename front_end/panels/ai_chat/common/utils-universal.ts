@@ -87,6 +87,39 @@ function buildSubtreeRecursive(
   return newNode;
 }
 
+/**
+ * Finds a node by its ID in a flat list, reconstructs its subtree,
+ * and returns the formatted string representation using formatSimplifiedTree.
+ *
+ * @param targetNodeId The ID of the root node of the subtree to format.
+ * @param allNodes The flat list of all AccessibilityNode objects.
+ * @returns The formatted string for the subtree, or null if the target node is not found.
+ */
+export function getFormattedSubtreeByNodeId(
+    targetNodeId: string,
+    allNodes: AccessibilityNode[],
+): string|null {
+  const nodeMap = new Map<string, AccessibilityNode>();
+  allNodes.forEach(node => {
+    if (node.nodeId) {
+      nodeMap.set(node.nodeId, node);
+    }
+  });
+
+  if (!nodeMap.has(targetNodeId)) {
+    logger.warn(`Node with ID ${targetNodeId} not found in the provided list.`);
+    return null;
+  }
+
+  const subtreeRoot = buildSubtreeRecursive(targetNodeId, nodeMap);
+
+  if (subtreeRoot) {
+    return formatSimplifiedTree(subtreeRoot, 0);
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Backend ID Maps
 // ============================================================================
@@ -311,7 +344,7 @@ export async function findScrollableElementIds(adapter: CDPSessionAdapter): Prom
 /**
  * Builds a hierarchical accessibility tree from flat CDP nodes
  */
-async function buildHierarchicalTree(
+export async function buildHierarchicalTree(
     accessibilityNodes: AccessibilityNode[],
     adapter?: CDPSessionAdapter,
     scrollableBackendIds?: Set<number>,
@@ -1603,6 +1636,409 @@ export async function verifyElementState(
       summary: `Verification failed: ${error}`,
     };
   }
+}
+
+// ============================================================================
+// Viewport-Filtered Accessibility Tree
+// ============================================================================
+
+/**
+ * Identifies elements that are currently visible in the viewport.
+ * Returns their backendNodeIds.
+ */
+async function findElementsInViewport(adapter: CDPSessionAdapter): Promise<Set<number>> {
+  const visibleNodeIds = new Set<number>();
+
+  try {
+    const runtimeAgent = adapter.runtimeAgent();
+    const domAgent = adapter.domAgent();
+
+    // Inject and run the viewport detection code
+    const result = await runtimeAgent.invoke<{result?: {objectId?: string}}>('evaluate', {
+      expression: `
+        (function() {
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const elements = [];
+
+          function isElementVisible(el) {
+            if (!el || !el.getBoundingClientRect) return false;
+
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return false;
+
+            const isInViewport = (
+              rect.top < viewportHeight &&
+              rect.bottom > 0 &&
+              rect.left < viewportWidth &&
+              rect.right > 0
+            );
+
+            if (!isInViewport) return false;
+
+            const style = window.getComputedStyle(el);
+            return !(
+              style.display === 'none' ||
+              style.visibility === 'hidden' ||
+              parseFloat(style.opacity) === 0
+            );
+          }
+
+          document.querySelectorAll('*').forEach(el => {
+            if (isElementVisible(el)) {
+              elements.push(el);
+            }
+          });
+
+          return elements;
+        })()
+      `,
+      returnByValue: false,
+    });
+
+    if (result.result && result.result.objectId) {
+      // Get array length
+      const lengthResult = await runtimeAgent.invoke<{result?: {value?: number}}>('callFunctionOn', {
+        objectId: result.result.objectId,
+        functionDeclaration: 'function() { return this.length; }',
+        returnByValue: true,
+      });
+
+      const length = lengthResult.result?.value || 0;
+
+      // Process elements in batches
+      const batchSize = 20;
+      for (let i = 0; i < length; i += batchSize) {
+        const batchPromises: Promise<void>[] = [];
+
+        for (let j = 0; j < batchSize && i + j < length; j++) {
+          const elementResult = await runtimeAgent.invoke<{result?: {objectId?: string}}>('callFunctionOn', {
+            objectId: result.result.objectId,
+            functionDeclaration: 'function(index) { return this[index]; }',
+            arguments: [{value: i + j}],
+            returnByValue: false,
+          });
+
+          if (elementResult.result?.objectId) {
+            const nodePromise = domAgent.invoke<{node?: {backendNodeId?: number}}>('describeNode', {
+              objectId: elementResult.result.objectId,
+            }).then(nodeResult => {
+              if (nodeResult.node?.backendNodeId) {
+                visibleNodeIds.add(nodeResult.node.backendNodeId);
+              }
+            }).catch(() => {
+              // Ignore errors for individual elements
+            });
+
+            batchPromises.push(nodePromise);
+          }
+        }
+
+        await Promise.all(batchPromises);
+      }
+    }
+  } catch (error) {
+    logger.error('Error finding visible elements:', error);
+  }
+
+  return visibleNodeIds;
+}
+
+/**
+ * Gets the accessibility tree for only visible elements in the viewport.
+ * Filters the full tree to include only visible elements and their ancestors.
+ */
+export async function getVisibleAccessibilityTree(adapter: CDPSessionAdapter): Promise<TreeResult> {
+  const startTime = Date.now();
+  logger.info('Starting getVisibleAccessibilityTree...');
+
+  try {
+    const tagNameMaps = await buildBackendIdMaps(adapter);
+    const tagNameMap = tagNameMaps.tagNameMap;
+
+    const accessibilityAgent = adapter.accessibilityAgent();
+    const fullTreeResponse = await accessibilityAgent.invoke<{nodes: any[]}>('getFullAXTree', {});
+    const allCdpNodes = fullTreeResponse.nodes;
+
+    if (!allCdpNodes || allCdpNodes.length === 0) {
+      throw new Error('Full accessibility tree is empty.');
+    }
+
+    // Find visible elements in viewport
+    const visibleBackendIds = await findElementsInViewport(adapter);
+    logger.info(`Found ${visibleBackendIds.size} visible backendNodeIds`);
+
+    if (visibleBackendIds.size === 0) {
+      logger.info('Could not identify any elements in the viewport.');
+      return {tree: [], simplified: '', iframes: [], scrollableContainerNodes: []};
+    }
+
+    // Build a map of the full tree for ancestor lookup
+    const fullNodeMap = new Map<string, any>();
+    allCdpNodes.forEach((node: any) => fullNodeMap.set(node.nodeId, node));
+
+    // Determine the set of relevant node IDs (visible nodes + their ancestors)
+    const relevantNodeIds = new Set<string>();
+    const nodesToProcess: any[] = [];
+
+    // Start with nodes that are directly visible
+    allCdpNodes.forEach((node: any) => {
+      if (node.backendDOMNodeId !== undefined && visibleBackendIds.has(node.backendDOMNodeId)) {
+        if (!relevantNodeIds.has(node.nodeId)) {
+          relevantNodeIds.add(node.nodeId);
+          nodesToProcess.push(node);
+        }
+      }
+    });
+
+    // Recursively add ancestors
+    let currentNode: any | undefined;
+    while ((currentNode = nodesToProcess.pop())) {
+      if (currentNode.parentId) {
+        const parentNode = fullNodeMap.get(currentNode.parentId);
+        if (parentNode && !relevantNodeIds.has(parentNode.nodeId)) {
+          relevantNodeIds.add(parentNode.nodeId);
+          nodesToProcess.push(parentNode);
+        }
+      }
+    }
+
+    logger.info(`Found ${relevantNodeIds.size} relevant nodeIds (visible + ancestors)`);
+
+    // Filter the original CDP nodes and convert to AccessibilityNode format
+    const relevantAccessibilityNodes = allCdpNodes
+        .filter((node: any) => relevantNodeIds.has(node.nodeId))
+        .map((node: any): AccessibilityNode => {
+          const roleValue = node.role && typeof node.role === 'object' && 'value' in node.role
+              ? node.role.value
+              : '';
+          const nameValue = node.name && typeof node.name === 'object' && 'value' in node.name
+              ? node.name.value
+              : undefined;
+          const descriptionValue = node.description && typeof node.description === 'object' && 'value' in node.description
+              ? node.description.value
+              : undefined;
+          const valueValue = node.value && typeof node.value === 'object' && 'value' in node.value
+              ? node.value.value
+              : undefined;
+          const backendNodeId = typeof node.backendDOMNodeId === 'number'
+              ? node.backendDOMNodeId
+              : undefined;
+
+          return {
+            role: roleValue,
+            name: nameValue,
+            description: descriptionValue,
+            value: valueValue,
+            nodeId: node.nodeId,
+            backendDOMNodeId: backendNodeId,
+            parentId: node.parentId,
+            childIds: node.childIds,
+          };
+        });
+
+    if (relevantAccessibilityNodes.length === 0) {
+      logger.info('No relevant nodes (visible or ancestors) found.');
+      return {tree: [], simplified: '', iframes: [], scrollableContainerNodes: []};
+    }
+
+    // Get scrollable elements
+    const scrollableBackendIds = await findScrollableElementIds(adapter);
+
+    // Build the hierarchical tree using only relevant nodes
+    const relevantNodeMap = new Map<string, AccessibilityNode>();
+    relevantAccessibilityNodes.forEach((node: AccessibilityNode) => {
+      if (node.nodeId) {
+        relevantNodeMap.set(node.nodeId, {...node, children: []});
+      }
+    });
+
+    // Link children to parents
+    relevantAccessibilityNodes.forEach((node: AccessibilityNode) => {
+      if (node.parentId && relevantNodeMap.has(node.parentId) && node.nodeId) {
+        const parent = relevantNodeMap.get(node.parentId);
+        const child = relevantNodeMap.get(node.nodeId);
+        if (parent && child) {
+          if (!parent.children) {
+            parent.children = [];
+          }
+          if (!parent.children.some((c: AccessibilityNode) => c.nodeId === child.nodeId)) {
+            parent.children.push(child);
+          }
+        }
+      }
+    });
+
+    // Identify root nodes among relevant nodes
+    const rootNodes = relevantAccessibilityNodes
+        .filter((node: AccessibilityNode) => !node.parentId || !relevantNodeIds.has(node.parentId))
+        .map((node: AccessibilityNode) => node.nodeId ? relevantNodeMap.get(node.nodeId) : undefined)
+        .filter((node): node is AccessibilityNode => node !== undefined);
+
+    // Build simplified string representation
+    let simplified = rootNodes.map((node: AccessibilityNode) => formatSimplifiedTree(node)).join('\n');
+
+    // Find ALL iframe nodes for comprehensive content extraction
+    const allAccessibilityNodes = allCdpNodes.map((node: any): AccessibilityNode => {
+      const roleValue = node.role && typeof node.role === 'object' && 'value' in node.role
+          ? node.role.value
+          : '';
+      const nameValue = node.name && typeof node.name === 'object' && 'value' in node.name
+          ? node.name.value
+          : undefined;
+
+      return {
+        role: roleValue,
+        name: nameValue,
+        nodeId: node.nodeId,
+        backendDOMNodeId: typeof node.backendDOMNodeId === 'number' ? node.backendDOMNodeId : undefined,
+        parentId: node.parentId,
+        childIds: node.childIds,
+      };
+    });
+
+    const iframeNodes = allAccessibilityNodes.filter((node: AccessibilityNode) => node.role === 'Iframe');
+    logger.info(`Found ${iframeNodes.length} total iframes`);
+
+    // Fetch iframe content
+    const domAgent = adapter.domAgent();
+    const iframesWithContent = await Promise.all(
+        iframeNodes.map(async (node: AccessibilityNode) => {
+          try {
+            if (!node.backendDOMNodeId) {
+              return node;
+            }
+
+            const domNodeResponse = await domAgent.invoke<{node?: {frameId?: string}}>('describeNode', {
+              backendNodeId: node.backendDOMNodeId,
+            });
+
+            if (!domNodeResponse.node?.frameId) {
+              return node;
+            }
+
+            const iframeResponse = await accessibilityAgent.invoke<{nodes: any[]}>('getFullAXTree', {
+              frameId: domNodeResponse.node.frameId,
+            });
+
+            if (!iframeResponse.nodes || iframeResponse.nodes.length === 0) {
+              return node;
+            }
+
+            const iframeAccessibilityNodes = iframeResponse.nodes.map((iframeNode: any): AccessibilityNode => {
+              const roleValue = iframeNode.role && typeof iframeNode.role === 'object' && 'value' in iframeNode.role
+                  ? iframeNode.role.value
+                  : '';
+              const nameValue = iframeNode.name && typeof iframeNode.name === 'object' && 'value' in iframeNode.name
+                  ? iframeNode.name.value
+                  : undefined;
+              const backendNodeId = typeof iframeNode.backendDOMNodeId === 'number'
+                  ? iframeNode.backendDOMNodeId
+                  : undefined;
+
+              return {
+                role: roleValue,
+                name: nameValue,
+                nodeId: iframeNode.nodeId,
+                backendDOMNodeId: backendNodeId,
+                parentId: iframeNode.parentId,
+                childIds: iframeNode.childIds,
+              };
+            });
+
+            // Build a simple tree for iframe content
+            const iframeTree = await buildSimpleTree(iframeAccessibilityNodes);
+
+            return {
+              ...node,
+              contentTree: iframeTree.tree,
+              contentSimplified: iframeTree.simplified,
+            };
+          } catch (error) {
+            logger.warn(`Error processing iframe content: ${String(error)}`);
+            return node;
+          }
+        }),
+    );
+
+    // Filter scrollable nodes to only include relevant ones
+    const relevantScrollableNodes = Array.from(scrollableBackendIds)
+        .map(id => {
+          const node = relevantAccessibilityNodes.find((n: AccessibilityNode) => n.backendDOMNodeId === id);
+          return node ? {
+            nodeId: node.nodeId || '',
+            backendDOMNodeId: id,
+            name: node.name,
+            role: node.role,
+          } : null;
+        })
+        .filter(Boolean) as Array<{nodeId: string; role: string; backendDOMNodeId?: number; name?: string}>;
+
+    // Append iframe content to simplified output
+    if (iframesWithContent.length > 0) {
+      simplified += '\n\n--- IFRAME CONTENT ---\n';
+      iframesWithContent.forEach((iframe, index) => {
+        const iframeWithContent = iframe as any;
+        if (iframeWithContent.contentSimplified) {
+          simplified += `\nIframe ${index + 1} (nodeId: ${iframe.nodeId}) content:\n`;
+          simplified += iframeWithContent.contentSimplified;
+        }
+      });
+    }
+
+    logger.info(`Got viewport accessibility tree in ${Date.now() - startTime}ms`);
+
+    return {
+      tree: rootNodes,
+      simplified,
+      iframes: iframesWithContent,
+      scrollableContainerNodes: relevantScrollableNodes,
+    };
+  } catch (error) {
+    logger.error('Error getting viewport accessibility tree', error);
+    throw error;
+  }
+}
+
+/**
+ * Build a simple hierarchical tree from flat accessibility nodes.
+ * Used for iframe content processing.
+ */
+async function buildSimpleTree(nodes: AccessibilityNode[]): Promise<{tree: AccessibilityNode[]; simplified: string}> {
+  const nodeMap = new Map<string, AccessibilityNode>();
+  for (const node of nodes) {
+    if (node.nodeId) {
+      nodeMap.set(node.nodeId, {...node, children: []});
+    }
+  }
+
+  // Link children to parents
+  for (const node of nodes) {
+    if (node.parentId && nodeMap.has(node.parentId) && node.nodeId) {
+      const parent = nodeMap.get(node.parentId);
+      const child = nodeMap.get(node.nodeId);
+      if (parent && child) {
+        if (!parent.children) {
+          parent.children = [];
+        }
+        parent.children.push(child);
+      }
+    }
+  }
+
+  // Find root nodes
+  const rootNodes: AccessibilityNode[] = [];
+  for (const node of nodes) {
+    if (!node.parentId || !nodeMap.has(node.parentId)) {
+      const mappedNode = nodeMap.get(node.nodeId || '');
+      if (mappedNode) {
+        rootNodes.push(mappedNode);
+      }
+    }
+  }
+
+  const simplified = rootNodes.map((node: AccessibilityNode) => formatSimplifiedTree(node)).join('');
+  return {tree: rootNodes, simplified};
 }
 
 // ============================================================================

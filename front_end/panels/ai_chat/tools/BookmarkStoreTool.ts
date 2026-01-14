@@ -7,23 +7,7 @@ import { HTMLToMarkdownTool } from './HTMLToMarkdownTool.js';
 import { VectorDBClient, type VectorDocument, type VectorStoreResponse } from './VectorDBClient.js';
 import type { Tool, LLMContext } from './Tools.js';
 import { integer } from '../../../generated/protocol.js';
-
-// Detect if we're in a Node.js environment (eval runner, tests)
-const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
-
-// Lazy-loaded browser-only SDK dependency
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let sdkLoaded = false;
-
-async function ensureSDK(): Promise<boolean> {
-  if (isNodeEnvironment) return false;
-  if (!sdkLoaded) {
-    sdkLoaded = true;
-    try { SDK = await import('../../../core/sdk/sdk.js'); }
-    catch { return false; }
-  }
-  return SDK !== null;
-}
+import { getSDK } from './sdk-deps.js';
 
 const logger = createLogger('Tool:BookmarkStore');
 
@@ -92,13 +76,14 @@ export class BookmarkStoreTool implements Tool<BookmarkStoreArgs, BookmarkStoreR
 
     try {
       // Get the current page target
-      if (!(await ensureSDK()) || !SDK) {
+      const sdk = await getSDK();
+      if (!sdk) {
         return {
           success: false,
           error: 'SDK not available (Node.js environment)'
         };
       }
-      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       if (!target) {
         return {
           success: false,
@@ -107,7 +92,7 @@ export class BookmarkStoreTool implements Tool<BookmarkStoreArgs, BookmarkStoreR
       }
 
       // Get current page URL and title
-      const { url, pageTitle } = await this.getCurrentPageInfo(target);
+      const { url, pageTitle } = await this.getCurrentPageInfo(target, sdk.SDK);
       if (!url) {
         return {
           success: false,
@@ -187,15 +172,12 @@ export class BookmarkStoreTool implements Tool<BookmarkStoreArgs, BookmarkStoreR
   /**
    * Get current page URL and title
    */
-  private async getCurrentPageInfo(target: any): Promise<{
+  private async getCurrentPageInfo(target: any, SDK: import('./sdk-deps.js').SDKModule): Promise<{
     url: string;
     pageTitle: string;
   }> {
     try {
       // Get the runtime model to execute JavaScript
-      if (!SDK) {
-        throw new Error('SDK not available');
-      }
       const runtimeModel = target.model(SDK.RuntimeModel.RuntimeModel);
       if (!runtimeModel) {
         throw new Error('Runtime model not available');

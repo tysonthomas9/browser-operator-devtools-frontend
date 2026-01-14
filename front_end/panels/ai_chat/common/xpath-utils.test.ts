@@ -10,7 +10,8 @@ import {describeWithMockConnection, setMockConnectionResponseHandler} from '../.
 import {
   getXPathByResolvedObjectId,
   getXPathByBackendNodeId
-} from './utils.js';
+} from './utils-universal.js';
+import {SDKTargetAdapter} from '../cdp/SDKTargetAdapter.js';
 
 describe('xpath-utils', () => {
   beforeEach(() => {
@@ -19,9 +20,11 @@ describe('xpath-utils', () => {
 
   describeWithMockConnection('getXPathByResolvedObjectId', () => {
     let target: SDK.Target.Target;
+    let adapter: SDKTargetAdapter;
 
     beforeEach(() => {
       target = createTarget();
+      adapter = new SDKTargetAdapter(target);
     });
 
     it('should get XPath for resolved object ID', async () => {
@@ -77,7 +80,7 @@ describe('xpath-utils', () => {
         }
       }));
 
-      const result = await getXPathByResolvedObjectId(target, mockObjectId);
+      const result = await getXPathByResolvedObjectId(adapter, mockObjectId);
       
       assert.isString(result);
       assert.include(result, 'button');
@@ -93,7 +96,7 @@ describe('xpath-utils', () => {
         throw new Error('Invalid object ID');
       });
 
-      const result = await getXPathByResolvedObjectId(target, invalidObjectId);
+      const result = await getXPathByResolvedObjectId(adapter, invalidObjectId);
       
       assert.isNull(result);
     });
@@ -109,7 +112,7 @@ describe('xpath-utils', () => {
         }
       }));
 
-      const result = await getXPathByResolvedObjectId(target, mockObjectId);
+      const result = await getXPathByResolvedObjectId(adapter, mockObjectId);
       
       assert.isNull(result);
     });
@@ -117,9 +120,11 @@ describe('xpath-utils', () => {
 
   describeWithMockConnection('getXPathByBackendNodeId', () => {
     let target: SDK.Target.Target;
+    let adapter: SDKTargetAdapter;
 
     beforeEach(() => {
       target = createTarget();
+      adapter = new SDKTargetAdapter(target);
     });
 
     it('should get XPath for backend node ID', async () => {
@@ -181,7 +186,7 @@ describe('xpath-utils', () => {
         }
       }));
 
-      const result = await getXPathByBackendNodeId(target, backendNodeId);
+      const result = await getXPathByBackendNodeId(adapter, backendNodeId);
       
       assert.isString(result);
       assert.include(result, '/html');
@@ -212,7 +217,7 @@ describe('xpath-utils', () => {
         }
       }));
 
-      const result = await getXPathByBackendNodeId(target, nonExistentBackendNodeId);
+      const result = await getXPathByBackendNodeId(adapter, nonExistentBackendNodeId);
       
       assert.isNull(result);
     });
@@ -257,7 +262,7 @@ describe('xpath-utils', () => {
         }
       }));
 
-      const result = await getXPathByBackendNodeId(target, backendNodeId);
+      const result = await getXPathByBackendNodeId(adapter, backendNodeId);
       
       assert.isString(result);
       assert.include(result, 'div[3]'); // Should be the third div
@@ -303,7 +308,7 @@ describe('xpath-utils', () => {
         }
       }));
 
-      const result = await getXPathByBackendNodeId(target, backendNodeId);
+      const result = await getXPathByBackendNodeId(adapter, backendNodeId);
       
       assert.isString(result);
       assert.include(result, 'text()[2]'); // Should be the second text node
@@ -316,7 +321,7 @@ describe('xpath-utils', () => {
         throw new Error('Failed to get document');
       });
 
-      const result = await getXPathByBackendNodeId(target, backendNodeId);
+      const result = await getXPathByBackendNodeId(adapter, backendNodeId);
       
       assert.isNull(result);
     });

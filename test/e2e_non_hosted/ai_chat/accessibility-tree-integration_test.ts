@@ -18,17 +18,20 @@ describe('AI Chat Accessibility Tree Integration Tests', function() {
       try {
         // Try to access the utility function through the global DevTools context
         // @ts-ignore DevTools context
-        const utilsModule = window.Root?.Runtime?.cachedResources?.get?.('/front_end/panels/ai_chat/common/utils.js');
+        const utilsModule = window.Root?.Runtime?.cachedResources?.get?.('/front_end/panels/ai_chat/common/utils-universal.js');
         if (!utilsModule?.getAccessibilityTree) {
           // Fallback: try dynamic import
           // @ts-ignore DevTools context
-          const module = await import('/front_end/panels/ai_chat/common/utils.js');
-          if (module?.getAccessibilityTree) {
+          const module = await import('/front_end/panels/ai_chat/common/utils-universal.js');
+          // @ts-ignore DevTools context
+          const adapterModule = await import('/front_end/panels/ai_chat/cdp/SDKTargetAdapter.js');
+          if (module?.getAccessibilityTree && adapterModule?.SDKTargetAdapter) {
             // @ts-ignore DevTools context
             const SDKModule = await import('/front_end/core/sdk/sdk.js');
             const target = SDKModule.TargetManager.TargetManager.instance().primaryPageTarget();
             if (target) {
-              return await module.getAccessibilityTree(target);
+              const adapter = new adapterModule.SDKTargetAdapter(target);
+              return await module.getAccessibilityTree(adapter);
             }
           }
         }

@@ -4,30 +4,7 @@
 
 import { createLogger } from '../core/Logger.js';
 import { AgentRunnerEventBus, type AgentRunnerProgressEvent } from '../agent_framework/AgentRunnerEventBus.js';
-
-// Detect if we're in a Node.js environment (eval runner, tests)
-const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
-
-// Lazy-loaded browser-only dependencies
-let Common: typeof import('../../../core/common/common.js') | null = null;
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let browserDepsLoaded = false;
-
-async function ensureBrowserDeps(): Promise<boolean> {
-  if (isNodeEnvironment) return false;
-  if (!browserDepsLoaded) {
-    browserDepsLoaded = true;
-    try {
-      const [commonModule, sdkModule] = await Promise.all([
-        import('../../../core/common/common.js'),
-        import('../../../core/sdk/sdk.js'),
-      ]);
-      Common = commonModule;
-      SDK = sdkModule;
-    } catch { return false; }
-  }
-  return SDK !== null && Common !== null;
-}
+import { getSDK } from './sdk-deps.js';
 
 const logger = createLogger('VisualIndicatorTool');
 
@@ -92,19 +69,20 @@ export class VisualIndicatorManager {
    * Setup listener for page navigation events to re-inject indicators
    */
   private async setupNavigationListener(): Promise<void> {
-    if (!(await ensureBrowserDeps()) || !SDK) {
-      logger.warn('[VisualIndicator] Browser deps not available for navigation listener');
+    const sdk = await getSDK();
+    if (!sdk) {
+      logger.warn('[VisualIndicator] SDK not available for navigation listener');
       this.needsNavigationListenerSetup = true;
       return;
     }
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
       logger.warn('[VisualIndicator] No primary page target available for navigation listener');
       this.needsNavigationListenerSetup = true;
       return;
     }
 
-    const resourceTreeModel = target.model(SDK.ResourceTreeModel.ResourceTreeModel);
+    const resourceTreeModel = target.model(sdk.SDK.ResourceTreeModel.ResourceTreeModel);
     if (!resourceTreeModel) {
       logger.warn('[VisualIndicator] ResourceTreeModel not available for navigation listener');
       this.needsNavigationListenerSetup = true;
@@ -113,7 +91,7 @@ export class VisualIndicatorManager {
 
     logger.info('[VisualIndicator] Setting up navigation listener successfully');
     resourceTreeModel.addEventListener(
-      SDK.ResourceTreeModel.Events.FrameNavigated,
+      sdk.SDK.ResourceTreeModel.Events.FrameNavigated,
       this.handleFrameNavigated.bind(this)
     );
     this.needsNavigationListenerSetup = false;
@@ -275,11 +253,12 @@ export class VisualIndicatorManager {
     const maxRetries = 5;
     const retryDelay = Math.min(100 * Math.pow(2, retryCount), 2000); // 100ms, 200ms, 400ms, 800ms, 1600ms, 2000ms
 
-    if (!(await ensureBrowserDeps()) || !SDK) {
-      logger.warn('[VisualIndicator] Browser deps not available');
+    const sdk = await getSDK();
+    if (!sdk) {
+      logger.warn('[VisualIndicator] SDK not available');
       return;
     }
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
       logger.warn('[VisualIndicator] No primary page target available');
       return;
@@ -495,10 +474,11 @@ export class VisualIndicatorManager {
       return;
     }
 
-    if (!(await ensureBrowserDeps()) || !SDK) {
+    const sdk = await getSDK();
+    if (!sdk) {
       return;
     }
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
       return;
     }
@@ -667,10 +647,11 @@ export class VisualIndicatorManager {
     this.isActive = false;
     this.currentSessionId = null;
 
-    if (!(await ensureBrowserDeps()) || !SDK) {
+    const sdk = await getSDK();
+    if (!sdk) {
       return;
     }
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = sdk.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
       return;
     }

@@ -8,39 +8,48 @@ import { type ChatMessage, ChatMessageEntity, type ImageInputData, type ModelCha
 // Detect if we're in a Node.js environment (eval runner, tests)
 const isNodeEnvironment = typeof window === 'undefined' || typeof document === 'undefined';
 
-// Lazy-loaded browser-only dependencies
-let Common: typeof import('../../../core/common/common.js') | null = null;
-let i18n: typeof import('../../../core/i18n/i18n.js') | null = null;
-let SDK: typeof import('../../../core/sdk/sdk.js') | null = null;
-let UI: typeof import('../../../ui/legacy/legacy.js') | null = null;
-let browserDepsLoaded = false;
+// Browser dependencies type
+type BrowserDeps = {
+  Common: typeof import('../../../core/common/common.js');
+  i18n: typeof import('../../../core/i18n/i18n.js');
+  SDK: typeof import('../../../core/sdk/sdk.js');
+  UI: typeof import('../../../ui/legacy/legacy.js');
+};
+
+let cachedBrowserDeps: BrowserDeps | null = null;
+let browserDepsLoading: Promise<BrowserDeps | null> | null = null;
 
 /**
- * Ensures browser dependencies (SDK, Common, i18n, UI) are loaded.
- * Returns false in Node.js environment or if loading fails.
+ * Gets browser dependencies (SDK, Common, i18n, UI).
+ * Returns null in Node.js environment or if loading fails.
  */
-async function ensureBrowserDeps(): Promise<boolean> {
+async function getBrowserDeps(): Promise<BrowserDeps | null> {
   if (isNodeEnvironment) {
-    return false;
+    return null;
   }
-  if (!browserDepsLoaded) {
-    browserDepsLoaded = true;
+  if (cachedBrowserDeps) {
+    return cachedBrowserDeps;
+  }
+  if (browserDepsLoading) {
+    return browserDepsLoading;
+  }
+  browserDepsLoading = (async () => {
     try {
-      const [commonModule, i18nModule, sdkModule, uiModule] = await Promise.all([
+      const [Common, i18n, SDK, UI] = await Promise.all([
         import('../../../core/common/common.js'),
         import('../../../core/i18n/i18n.js'),
         import('../../../core/sdk/sdk.js'),
         import('../../../ui/legacy/legacy.js'),
       ]);
-      Common = commonModule;
-      i18n = i18nModule;
-      SDK = sdkModule;
-      UI = uiModule;
+      cachedBrowserDeps = { Common, i18n, SDK, UI };
+      browserDepsLoading = null;
+      return cachedBrowserDeps;
     } catch {
-      return false;
+      browserDepsLoading = null;
+      return null;
     }
-  }
-  return SDK !== null && Common !== null && i18n !== null && UI !== null;
+  })();
+  return browserDepsLoading;
 }
 
 /**
@@ -1224,12 +1233,12 @@ export class AgentService extends AgentServiceBase {
    * Gets the current page URL from the target
    */
   async #getCurrentPageUrl(): Promise<string> {
-    // Ensure browser deps are loaded
-    if (!(await ensureBrowserDeps()) || !SDK) {
+    const deps = await getBrowserDeps();
+    if (!deps) {
       return '';
     }
     let pageUrl = '';
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = deps.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (target) {
       try {
         const urlResult = await target.runtimeAgent().invoke_evaluate({
@@ -1251,12 +1260,12 @@ export class AgentService extends AgentServiceBase {
    * Gets the current page title from the target
    */
   async #getCurrentPageTitle(): Promise<string> {
-    // Ensure browser deps are loaded
-    if (!(await ensureBrowserDeps()) || !SDK) {
+    const deps = await getBrowserDeps();
+    if (!deps) {
       return '';
     }
     let pageTitle = '';
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    const target = deps.SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (target) {
       try {
         const titleResult = await target.runtimeAgent().invoke_evaluate({
@@ -1466,18 +1475,18 @@ const UIStrings = {
 
 // i18n function - returns raw string in Node environment, localized string in browser
 function i18nString(key: keyof typeof UIStrings): string {
-  if (isNodeEnvironment || !i18n) {
+  if (isNodeEnvironment || !cachedBrowserDeps) {
     return UIStrings[key];
   }
   // Lazily initialize i18n registration on first call
   if (!i18nInitialized) {
     i18nInitialized = true;
-    str_ = i18n.i18n.registerUIStrings('panels/ai_chat/core/AgentService.ts', UIStrings);
+    str_ = cachedBrowserDeps.i18n.i18n.registerUIStrings('panels/ai_chat/core/AgentService.ts', UIStrings);
   }
   if (!str_) {
     return UIStrings[key];
   }
-  return i18n.i18n.getLocalizedString(str_, UIStrings[key]);
+  return cachedBrowserDeps.i18n.i18n.getLocalizedString(str_, UIStrings[key]);
 }
 let i18nInitialized = false;
 let str_: ReturnType<typeof import('../../../core/i18n/i18n.js').i18n.registerUIStrings> | null = null;
@@ -1485,9 +1494,9 @@ let str_: ReturnType<typeof import('../../../core/i18n/i18n.js').i18n.registerUI
 // Register as a module (browser-only)
 if (!isNodeEnvironment) {
   // Defer registration to ensure browser deps are loaded
-  void ensureBrowserDeps().then(() => {
-    if (Common && UI) {
-      Common.Revealer.registerRevealer({
+  void getBrowserDeps().then((deps) => {
+    if (deps) {
+      deps.Common.Revealer.registerRevealer({
         contextTypes() {
           return [AgentService];
         },
@@ -1498,7 +1507,7 @@ if (!isNodeEnvironment) {
                 return;
               }
               // Reveal the AI Chat panel
-              await UI?.ViewManager.ViewManager.instance().showView('ai-chat');
+              await deps.UI.ViewManager.ViewManager.instance().showView('ai-chat');
             }
           };
         }
