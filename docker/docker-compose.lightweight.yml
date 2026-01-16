@@ -32,8 +32,10 @@ services:
       - HOST=0.0.0.0
       - PORT=8082
       - API_PORT=8080
-      - CDP_HOST=host.docker.internal
-      - CDP_PORT=9222
+      - CDP_HOST=${CDP_HOST:-host.docker.internal}
+      - CDP_PORT=${CDP_PORT:-9222}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     networks:
       - devtools-network

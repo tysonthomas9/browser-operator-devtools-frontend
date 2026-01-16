@@ -1,4 +1,5 @@
 .DS_Store
+.env
 .git_cl_description_backup
 *.ctc.json
 *.Makefile
@@ -60,3 +61,5 @@ test/perf/.generated
 # Dependencies
 node_modules/
 **/.idea/
+node_modules/**
+eval-logs/**

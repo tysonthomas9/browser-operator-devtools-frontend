@@ -1,7 +1,21 @@
 # Makefile for Browser Operator Core
 # Provides DevTools frontend + Agent Server deployments
 
-.PHONY: help build devtools-up up down logs status chrome
+.PHONY: help build devtools-up up down logs status chrome chrome-clean
+
+# Chrome binary detection with cross-platform fallbacks
+# Override with: CHROME_BINARY=/path/to/chrome make chrome
+CHROME_BINARY ?= $(shell \
+	if command -v google-chrome >/dev/null 2>&1; then echo "google-chrome"; \
+	elif command -v chromium >/dev/null 2>&1; then echo "chromium"; \
+	elif command -v chromium-browser >/dev/null 2>&1; then echo "chromium-browser"; \
+	elif [ -x "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" ]; then echo "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"; \
+	elif [ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; \
+	else echo "chrome-not-found"; \
+	fi)
+
+# Chrome profile directory (cleaned before each run)
+CHROME_PROFILE ?= /tmp/browser-operator-chrome-profile
 
 help: ## Show this help
 	@echo "Browser Operator Core - Docker Deployments"
@@ -45,10 +59,21 @@ logs: ## Show logs
 status: ## Show container status
 	@docker ps --filter "name=browser-operator"
 
-chrome: ## Launch Chrome Canary with custom DevTools
-	"/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" \
+chrome-clean: ## Remove Chrome debug profile
+	@rm -rf "$(CHROME_PROFILE)"
+	@echo "Cleaned Chrome profile: $(CHROME_PROFILE)"
+
+chrome: chrome-clean ## Launch Chrome with custom DevTools (clean profile)
+	@if [ "$(CHROME_BINARY)" = "chrome-not-found" ]; then \
+		echo "Error: No Chrome/Chromium binary found."; \
+		echo "Set CHROME_BINARY=/path/to/chrome make chrome"; \
+		exit 1; \
+	fi
+	@echo "Using Chrome: $(CHROME_BINARY)"
+	@echo "Profile: $(CHROME_PROFILE)"
+	"$(CHROME_BINARY)" \
 		--remote-debugging-port=9222 \
 		--remote-allow-origins="*" \
 		--auto-open-devtools-for-tabs \
-		--user-data-dir=/tmp/chrome-debug-profile \
+		--user-data-dir="$(CHROME_PROFILE)" \
 		--custom-devtools-frontend=http://localhost:8000/
