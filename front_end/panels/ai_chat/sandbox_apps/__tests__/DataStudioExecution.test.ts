@@ -427,73 +427,13 @@ describe('ai_chat: Data Studio Execution Module', () => {
 
   describe('DataStudioExecutor', () => {
     // =========================================================================
-    // Issue #2: Memory Leak in Pause Execution Logic
+    // NOTE: Pause execution, execution state, and timeout tests have been moved
+    // to DataStudioCore.test.ts where the actual implementation now lives.
+    // See DataStudioCore.test.ts for comprehensive coverage of:
+    // - Issue #2: Pause execution logic (pauseExecution, execution state management)
+    // - Issue #3: Agent execution timeout (withTimeout wrapper)
+    // - Issue #1: State synchronization (setCurrentTable)
     // =========================================================================
-
-    describe('issue #2: pause state persistence', () => {
-      it('should persist paused status to storage when execution is paused', async () => {
-        // This test verifies that when execution is paused:
-        // 1. The currentTable.executionStatus should be set to 'paused'
-        // 2. The table should be saved to storage with 'paused' status
-
-        // The code review claims this is missing - let's verify
-
-        // Check the source code for handlePauseExecution
-        // It should:
-        // 1. Set this.executionPaused = true
-        // 2. Set this.currentTable.executionStatus = 'paused'
-        // 3. Call this.storage.saveTable(this.currentTable)
-
-        // Since we can't easily mock all dependencies, let's at least
-        // verify the method signature exists
-        const executor = DataStudioExecutor.getInstance();
-
-        // Check that handlePauseExecution exists
-        assert.isFunction(
-          (executor as unknown as {handlePauseExecution: unknown}).handlePauseExecution,
-          'handlePauseExecution should be a method',
-        );
-      });
-
-      it('should break execution loop when paused', () => {
-        // Verify the pause flag is checked in the execution loop
-        // The code has: if (this.executionPaused) { break; }
-
-        // This is a design verification - the pause flag IS checked
-        // but the status is not persisted (as the code review claims)
-
-        const executor = DataStudioExecutor.getInstance();
-        const executorAny = executor as unknown as {
-          executionPaused: boolean;
-          currentTable: DataStudioTable | null;
-        };
-
-        // Initially not paused
-        assert.isFalse(executorAny.executionPaused, 'Should start not paused');
-      });
-    });
-
-    // =========================================================================
-    // Issue #3: No Timeout Protection for Agent Execution
-    // =========================================================================
-
-    describe('issue #3: agent execution timeout', () => {
-      it('executeAgentForEntity has no timeout wrapper', () => {
-        // This test documents that there is NO timeout protection
-        // A hanging agent will block the execution pipeline indefinitely
-
-        const executor = DataStudioExecutor.getInstance();
-
-        // The method exists but has no timeout protection
-        assert.isFunction(
-          (executor as unknown as {executeAgentForEntity: unknown}).executeAgentForEntity,
-          'executeAgentForEntity should be a method',
-        );
-
-        // To fix this, the implementation should wrap the agent.execute() call
-        // in Promise.race with a timeout promise
-      });
-    });
 
     // =========================================================================
     // Issue #5: Missing Results Initialization
@@ -602,37 +542,8 @@ describe('ai_chat: Data Studio Execution Module', () => {
       });
     });
 
-    // =========================================================================
-    // Issue #1: Race Condition in State Synchronization
-    // =========================================================================
-
-    describe('issue #1: state synchronization race condition', () => {
-      it('currentTable may be stale when processing actions', () => {
-        // This test documents the race condition:
-        // 1. Executor caches state in this.currentTable
-        // 2. Iframe sends actions that arrive before state sync completes
-        // 3. Executor processes action with stale state
-
-        // The issue is architectural - the fix requires either:
-        // - Include state in action payloads
-        // - Request state snapshot and await before processing
-
-        const executor = DataStudioExecutor.getInstance();
-        const executorAny = executor as unknown as {
-          currentTable: DataStudioTable | null;
-          requestStateFromUI: () => Promise<DataStudioTable | null>;
-        };
-
-        // currentTable starts as null
-        assert.isNull(executorAny.currentTable, 'currentTable starts as null');
-
-        // The method requestStateFromUI exists but relies on cached state
-        assert.isFunction(
-          executorAny.requestStateFromUI,
-          'requestStateFromUI should be a method',
-        );
-      });
-    });
+    // Issue #1: State synchronization is now tested in DataStudioCore.test.ts
+    // See: 'state synchronization' describe block
   });
 
   // ===========================================================================

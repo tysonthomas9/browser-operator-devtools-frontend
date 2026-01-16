@@ -74,6 +74,25 @@ export class AgentBridge {
   }
 
   /**
+   * Get LLM context for agent execution
+   */
+  getLLMContext(): {
+    apiKey: string;
+    provider: LLMProvider;
+    model: string | undefined;
+    miniModel: string | undefined;
+    nanoModel: string | undefined;
+  } {
+    return {
+      apiKey: this.options.apiKey || '',
+      provider: (this.options.provider || 'openai') as LLMProvider,
+      model: this.options.model,
+      miniModel: this.options.model,
+      nanoModel: this.options.model,
+    };
+  }
+
+  /**
    * Execute a test case using the real DevTools agent
    */
   async execute(testCase: TestCase, context: ExecutionContext, logger?: TestLogger): Promise<AgentResult> {
@@ -232,9 +251,10 @@ export class AgentBridge {
         };
 
       case 'research_agent':
-        // ResearchAgent expects: { query: string }
+        // ResearchAgent expects: { query: string, reasoning: string }
         return {
           query: input.query || '',
+          reasoning: input.reasoning || 'Research task',
         };
 
       case 'search':

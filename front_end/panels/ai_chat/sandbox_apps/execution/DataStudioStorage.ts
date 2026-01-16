@@ -41,12 +41,31 @@ export interface OutputColumn {
   label: string;
 }
 
+export type LLMProviderType = 'openai' | 'cerebras' | 'anthropic' | 'groq';
+
+/**
+ * Inline agent configuration (embedded in AgentGroup)
+ */
+export interface InlineAgentConfig {
+  name: string;           // Internal name (e.g., "company_summary_agent")
+  displayName: string;    // Display name in UI
+  description: string;    // What the agent does
+  systemPrompt: string;   // Custom system prompt
+  tools: string[];        // List of tool names (e.g., ["navigate_url", "extract_data"])
+  maxIterations?: number; // Default: 10
+  temperature?: number;   // Default: 0.7
+  provider?: LLMProviderType;  // LLM provider (default: server default)
+  model?: string;              // LLM model (default: server default)
+}
+
 /**
  * Agent group (column) configuration
+ * Must have EITHER agentName OR inlineAgent, not both
  */
 export interface AgentGroup {
   id: string;
-  agentName: string;
+  agentName?: string;              // Optional - for referenced agents
+  inlineAgent?: InlineAgentConfig; // Optional - for inline agents
   queryTemplate: string;
   outputColumns: OutputColumn[];
 }

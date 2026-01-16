@@ -64,7 +64,8 @@ describe('ai_chat: VFSManager', () => {
 
   describe('file operations', () => {
     beforeEach(() => {
-      vfs.createApp('app-1');
+      // Create app without shadcn components to test only default template files
+      vfs.createApp('app-1', 'default', false);
     });
 
     describe('writeFile', () => {

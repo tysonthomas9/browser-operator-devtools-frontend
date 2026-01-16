@@ -9,17 +9,30 @@
  * - React 18 via import map
  * - Zustand for state management
  * - Tailwind Play CDN for styling
- * - Message bridge for DevTools communication (via CDP binding)
+ * - Pluggable transport layer (CDP binding or WebSocket)
  * - In-iframe esbuild-wasm bundler (preloaded eagerly)
  * - Hot reload support
+ *
+ * Transport modes:
+ * - 'cdp': Uses CDP binding (DevTools context)
+ * - 'websocket': Uses WebSocket (standalone testing)
+ * - 'auto': Auto-detect based on available binding
+ *
+ * For standalone testing with pre-bundled SPAs, use bundledScript option.
  */
 export function createPreviewHtml(options: {
   reactVersion?: string;
   appId?: string;
+  transport?: 'cdp' | 'websocket' | 'auto';
+  wsPort?: number;
+  bundledScript?: string;  // URL to pre-bundled SPA script (for standalone testing)
 } = {}): string {
   const v = options.reactVersion ?? '18.2.0';
   const appId = options.appId ?? 'unknown';
   const bindingName = `__sandboxAppBridge_${appId}`;
+  const transport = options.transport ?? 'auto';
+  const wsPort = options.wsPort ?? 3457;
+  const bundledScript = options.bundledScript ?? '';
 
   return `<!doctype html>
 <html lang="en">
@@ -132,32 +145,232 @@ export function createPreviewHtml(options: {
         font-family: system-ui, -apple-system, sans-serif;
         min-height: 100vh;
       }
+
+      /* WebSocket connection status indicator */
+      #ws-status {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        z-index: 9999;
+        transition: all 0.3s ease;
+        display: none;
+      }
+      #ws-status.connected { background: #dcfce7; color: #166534; display: block; }
+      #ws-status.disconnected { background: #fee2e2; color: #991b1b; display: block; }
+      #ws-status.connecting { background: #fef3c7; color: #92400e; display: block; }
     </style>
   </head>
   <body>
+    <!-- WebSocket status indicator (only shown in WebSocket mode) -->
+    <div id="ws-status"></div>
+
     <div id="root"></div>
 
     <script type="module">
       // =======================================================================
-      // Message Bridge & State Management
+      // Configuration
       // =======================================================================
       const BINDING_NAME = '${bindingName}';
+      const TRANSPORT_MODE = '${transport}';
+      const WS_PORT = ${wsPort};
 
-      // Message bridge - uses CDP binding when available, falls back to postMessage
-      const send = (payload) => {
-        if (typeof window[BINDING_NAME] === 'function') {
-          // CDP binding installed by DevTools
-          window[BINDING_NAME](JSON.stringify(payload));
-        } else {
-          // Fallback for testing/development
-          parent.postMessage({ __sandbox: true, message: payload }, '*');
+      // =======================================================================
+      // Transport Layer Abstraction
+      // =======================================================================
+
+      /**
+       * CDP Transport - Uses Chrome DevTools Protocol binding
+       */
+      class CDPTransport {
+        constructor(bindingName) {
+          this.bindingName = bindingName;
+          this.messageHandler = null;
         }
-      };
 
-      // App state (for data binding)
+        send(payload) {
+          if (typeof window[this.bindingName] === 'function') {
+            window[this.bindingName](JSON.stringify(payload));
+          } else {
+            // Fallback to postMessage for parent frame
+            parent.postMessage({ __sandbox: true, message: payload }, '*');
+          }
+        }
+
+        onMessage(handler) {
+          this.messageHandler = handler;
+        }
+
+        async connect() {
+          // CDP binding is already set up by DevTools
+          // Just set up postMessage listener as fallback
+          window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (!data || data.__sandbox !== true || !data.message) {
+              return;
+            }
+            if (this.messageHandler) {
+              this.messageHandler(data.message);
+            }
+          });
+
+          // Expose receive function for Runtime.evaluate
+          window.__sandbox_receiveMessage = (msg) => {
+            if (this.messageHandler) {
+              this.messageHandler(msg);
+            }
+          };
+
+          console.log('[Transport] CDP transport ready');
+        }
+
+        isAvailable() {
+          return typeof window[this.bindingName] === 'function';
+        }
+      }
+
+      /**
+       * WebSocket Transport - For standalone testing
+       */
+      class WebSocketTransport {
+        constructor(port) {
+          this.port = port;
+          this.ws = null;
+          this.messageHandler = null;
+          this.messageQueue = [];
+          this.reconnectAttempts = 0;
+          this.maxReconnectAttempts = 10;
+          this.reconnectDelay = 1000;
+        }
+
+        send(payload) {
+          // Send the payload directly - callers are responsible for message format
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(payload));
+          } else {
+            this.messageQueue.push(payload);
+          }
+        }
+
+        onMessage(handler) {
+          this.messageHandler = handler;
+        }
+
+        updateStatus(status) {
+          const el = document.getElementById('ws-status');
+          if (el) {
+            el.className = status;
+            el.textContent = status === 'connected' ? 'Connected' :
+                             status === 'disconnected' ? 'Disconnected' :
+                             'Connecting...';
+          }
+        }
+
+        async connect() {
+          return new Promise((resolve, reject) => {
+            this.updateStatus('connecting');
+            const wsUrl = \`ws://localhost:\${this.port}\`;
+            console.log('[Transport] Connecting to WebSocket:', wsUrl);
+
+            this.ws = new WebSocket(wsUrl);
+
+            this.ws.onopen = () => {
+              console.log('[Transport] WebSocket connected');
+              this.updateStatus('connected');
+              this.reconnectAttempts = 0;
+
+              // Send init message
+              this.ws.send(JSON.stringify({ type: 'init' }));
+
+              // Flush queued messages
+              while (this.messageQueue.length > 0) {
+                const msg = this.messageQueue.shift();
+                this.ws.send(JSON.stringify(msg));
+              }
+
+              resolve();
+            };
+
+            this.ws.onmessage = (event) => {
+              try {
+                const msg = JSON.parse(event.data);
+                console.log('[Transport] WS received:', msg.type);
+
+                // Route all messages to handler
+                if (this.messageHandler) {
+                  this.messageHandler(msg);
+                }
+              } catch (err) {
+                console.error('[Transport] Failed to parse message:', err);
+              }
+            };
+
+            this.ws.onclose = (event) => {
+              console.log('[Transport] WebSocket disconnected:', event.code, event.reason);
+              this.updateStatus('disconnected');
+
+              // Attempt to reconnect
+              if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                console.log(\`[Transport] Reconnecting (attempt \${this.reconnectAttempts}/\${this.maxReconnectAttempts})...\`);
+                setTimeout(() => this.connect(), this.reconnectDelay);
+              } else {
+                console.error('[Transport] Max reconnection attempts reached');
+              }
+            };
+
+            this.ws.onerror = (err) => {
+              console.error('[Transport] WebSocket error:', err);
+              reject(err);
+            };
+          });
+        }
+
+        isAvailable() {
+          return true; // WebSocket is always available
+        }
+      }
+
+      // =======================================================================
+      // Transport Initialization
+      // =======================================================================
+      let transport;
+
+      function initTransport() {
+        const cdpTransport = new CDPTransport(BINDING_NAME);
+
+        if (TRANSPORT_MODE === 'cdp') {
+          transport = cdpTransport;
+        } else if (TRANSPORT_MODE === 'websocket') {
+          transport = new WebSocketTransport(WS_PORT);
+        } else {
+          // Auto-detect: prefer CDP if binding is available
+          if (cdpTransport.isAvailable()) {
+            transport = cdpTransport;
+            console.log('[Transport] Auto-detected CDP transport');
+          } else {
+            transport = new WebSocketTransport(WS_PORT);
+            console.log('[Transport] Auto-detected WebSocket transport');
+          }
+        }
+
+        return transport;
+      }
+
+      // Initialize transport
+      transport = initTransport();
+
+      // Unified send function
+      const send = (payload) => transport.send(payload);
+
+      // =======================================================================
+      // App State & Error Handling
+      // =======================================================================
       let appState = {};
 
-      // Global error handlers
       window.addEventListener('error', (e) => {
         send({
           type: 'error',
@@ -186,23 +399,15 @@ export function createPreviewHtml(options: {
       const VFS_NS = 'vfs';
       const ENTRY_ID = '__sandbox_entry__';
 
-      // esm.sh query params: target ES2022
-      // Note: We removed "external=react,..." because esm.sh responses with externals
-      // contain bare specifiers that can't be resolved when executed from blob URLs.
       const ESM_SH_DEFAULT_QUERY = 'target=es2022';
 
       function toEsmShUrl(spec) {
-        // react/jsx-runtime is a valid subpath export of react on esm.sh
-        // No special mapping needed for react, react-dom, react/jsx-runtime
         const hasQuery = spec.includes('?');
         return \`https://esm.sh/\${spec}\${hasQuery ? '&' : '?'}\${ESM_SH_DEFAULT_QUERY}\`;
       }
 
-      // VFS state - synced from DevTools
       let vfsFiles = {};
       let vfsEntry = '/src/index.tsx';
-
-      // esbuild instance
       let esbuild = null;
       let esbuildReady = false;
 
@@ -220,53 +425,37 @@ export function createPreviewHtml(options: {
 
       function dirname(path) {
         const idx = path.lastIndexOf('/');
-        if (idx <= 0) {
-          return '/';
-        }
+        if (idx <= 0) return '/';
         return path.slice(0, idx);
       }
 
       function normalizePath(path) {
         const parts = [];
         for (const part of path.split('/')) {
-          if (!part || part === '.') {
-            continue;
-          }
-          if (part === '..') {
-            parts.pop();
-          } else {
-            parts.push(part);
-          }
+          if (!part || part === '.') continue;
+          if (part === '..') parts.pop();
+          else parts.push(part);
         }
         return '/' + parts.join('/');
       }
 
       function resolveRelativePath(resolveDir, spec) {
-        if (spec.startsWith('/')) {
-          return normalizePath(spec);
-        }
+        if (spec.startsWith('/')) return normalizePath(spec);
         return normalizePath((resolveDir.endsWith('/') ? resolveDir : resolveDir + '/') + spec);
       }
 
       function resolveWithExtensions(path, files) {
-        if (Object.prototype.hasOwnProperty.call(files, path)) {
-          return path;
-        }
+        if (Object.prototype.hasOwnProperty.call(files, path)) return path;
         const exts = ['.tsx', '.ts', '.jsx', '.js', '.json', '.css'];
         for (const ext of exts) {
-          if (Object.prototype.hasOwnProperty.call(files, path + ext)) {
-            return path + ext;
-          }
+          if (Object.prototype.hasOwnProperty.call(files, path + ext)) return path + ext;
         }
-        // Try index files
         for (const ext of exts) {
           const idx = path.lastIndexOf('/');
           const dir = idx >= 0 ? path.slice(0, idx + 1) : '/';
           const base = idx >= 0 ? path.slice(idx + 1) : path;
           const candidate = dir + base + '/index' + ext;
-          if (Object.prototype.hasOwnProperty.call(files, candidate)) {
-            return candidate;
-          }
+          if (Object.prototype.hasOwnProperty.call(files, candidate)) return candidate;
         }
         return null;
       }
@@ -283,108 +472,65 @@ export function createPreviewHtml(options: {
 
       function formatLocation(loc) {
         if (!loc) return '';
-        const file = loc.file ?? '<unknown>';
-        const line = loc.line ?? 0;
-        const col = loc.column ?? 0;
-        return \`\${file}:\${line}:\${col}\`;
+        return \`\${loc.file ?? '<unknown>'}:\${loc.line ?? 0}:\${loc.column ?? 0}\`;
       }
 
       function formatMessages(msgs) {
         if (!Array.isArray(msgs)) return [];
         return msgs.map(m => {
           const where = formatLocation(m.location);
-          if (where) return \`\${where} \${m.text}\`;
-          return m.text;
+          return where ? \`\${where} \${m.text}\` : m.text;
         });
       }
 
-      /**
-       * VFS Plugin for esbuild
-       */
       function vfsPlugin({ files, entry }) {
         return {
           name: 'vfs',
           setup(build) {
             build.onResolve({ filter: /.*/ }, args => {
-              // Entry point alias
               if (args.path === ENTRY_ID) {
                 return { path: ENTRY_ID, namespace: VFS_NS };
               }
-
-              // Path alias: @/ → /src/
               if (args.path.startsWith('@/')) {
                 const aliased = '/src/' + args.path.slice(2);
                 const finalPath = resolveWithExtensions(aliased, files);
                 if (!finalPath) {
-                  return {
-                    errors: [{ text: \`File not found: \${args.path} (from \${args.importer || entry || 'entry'})\` }],
-                  };
+                  return { errors: [{ text: \`File not found: \${args.path} (from \${args.importer || entry || 'entry'})\` }] };
                 }
                 return { path: finalPath, namespace: VFS_NS };
               }
-
-              // External URLs
-              if (
-                args.path.startsWith('http://') ||
-                args.path.startsWith('https://') ||
-                args.path.startsWith('data:')
-              ) {
+              if (args.path.startsWith('http://') || args.path.startsWith('https://') || args.path.startsWith('data:')) {
                 return { path: args.path, external: true };
               }
-
-              // Bare specifiers
               if (isBareSpecifier(args.path)) {
-                // All bare specifiers (including React) resolve to esm.sh URLs.
-                // This is required because bundled code executes via blob URLs,
-                // and import maps don't apply to blob URL module contexts.
                 return { path: toEsmShUrl(args.path), external: true };
               }
-
-              // Relative imports
               const resolveDir = args.resolveDir || dirname(args.importer || entry || '/');
               const resolved = resolveRelativePath(resolveDir, args.path);
               const finalPath = resolveWithExtensions(resolved, files);
               if (!finalPath) {
-                return {
-                  errors: [{ text: \`File not found: \${args.path} (from \${args.importer || entry || 'entry'})\` }],
-                };
+                return { errors: [{ text: \`File not found: \${args.path} (from \${args.importer || entry || 'entry'})\` }] };
               }
               return { path: finalPath, namespace: VFS_NS };
             });
 
             build.onLoad({ filter: /.*/, namespace: VFS_NS }, args => {
-              // Entry point wrapper
               if (args.path === ENTRY_ID) {
                 if (!Object.prototype.hasOwnProperty.call(files, entry)) {
                   return { errors: [{ text: \`Missing entry file: \${entry}\` }] };
                 }
-                const contents = \`import "\${entry}";\`;
-                return {
-                  contents,
-                  loader: 'ts',
-                  resolveDir: '/',
-                };
+                return { contents: \`import "\${entry}";\`, loader: 'ts', resolveDir: '/' };
               }
-
-              // Load from VFS
               const contents = files[args.path];
               if (typeof contents !== 'string') {
                 return { errors: [{ text: \`Missing file: \${args.path}\` }] };
               }
-
-              return {
-                contents,
-                loader: loaderForPath(args.path),
-                resolveDir: dirname(args.path),
-              };
+              return { contents, loader: loaderForPath(args.path), resolveDir: dirname(args.path) };
             });
           },
         };
       }
 
-      /**
-       * Initialize esbuild-wasm (eager preload)
-       */
       async function initializeEsbuild() {
         try {
           console.log('[Sandbox] Loading esbuild-wasm...');
@@ -406,23 +552,16 @@ export function createPreviewHtml(options: {
         }
       }
 
-      /**
-       * Build from VFS
-       */
       async function buildFromVFS(buildId) {
+        console.log('[VFS] buildFromVFS called with id:', buildId);
         const startTime = Date.now();
-
         if (!esbuildReady) {
-          send({
-            type: 'build-error',
-            payload: {
-              buildId,
-              error: 'Bundler not ready. Please wait for initialization.'
-            }
-          });
+          console.log('[VFS] Build skipped - esbuild not ready');
+          send({ type: 'build-error', payload: { buildId, error: 'Bundler not ready. Please wait for initialization.' } });
           return;
         }
 
+        console.log('[VFS] Starting esbuild, entry:', vfsEntry, 'files:', Object.keys(vfsFiles).length);
         try {
           const result = await esbuild.build({
             entryPoints: [ENTRY_ID],
@@ -434,40 +573,33 @@ export function createPreviewHtml(options: {
             platform: 'browser',
             target: ['es2020'],
             sourcemap: 'inline',
-            // Use automatic JSX transform with React
             jsx: 'automatic',
             jsxImportSource: 'react',
             logLevel: 'silent',
             plugins: [vfsPlugin({ files: vfsFiles, entry: vfsEntry })],
           });
 
-          let js = '';
-          let css = '';
+          let js = '', css = '';
           for (const f of result.outputFiles ?? []) {
             if (f.path.endsWith('.js')) js = f.text;
             if (f.path.endsWith('.css')) css = f.text;
           }
 
+          console.log('[VFS] Build complete, success:', result.errors.length === 0, 'js length:', js.length);
           send({
             type: 'build-result',
             payload: {
               buildId,
               success: result.errors.length === 0,
-              js,
-              css,
+              js, css,
               warnings: formatMessages(result.warnings),
               errors: formatMessages(result.errors),
               durationMs: Date.now() - startTime,
             }
           });
         } catch (err) {
-          send({
-            type: 'build-error',
-            payload: {
-              buildId,
-              error: err?.message || String(err)
-            }
-          });
+          console.error('[VFS] Build error:', err);
+          send({ type: 'build-error', payload: { buildId, error: err?.message || String(err) } });
         }
       }
 
@@ -477,101 +609,57 @@ export function createPreviewHtml(options: {
       let lastScriptEl = null;
 
       async function executeCode(js, css) {
-        // Inject CSS
         const styleEl = document.getElementById('__sandbox_css__');
-        if (styleEl) {
-          styleEl.textContent = css || '';
-        }
+        if (styleEl) styleEl.textContent = css || '';
 
-        // Clear previous render
         const root = document.getElementById('root');
-        if (root) {
-          root.replaceWith(root.cloneNode(false));
-        }
+        if (root) root.replaceWith(root.cloneNode(false));
 
-        // Remove previous script
-        if (lastScriptEl) {
-          lastScriptEl.remove();
-        }
+        if (lastScriptEl) lastScriptEl.remove();
 
-        // Execute via blob URL with proper error handling
         try {
-          // Remove previous script
           const oldScript = document.getElementById('__sandbox_app__');
           if (oldScript) oldScript.remove();
 
-          // Cleanup previous blob URL
           if (lastScriptEl?.dataset?.blobUrl) {
             URL.revokeObjectURL(lastScriptEl.dataset.blobUrl);
           }
 
-          // Create blob URL
           const blob = new Blob([js], { type: 'text/javascript' });
           const blobUrl = URL.createObjectURL(blob);
 
-          // Track state
           let rendered = false;
           let errorOccurred = false;
 
-          // Capture unhandled rejections (for dynamic import failures)
           const rejectionHandler = (event) => {
             console.error('[Sandbox] Unhandled rejection:', event.reason);
             errorOccurred = true;
             window.removeEventListener('unhandledrejection', rejectionHandler);
-            send({
-              type: 'error',
-              payload: {
-                message: event.reason?.message || String(event.reason),
-                stack: event.reason?.stack || ''
-              }
-            });
+            send({ type: 'error', payload: { message: event.reason?.message || String(event.reason), stack: event.reason?.stack || '' } });
           };
           window.addEventListener('unhandledrejection', rejectionHandler);
 
-          // For module scripts, errors are reported via window.onerror
           const errorHandler = (event) => {
             console.error('[Sandbox] Script error:', event.message, event.filename);
             errorOccurred = true;
             window.removeEventListener('error', errorHandler);
-            send({
-              type: 'error',
-              payload: {
-                message: event.message || 'Script execution error',
-                stack: event.error?.stack || '',
-                filename: event.filename,
-                lineno: event.lineno
-              }
-            });
+            send({ type: 'error', payload: { message: event.message || 'Script execution error', stack: event.error?.stack || '', filename: event.filename, lineno: event.lineno } });
           };
           window.addEventListener('error', errorHandler);
 
-          // Execute using dynamic import (returns a promise)
           try {
             await import(blobUrl);
           } catch (importErr) {
             console.error('[Sandbox] Import failed:', importErr?.message);
             errorOccurred = true;
-            send({
-              type: 'error',
-              payload: {
-                message: importErr?.message || 'Module import failed',
-                stack: importErr?.stack || ''
-              }
-            });
+            send({ type: 'error', payload: { message: importErr?.message || 'Module import failed', stack: importErr?.stack || '' } });
           }
 
-          // Wait for render
-          const checkRendered = () => {
-            const root = document.getElementById('root');
-            return root && root.children.length > 0;
-          };
-
-          // Give time for async rendering
           await new Promise(resolve => setTimeout(resolve, 200));
 
-          rendered = checkRendered();
+          const checkRoot = document.getElementById('root');
+          rendered = checkRoot && checkRoot.children.length > 0;
 
-          // Cleanup
           window.removeEventListener('error', errorHandler);
           window.removeEventListener('unhandledrejection', rejectionHandler);
 
@@ -582,17 +670,10 @@ export function createPreviewHtml(options: {
             console.warn('[Sandbox] App did not render, no error detected');
           }
 
-          // Store blob URL for cleanup
           lastScriptEl = { dataset: { blobUrl } };
         } catch (err) {
           console.error('[Sandbox] executeCode error:', err);
-          send({
-            type: 'error',
-            payload: {
-              message: err?.message || String(err),
-              stack: err?.stack
-            }
-          });
+          send({ type: 'error', payload: { message: err?.message || String(err), stack: err?.stack } });
         }
       }
 
@@ -603,23 +684,17 @@ export function createPreviewHtml(options: {
         const parts = path.split('/').filter(Boolean);
         let current = obj;
         for (let i = 0; i < parts.length - 1; i++) {
-          if (!(parts[i] in current)) {
-            current[parts[i]] = {};
-          }
+          if (!(parts[i] in current)) current[parts[i]] = {};
           current = current[parts[i]];
         }
-        if (parts.length > 0) {
-          current[parts[parts.length - 1]] = value;
-        }
+        if (parts.length > 0) current[parts[parts.length - 1]] = value;
       }
 
       function getAtPath(obj, path) {
         const parts = path.split('/').filter(Boolean);
         let current = obj;
         for (const part of parts) {
-          if (current == null || !(part in current)) {
-            return undefined;
-          }
+          if (current == null || !(part in current)) return undefined;
           current = current[part];
         }
         return current;
@@ -650,9 +725,17 @@ export function createPreviewHtml(options: {
       // =======================================================================
       function handleMessage(msg) {
         switch (msg.type) {
-          case 'init':
-            appState = msg.payload.state || {};
+          // Data Studio specific messages
+          case 'state-update':
+          case 'update-cell':
             // Forward to SPA's message handler
+            if (window.__sandbox_onMessage) {
+              window.__sandbox_onMessage(msg);
+            }
+            break;
+
+          case 'init':
+            appState = msg.payload?.state || {};
             if (window.__sandbox_onMessage) {
               window.__sandbox_onMessage(msg);
             }
@@ -672,7 +755,6 @@ export function createPreviewHtml(options: {
             break;
 
           case 'hot-reload':
-            // Legacy: receive pre-bundled code
             executeCode(msg.payload.js, msg.payload.css);
             break;
 
@@ -680,19 +762,18 @@ export function createPreviewHtml(options: {
             send({ type: 'state-snapshot', payload: { state: appState } });
             break;
 
-          // New iframe bundler messages
           case 'sync-files':
             if (msg.payload.incremental) {
-              // Merge incrementally
               Object.assign(vfsFiles, msg.payload.files);
             } else {
-              // Replace all
               vfsFiles = msg.payload.files;
             }
             vfsEntry = msg.payload.entry;
+            console.log('[VFS] Files synced:', Object.keys(vfsFiles).length, 'files, entry:', vfsEntry);
             break;
 
           case 'build-request':
+            console.log('[VFS] Build requested, files:', Object.keys(vfsFiles).length, 'esbuildReady:', esbuildReady);
             buildFromVFS(msg.payload.buildId);
             break;
 
@@ -702,26 +783,27 @@ export function createPreviewHtml(options: {
         }
       }
 
-      // Message handler for postMessage (fallback/testing)
-      window.addEventListener('message', (event) => {
-        const data = event.data;
-        if (!data || data.__sandbox !== true || !data.message) {
-          return;
-        }
-        handleMessage(data.message);
-      });
+      // Set up message handler for transport
+      transport.onMessage(handleMessage);
 
-      // Expose receive function for Runtime.evaluate (CDP)
+      // Expose handlers for legacy compatibility
       window.__sandbox_receiveMessage = handleMessage;
-
-      // Expose execute function for initial load (legacy)
       window.__sandbox_executeCode = executeCode;
 
       // =======================================================================
-      // Initialize esbuild eagerly on iframe creation
+      // Initialize
       // =======================================================================
-      initializeEsbuild();
+      async function init() {
+        await transport.connect();
+        initializeEsbuild();
+      }
+
+      init().catch(err => {
+        console.error('[Sandbox] Initialization failed:', err);
+      });
     </script>
+    ${bundledScript ? `<!-- Pre-bundled SPA for standalone testing -->
+    <script type="module" src="${bundledScript}"></script>` : ''}
   </body>
 </html>`;
 }

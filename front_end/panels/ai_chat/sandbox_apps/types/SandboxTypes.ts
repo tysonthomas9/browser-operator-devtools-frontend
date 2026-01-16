@@ -91,6 +91,9 @@ export interface BuildResponse {
 // Protocol Types (A2UI-style)
 // =============================================================================
 
+// Import Data Studio message types (re-exported to avoid circular deps)
+import type {StateUpdateMessage, CellUpdateMessage} from '../execution/DataStudioCore.js';
+
 /**
  * Messages sent from DevTools to the sandbox iframe
  */
@@ -103,7 +106,10 @@ export type DevToolsToSandboxMessage =
   // Iframe bundler messages
   | {type: 'sync-files'; payload: {files: VirtualFileMap; entry: string; incremental?: boolean}}
   | {type: 'build-request'; payload: {buildId: number}}
-  | {type: 'execute-code'; payload: {js: string; css: string}};
+  | {type: 'execute-code'; payload: {js: string; css: string}}
+  // Data Studio unified messages (WebSocket format)
+  | StateUpdateMessage
+  | CellUpdateMessage;
 
 /**
  * Messages sent from the sandbox iframe to DevTools

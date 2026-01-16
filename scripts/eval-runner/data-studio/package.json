@@ -1,0 +1,25 @@
+{
+  "name": "data-studio",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@esbuild/darwin-arm64": "^0.27.2",
+    "dotenv": "^17.2.3",
+    "esbuild": "^0.27.2",
+    "express": "^5.2.1",
+    "puppeteer": "^24.35.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.19.0"
+  }
+}
