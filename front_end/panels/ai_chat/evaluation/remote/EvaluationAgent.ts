@@ -11,7 +11,7 @@ import { ToolRegistry, ConfigurableAgentTool } from '../../agent_framework/Confi
 import { AgentService } from '../../core/AgentService.js';
 import { AIChatPanel } from '../../ui/AIChatPanel.js';
 import { createLogger } from '../../core/Logger.js';
-import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig } from '../../tracing/TracingConfig.js';
+import { createTracingProvider, withTracingContext, isTracingEnabled, getTracingConfig, setTracingConfig, refreshTracingProvider } from '../../tracing/TracingConfig.js';
 import { AgentDescriptorRegistry, type AgentDescriptor } from '../../core/AgentDescriptorRegistry.js';
 import '../../core/BaseOrchestratorAgent.js';
 import type { TracingProvider, TracingContext } from '../../tracing/TracingProvider.js';
@@ -426,13 +426,53 @@ export class EvaluationAgent {
       tool: params.tool
     });
 
-    // Create a trace for this evaluation
-    const traceId = `eval-${params.evaluationId}-${Date.now()}`;
-    const sessionId = `eval-session-${Date.now()}`;
-    const tracingContext: TracingContext = { 
-      traceId, 
+    // Use tracing metadata from request params (from eval framework via api-server)
+    // The tracing field is now properly forwarded through BrowserAgentServer.executeRequest()
+    const requestTracing = params.tracing || {};
+    logger.info('Tracing metadata received:', {
+      hasTracing: !!params.tracing,
+      tracingKeys: Object.keys(requestTracing),
+      sessionId: requestTracing.session_id,
+      traceId: requestTracing.trace_id,
+      hasLangfuseCredentials: !!(requestTracing.langfuse_endpoint && requestTracing.langfuse_public_key && requestTracing.langfuse_secret_key)
+    });
+
+    // Auto-configure Langfuse tracing from request if credentials provided and not already enabled
+    if (requestTracing.langfuse_endpoint &&
+        requestTracing.langfuse_public_key &&
+        requestTracing.langfuse_secret_key &&
+        !isTracingEnabled()) {
+      logger.info('Auto-configuring DevTools Langfuse tracing from request', {
+        endpoint: requestTracing.langfuse_endpoint,
+        hasPublicKey: true,
+        hasSecretKey: true
+      });
+
+      setTracingConfig({
+        provider: 'langfuse',
+        endpoint: requestTracing.langfuse_endpoint,
+        publicKey: requestTracing.langfuse_public_key,
+        secretKey: requestTracing.langfuse_secret_key
+      });
+
+      // Refresh the tracing provider to pick up new configuration
+      await refreshTracingProvider();
+
+      // Update this instance's tracing provider
+      this.tracingProvider = createTracingProvider();
+
+      logger.info('DevTools Langfuse tracing configured successfully from request');
+    }
+
+    // Create a trace for this evaluation - use tracing from request if available
+    const traceId = requestTracing.trace_id || `eval-${params.evaluationId}-${Date.now()}`;
+    const sessionId = requestTracing.session_id || `eval-session-${Date.now()}`;
+    const tracingContext: TracingContext = {
+      traceId,
       sessionId,
-      parentObservationId: undefined 
+      parentObservationId: undefined,
+      // Include full tracing metadata for LLM calls (session grouping in Langfuse)
+      metadata: requestTracing
     };
     const orchestratorDescriptor = await this.orchestratorDescriptorPromise;
     

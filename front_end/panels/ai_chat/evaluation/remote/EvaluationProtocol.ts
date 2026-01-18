@@ -104,6 +104,21 @@ export interface EvaluationParams {
     retries: number;
     priority?: 'low' | 'normal' | 'high';
   };
+  // Tracing metadata for Langfuse session grouping
+  tracing?: {
+    session_id?: string;
+    trace_id?: string;
+    eval_id?: string;
+    eval_name?: string;
+    category?: string;
+    tags?: string[];
+    trace_name?: string;
+    // Langfuse credentials for auto-configuration
+    // When provided, DevTools will auto-configure Langfuse tracing if not already enabled
+    langfuse_endpoint?: string;
+    langfuse_public_key?: string;
+    langfuse_secret_key?: string;
+  };
 }
 
 export interface EvaluationSuccessResponse {
