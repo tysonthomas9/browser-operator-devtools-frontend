@@ -219,7 +219,7 @@ ai-sidebar-nav {
 
 /* Make connectors, settings, history, and evaluations views stretch to full width and height */
 .centered-view .main-content > ai-connectors-view,
-.centered-view .main-content > ai-settings-view,
+.centered-view .main-content > ai-settings-dialog,
 .centered-view .main-content > ai-history-view,
 .centered-view .main-content > ai-evaluations-view {
   align-self: stretch;
@@ -228,6 +228,68 @@ ai-sidebar-nav {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* Settings Dialog Styles - ensure proper layout */
+ai-settings-dialog .settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 24px 20px;
+  max-width: 500px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+ai-settings-dialog .settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+ai-settings-dialog .settings-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+ai-settings-dialog .settings-hint {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+ai-settings-dialog .provider-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex-shrink: 0;
+  height: auto !important;
+}
+
+ai-settings-dialog .provider-content[style*="display: none"] {
+  display: none !important;
+}
+
+ai-settings-dialog ai-model-selector {
+  display: block;
+  width: 100%;
+}
+
+ai-settings-dialog ai-model-selector .model-selector {
+  width: 100%;
 }
 
 /* Ensure version banner doesn't interfere with centering */
@@ -359,32 +421,17 @@ a.whats-new-pill:active,
 }
 
 .welcome-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: radial-gradient(circle, rgba(250, 250, 250, 0.45) 0%, rgba(235, 235, 235, 0.55) 100%);
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  position: relative;
 }
 
 .welcome-icon img {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  object-fit: cover;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-}
-
-.welcome-icon::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 16px;
-  background: radial-gradient(circle, #fafafa 0%, #ebebeb 100%);
-  opacity: 0.22;
-  z-index: -1;
+  object-fit: contain;
 }
 
 .welcome-title {

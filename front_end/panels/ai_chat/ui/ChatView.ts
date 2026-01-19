@@ -32,7 +32,7 @@ import './TodoListDisplay.js';
 import './FileListDisplay.js';
 import './SidebarNav.js';
 import './ConnectorsView.js';
-import './SettingsView.js';
+import './SettingsDialog.js';
 import './HistoryView.js';
 import './EvaluationsView.js';
 
@@ -45,7 +45,7 @@ const logger = createLogger('ChatView');
 
 import chatViewStyles from './chatView.css.js';
 
-const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.png', import.meta.url).toString();
+const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.svg', import.meta.url).toString();
 
 const {html, Decorators} = Lit;
 const {customElement} = Decorators;
@@ -194,6 +194,13 @@ export interface Props {
   currentProvider?: string;
   // Callback for switching models when specific example prompts are selected
   onExamplePromptModelSwitch?: (modelPreferences: { main?: string; mini?: string; nano?: string }) => void;
+  // Settings callbacks (for inline SettingsDialog)
+  onSettingsSaved?: () => void;
+  fetchLiteLLMModels?: (apiKey: string, endpoint: string) => Promise<{models: Array<{value: string, label: string}>, hadWildcard: boolean}>;
+  updateModelOptions?: (models: Array<{value: string, label: string}>, hadWildcard: boolean) => void;
+  getModelOptions?: () => Array<{value: string, label: string}>;
+  addCustomModelOption?: (model: {value: string, label: string}) => void;
+  removeCustomModelOption?: (modelValue: string) => void;
 }
 
 @customElement('devtools-chat-view')
@@ -241,6 +248,14 @@ export class ChatView extends HTMLElement {
   // Add OAuth login properties
   #showOAuthLogin = false;
   #onOAuthLogin?: () => void;
+
+  // Settings callbacks for inline SettingsDialog
+  #onSettingsSaved?: () => void;
+  #fetchLiteLLMModels?: (apiKey: string, endpoint: string) => Promise<{models: Array<{value: string, label: string}>, hadWildcard: boolean}>;
+  #updateModelOptions?: (models: Array<{value: string, label: string}>, hadWildcard: boolean) => void;
+  #getModelOptions?: () => Array<{value: string, label: string}>;
+  #addCustomModelOption?: (model: {value: string, label: string}) => void;
+  #removeCustomModelOption?: (modelValue: string) => void;
 
   // Combined messages cache for this render pass
   #combinedMessagesCache: CombinedMessage[] = [];
@@ -311,6 +326,14 @@ export class ChatView extends HTMLElement {
    */
   setAgentViewMode(mode: 'simplified' | 'enhanced'): void {
     this.#agentViewMode = mode;
+    void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
+  }
+
+  /**
+   * Set the active sidebar item programmatically (for external navigation)
+   */
+  setActiveSidebarItem(item: SidebarNavItem): void {
+    this.#activeSidebarItem = item;
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
   }
 
@@ -425,7 +448,14 @@ export class ChatView extends HTMLElement {
     this.#showOAuthLogin = data.showOAuthLogin || false;
     this.#onOAuthLogin = data.onOAuthLogin;
 
-    
+    // Store settings callbacks
+    this.#onSettingsSaved = data.onSettingsSaved;
+    this.#fetchLiteLLMModels = data.fetchLiteLLMModels;
+    this.#updateModelOptions = data.updateModelOptions;
+    this.#getModelOptions = data.getModelOptions;
+    this.#addCustomModelOption = data.addCustomModelOption;
+    this.#removeCustomModelOption = data.removeCustomModelOption;
+
     // Log the input state changes
     if (wasInputDisabled !== this.#isInputDisabled) {
       logger.info(`Input disabled state changed: ${wasInputDisabled} -> ${this.#isInputDisabled}`);
@@ -767,14 +797,6 @@ export class ChatView extends HTMLElement {
   }
 
   #handleSidebarNavClick(item: SidebarNavItem): void {
-    if (item === 'settings') {
-      // Dispatch event for AIChatPanel to handle opening SettingsDialog
-      this.dispatchEvent(new CustomEvent('open-settings-dialog', {
-        bubbles: true,
-        composed: true,
-      }));
-      return;
-    }
     this.#activeSidebarItem = item;
     this.dispatchEvent(new CustomEvent('sidebar-nav', {
       bubbles: true,
@@ -888,6 +910,16 @@ export class ChatView extends HTMLElement {
         switch (this.#activeSidebarItem) {
           case 'connectors':
             return html`<ai-connectors-view></ai-connectors-view>`;
+          case 'settings':
+            return html`<ai-settings-dialog
+              .selectedModel=${this.#selectedModel || ''}
+              .onSettingsSaved=${this.#onSettingsSaved}
+              .fetchLiteLLMModels=${this.#fetchLiteLLMModels}
+              .updateModelOptions=${this.#updateModelOptions}
+              .getModelOptions=${this.#getModelOptions}
+              .addCustomModelOption=${this.#addCustomModelOption}
+              .removeCustomModelOption=${this.#removeCustomModelOption}
+            ></ai-settings-dialog>`;
           case 'history':
             return html`<ai-history-view></ai-history-view>`;
           case 'evaluations':
@@ -945,6 +977,16 @@ export class ChatView extends HTMLElement {
         switch (this.#activeSidebarItem) {
           case 'connectors':
             return html`<ai-connectors-view></ai-connectors-view>`;
+          case 'settings':
+            return html`<ai-settings-dialog
+              .selectedModel=${this.#selectedModel || ''}
+              .onSettingsSaved=${this.#onSettingsSaved}
+              .fetchLiteLLMModels=${this.#fetchLiteLLMModels}
+              .updateModelOptions=${this.#updateModelOptions}
+              .getModelOptions=${this.#getModelOptions}
+              .addCustomModelOption=${this.#addCustomModelOption}
+              .removeCustomModelOption=${this.#removeCustomModelOption}
+            ></ai-settings-dialog>`;
           case 'history':
             return html`<ai-history-view></ai-history-view>`;
           case 'evaluations':

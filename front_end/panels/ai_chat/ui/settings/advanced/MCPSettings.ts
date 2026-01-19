@@ -120,10 +120,10 @@ export class MCPSettings {
     mcpDisconnectButton.style.backgroundColor = '#fee2e2';
     mcpDisconnectButton.style.border = '1px solid #fecaca';
     mcpDisconnectButton.style.color = '#dc2626';
-    mcpDisconnectButton.style.padding = '6px 12px';
+    mcpDisconnectButton.style.padding = '8px 14px';
     mcpDisconnectButton.style.borderRadius = '6px';
     mcpDisconnectButton.style.cursor = 'pointer';
-    mcpDisconnectButton.style.fontSize = '12px';
+    mcpDisconnectButton.style.fontSize = '14px';
     mcpDisconnectButton.style.fontWeight = '500';
     mcpDisconnectButton.addEventListener('click', async () => {
       try {
@@ -143,10 +143,10 @@ export class MCPSettings {
     mcpManageButton.style.backgroundColor = 'var(--color-background-elevation-1)';
     mcpManageButton.style.border = '1px solid var(--color-details-hairline)';
     mcpManageButton.style.color = 'var(--color-text-primary)';
-    mcpManageButton.style.padding = '6px 12px';
+    mcpManageButton.style.padding = '8px 14px';
     mcpManageButton.style.borderRadius = '6px';
     mcpManageButton.style.cursor = 'pointer';
-    mcpManageButton.style.fontSize = '12px';
+    mcpManageButton.style.fontSize = '14px';
     mcpManageButton.style.fontWeight = '500';
     mcpManageButton.addEventListener('click', () => {
       this.onDialogHide();
@@ -161,10 +161,10 @@ export class MCPSettings {
     mcpReconnectAllButton.style.backgroundColor = '#dbeafe';
     mcpReconnectAllButton.style.border = '1px solid #bfdbfe';
     mcpReconnectAllButton.style.color = '#1d4ed8';
-    mcpReconnectAllButton.style.padding = '6px 12px';
+    mcpReconnectAllButton.style.padding = '8px 14px';
     mcpReconnectAllButton.style.borderRadius = '6px';
     mcpReconnectAllButton.style.cursor = 'pointer';
-    mcpReconnectAllButton.style.fontSize = '12px';
+    mcpReconnectAllButton.style.fontSize = '14px';
     mcpReconnectAllButton.style.fontWeight = '500';
     mcpReconnectAllButton.addEventListener('click', async () => {
       mcpReconnectAllButton.disabled = true;

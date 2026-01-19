@@ -581,8 +581,6 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#chatView.addEventListener('manual-setup-requested', this.#handleManualSetupRequest.bind(this));
     // Wire sidebar navigation actions
     this.#chatView.addEventListener('sidebar-nav', this.#handleSidebarNavEvent.bind(this));
-    // Wire settings dialog opening from sidebar
-    this.#chatView.addEventListener('open-settings-dialog', () => this.#onSettingsClick());
 
     // Wire HistoryView events
     this.#chatView.addEventListener(HistoryViewEvents.REQUEST_DATA, this.#handleHistoryRequestData.bind(this));
@@ -1243,9 +1241,9 @@ export class AIChatPanel extends UI.Panel.Panel {
         break;
       case 'chat':
       case 'connectors':  // Let ChatView handle routing to ConnectorsView
+      case 'settings':    // Let ChatView handle routing to SettingsDialog
       case 'history':     // Let ChatView handle routing to HistoryView
       case 'evaluations': // Let ChatView handle routing to EvaluationsView
-      // Note: 'settings' is handled via 'open-settings-dialog' event, not sidebar-nav
       default:
         // ChatView will handle these via its internal routing
         break;
@@ -1773,6 +1771,29 @@ export class AIChatPanel extends UI.Panel.Panel {
         onOAuthLogin: this.#handleOAuthLogin.bind(this),
         // Add example prompt model switching
         onExamplePromptModelSwitch: this.#handleExamplePromptModelSwitch.bind(this),
+        // Settings callbacks for inline SettingsDialog
+        onSettingsSaved: this.refreshCredentials.bind(this),
+        fetchLiteLLMModels: this.#fetchLiteLLMModels.bind(this),
+        updateModelOptions: (models: Array<{value: string, label: string}>, hadWildcard: boolean) => {
+          // Convert to ModelOption format if needed
+          const modelOptions: ModelOption[] = models.map(m => ({
+            value: m.value,
+            label: m.label,
+            type: (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as ProviderType
+          }));
+          AIChatPanel.updateModelOptions(modelOptions, hadWildcard);
+          this.performUpdate();
+        },
+        getModelOptions: () => getModelOptions(),
+        addCustomModelOption: (model: {value: string, label: string}) => {
+          const currentProvider = (localStorage.getItem(PROVIDER_SELECTION_KEY) || 'openai') as ProviderType;
+          AIChatPanel.addCustomModelOption(model.value, currentProvider);
+          this.performUpdate();
+        },
+        removeCustomModelOption: (modelValue: string) => {
+          AIChatPanel.removeCustomModelOption(modelValue);
+          this.performUpdate();
+        },
       };
     } catch (error) {
       logger.error('Error updating ChatView state:', error);
@@ -2052,22 +2073,12 @@ export class AIChatPanel extends UI.Panel.Panel {
   }
 
   /**
-   * Handles the settings button click event and shows the settings dialog
+   * Handles the settings button click event - navigates to settings view
    */
   #onSettingsClick(): void {
-    SettingsDialog.show(
-      this.#selectedModel,
-      this.#miniModel,
-      this.#nanoModel,
-      async () => {
-        await this.#handleSettingsChanged();
-      },
-      this.#fetchLiteLLMModels.bind(this),
-      (providerModels, hadWildcard) => { AIChatPanel.updateModelOptions(providerModels, hadWildcard); },
-      AIChatPanel.getModelOptions,
-      AIChatPanel.addCustomModelOption,
-      AIChatPanel.removeCustomModelOption
-    );
+    // Navigate to settings view
+    this.#handleSidebarNavigation('settings');
+    this.#chatView.setActiveSidebarItem('settings');
   }
   
   /**

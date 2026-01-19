@@ -11,7 +11,7 @@ import { createLogger } from '../core/Logger.js';
 
 const logger = createLogger('OnboardingDialog');
 
-const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.png', import.meta.url).toString();
+const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.svg', import.meta.url).toString();
 const demoGifUrl = new URL('../../../Images/demo.gif', import.meta.url).toString();
 
 const ONBOARDING_COMPLETE_KEY = 'ai_chat_onboarding_complete';
