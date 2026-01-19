@@ -25,6 +25,7 @@ import { isEvaluationEnabled, getEvaluationConfig } from '../common/EvaluationCo
 import { EvaluationAgent } from '../evaluation/remote/EvaluationAgent.js';
 import { BUILD_CONFIG } from '../core/BuildConfig.js';
 import { OnboardingDialog, createSetupRequiredBanner } from './OnboardingDialog.js';
+import { HistoryViewEvents } from './HistoryView.js';
 // Import of LiveAgentSessionComponent is not required here; the element is
 // registered by ChatView where it is used.
 
@@ -520,26 +521,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#rightToolbar = this.#toolbarContainer.createChild('devtools-toolbar', 'ai-chat-right-toolbar') as UI.Toolbar.Toolbar;
     this.#rightToolbar.style.cssText = 'overflow: visible;';
 
-    // Add "What's new" pill to toolbar (reuse existing styles from chatView.css)
-    const whatsNewPill = document.createElement('button');
-    whatsNewPill.className = 'whats-new-pill';
-    whatsNewPill.setAttribute('aria-label', "What's new in v1.01");
-    // Float at the top, centered, above all content; enforce blue background and border
-    whatsNewPill.style.cssText = 'position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; background: hsl(var(--primary)); border: 1px solid hsl(var(--primary));';
-    whatsNewPill.innerHTML = `
-      <span class="pill-icon">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M7 1.2L7.8 3.6C7.94 4.02 8.28 4.36 8.7 4.5L11.1 5.3L8.7 6.1C8.28 6.24 7.94 6.58 7.8 7L7 9.4L6.2 7C6.06 6.58 5.72 6.24 5.3 6.1L2.9 5.3L5.3 4.5C5.72 4.36 6.06 4.02 6.2 3.6L7 1.2Z" fill="currentColor"/>
-        </svg>
-      </span>
-      What's new in v1.01
-    `;
-    // Place the pill between the left (new chat) and right (settings/close) toolbars
-    if (this.#rightToolbar && this.#toolbarContainer.contains(this.#rightToolbar)) {
-      this.#toolbarContainer.insertBefore(whatsNewPill, this.#rightToolbar);
-    } else {
-      this.#toolbarContainer.appendChild(whatsNewPill);
-    }
+    // Note: "What's new" pill is now rendered inside ChatView's centered content (per Figma design)
+    // Removed duplicate toolbar pill to match Figma specifications
 
     // Create toolbar buttons ONCE
     this.#newChatButton = new UI.Toolbar.ToolbarButton(
@@ -598,6 +581,11 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#chatView.addEventListener('manual-setup-requested', this.#handleManualSetupRequest.bind(this));
     // Wire sidebar navigation actions
     this.#chatView.addEventListener('sidebar-nav', this.#handleSidebarNavEvent.bind(this));
+
+    // Wire HistoryView events
+    this.#chatView.addEventListener(HistoryViewEvents.REQUEST_DATA, this.#handleHistoryRequestData.bind(this));
+    this.#chatView.addEventListener(HistoryViewEvents.LOAD_CONVERSATION, this.#handleHistoryLoadConversation.bind(this));
+    this.#chatView.addEventListener(HistoryViewEvents.DELETE_CONVERSATION, this.#handleHistoryDeleteConversation.bind(this));
   }
 
   /**
@@ -1240,30 +1228,24 @@ export class AIChatPanel extends UI.Panel.Panel {
   }
 
   #handleSidebarNavigation(item: SidebarNavItem): void {
+    // Only show new chat button in chat mode
+    const showNewChatButton = item === 'chat';
+    this.#newChatButton.setVisible(showNewChatButton);
+
     switch (item) {
-      case 'settings':
-        this.#onSettingsClick();
-        break;
-      case 'history':
-        void this.#onHistoryClick();
-        break;
       case 'help':
         this.#onHelpClick();
-        break;
-      case 'evaluations':
-        this.#onEvaluationTestClick();
-        break;
-      case 'connectors':
-        this.#onMCPConnectorsClick();
         break;
       case 'agents':
         this.#onAgentStudioClick();
         break;
-      case 'workflows':
-        this.#onAgentStudioClick();
-        break;
       case 'chat':
+      case 'connectors':  // Let ChatView handle routing to ConnectorsView
+      case 'settings':    // Let ChatView handle routing to SettingsView
+      case 'history':     // Let ChatView handle routing to HistoryView
+      case 'evaluations': // Let ChatView handle routing to EvaluationsView
       default:
+        // ChatView will handle these via its internal routing
         break;
     }
   }
@@ -1997,6 +1979,45 @@ export class AIChatPanel extends UI.Panel.Panel {
     dialog.show();
 
     logger.info('Conversation history dialog opened');
+  }
+
+  /**
+   * Handle request for history data from HistoryView
+   */
+  async #handleHistoryRequestData(): Promise<void> {
+    const conversations = await this.#agentService.listConversations();
+    const currentId = this.#agentService.getCurrentConversationId();
+
+    // Find the history view and set its data
+    const historyView = this.#chatView.querySelector('ai-history-view') as any;
+    if (historyView) {
+      historyView.conversations = conversations;
+      historyView.currentConversationId = currentId;
+    }
+  }
+
+  /**
+   * Handle loading a conversation from HistoryView
+   */
+  #handleHistoryLoadConversation(event: Event): void {
+    const customEvent = event as CustomEvent<{conversationId: string}>;
+    const conversationId = customEvent.detail?.conversationId;
+    if (conversationId) {
+      this.#loadConversation(conversationId);
+    }
+  }
+
+  /**
+   * Handle deleting a conversation from HistoryView
+   */
+  #handleHistoryDeleteConversation(event: Event): void {
+    const customEvent = event as CustomEvent<{conversationId: string}>;
+    const conversationId = customEvent.detail?.conversationId;
+    if (conversationId) {
+      this.#deleteConversation(conversationId);
+      // Refresh the history view data after deletion
+      void this.#handleHistoryRequestData();
+    }
   }
 
   #onHelpClick(): void {

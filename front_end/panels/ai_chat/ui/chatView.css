@@ -19,7 +19,7 @@
   /* Design Token System (HSL-based from demo-builder.io) */
   /* Core colors */
   --background: 0 0% 100%;           /* White */
-  --foreground: 217.2 32.4% 27.5%;   /* Slate 700 - #334155 */
+  --foreground: 217.2 32.4% 27.5%;   /* Slate 800 - #334155 */
   
   /* Card/Surface */
   --card: 0 0% 100%;
@@ -39,7 +39,7 @@
   
   /* Muted text */
   --muted: 220 25% 93.7%;
-  --muted-foreground: 213.5 16.9% 52.5%;  /* #5E789A */
+  --muted-foreground: 213.5 16.9% 52.5%;  /* Slate 500 - #5E789A */
   
   /* Accent */
   --accent: 213.8 97.5% 49.8%;
@@ -50,7 +50,7 @@
   --destructive-foreground: 210 40% 98%;
   
   /* Borders */
-  --border: 210 20.5% 84.3%;         /* #D3D9E5 */
+  --border: 210 20.5% 84.3%;         /* Slate 200 - #D3D9E5 */
   --input: 210 20.5% 84.3%;
   --ring: 213.8 97.5% 49.8%;         /* Focus ring - blue */
   
@@ -67,7 +67,7 @@
   --sidebar-border: 220 13% 91%;
   --sidebar-ring: 217.2 91.2% 59.8%;
   
-  /* Legacy Figma Design Tokens (for backward compatibility) */
+  /* Figma Design Tokens (exact color values) */
   --slate-100: #ECEEF4;
   --slate-200: #D3D9E5;
   --slate-300: #ABBCCE;
@@ -131,6 +131,7 @@ ai-todo-list {
 }
 
 ai-input-bar {
+  display: block;
   flex-shrink: 0;
   flex-grow: 0;
   width: 100%;
@@ -165,6 +166,8 @@ ai-sidebar-nav {
   left: 0;
   z-index: 10;
   height: 100vh;
+  background: #ffffff;
+  border-right: 1px solid #e9e9e9;
 }
 
 .main-content {
@@ -172,12 +175,13 @@ ai-sidebar-nav {
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  height: 655px;
-  max-height: 655px;
+  height: 100%;
   min-height: 0; /* allow internal flex children to shrink */
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
   background: hsl(var(--background, 0 0% 100%));
-  margin-left: 36px; /* match the sidebar width to remove extra gutter */
+  margin-left: 32px; /* Account for fixed sidebar width */
 }
 
 /* Legacy selector kept for backwards compatibility (unused by ai-message-list) */
@@ -195,18 +199,48 @@ ai-sidebar-nav {
 
 /* Centered first message view styles */
 .centered-view {
-  justify-content: flex-start; /* Changed from center to flex-start */
+  justify-content: flex-start;
   align-items: center;
   height: 100%;
+  background: #fafafa; /* Match Figma panel background */
+}
+
+/* White inner card for centered view content */
+.centered-view .main-content {
+  background: white;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+/* Make connectors, settings, history, and evaluations views stretch to full width and height */
+.centered-view .main-content > ai-connectors-view,
+.centered-view .main-content > ai-settings-view,
+.centered-view .main-content > ai-history-view,
+.centered-view .main-content > ai-evaluations-view {
+  align-self: stretch;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Ensure version banner doesn't interfere with centering */
 .centered-view .centered-content {
-  flex: 1; /* Take remaining space after banner */
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center; /* Center content within remaining space */
+  justify-content: center;
   align-items: center;
+  width: 100%;
+  padding: 0 24px;
+  box-sizing: border-box;
+  gap: 24px; /* Increased spacing between elements */
 }
 
 .expanded-view {
@@ -217,7 +251,25 @@ ai-sidebar-nav {
 /* In expanded (conversation) view, reserve bottom space so the floating
    input bar does not overlap the last messages. */
 .chat-view-container.expanded-view {
-  padding-bottom: 0; /* tune if input height changes */
+  padding-bottom: 0;
+}
+
+.expanded-view .main-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+}
+
+.expanded-view ai-input-bar {
+  margin: 20px;
+  width: calc(100% - 40px);
+  max-width: 100%;
+}
+
+.expanded-view ai-input-bar .input-container {
+  max-width: 100%;
+  width: 100%;
 }
 
 @keyframes expandToFull {
@@ -231,22 +283,23 @@ ai-sidebar-nav {
   align-items: center;
   justify-content: center;
   width: 100%;
-  max-width: none;
+  max-width: 100%;
   margin: 0 auto;
   padding: 24px 20px 16px;
   animation: fadeInScale 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   flex: 1 1 auto;
   position: relative;
-  gap: 16px;
+  gap: 20px; /* Consistent spacing */
   top: 0;
-  background: white;
+  background: transparent; /* Allow parent background to show through */
 }
 
 .welcome-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 16px; /* Increased gap for better spacing */
+  margin-bottom: 8px;
 }
 
 .welcome-top-row {
@@ -258,6 +311,10 @@ ai-sidebar-nav {
   position: relative;
 }
 
+a.whats-new-pill,
+a.whats-new-pill:hover,
+a.whats-new-pill:visited,
+a.whats-new-pill:active,
 .whats-new-pill {
   display: inline-flex;
   align-items: center;
@@ -265,19 +322,20 @@ ai-sidebar-nav {
   padding: 4px 12px;
   height: 22px;
   border-radius: 16px;
-  border: 1px solid hsl(var(--primary));
-  background: hsl(var(--primary));
-  color: hsl(var(--foreground, 217.2 32.4% 27.5%));
+  border: 1px solid var(--blue-selected-border); /* #B9E1FF */
+  background: var(--blue-selected); /* #E1F2FF */
+  color: var(--slate-800); /* #334155 */
   font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.24px;
   cursor: pointer;
   transition: all var(--transition-fast);
+  text-decoration: none !important;
 }
 
 .whats-new-pill:hover {
-  background: hsl(var(--primary) / 0.9);
-  border-color: hsl(var(--primary) / 0.9);
+  background: var(--blue-selected);
+  border-color: var(--blue);
 }
 
 .whats-new-pill .pill-icon {
@@ -285,7 +343,7 @@ ai-sidebar-nav {
   height: 14px;
   display: flex;
   align-items: center;
-  color: hsl(var(--foreground, 217.2 32.4% 27.5%));
+  color: var(--slate-800);
 }
 
 .welcome-close {
@@ -332,30 +390,19 @@ ai-sidebar-nav {
 .welcome-title {
   font-size: 16px;
   font-weight: 500;
-  color: hsl(var(--foreground));
+  color: var(--slate-800); /* #334155 */
   text-align: center;
   line-height: 28px;
-  margin: 16px 0 24px;
-}
-
-@media (min-width: 640px) {
-  .welcome-title {
-    font-size: 20px;
-  }
-}
-
-@media (min-width: 768px) {
-  .welcome-title {
-    font-size: 24px;
-  }
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
 /* Example suggestions (chips) in centered view */
 .examples-container {
-  margin: 4px 0 8px 0;
-  padding: 0 8px;
+  margin: 8px 0 0 0;
+  padding: 0;
   width: 100%;
-  max-width: 520px;
+  max-width: 460px;
 }
 
 .examples-title {
@@ -370,30 +417,32 @@ ai-sidebar-nav {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
+  width: 100%;
 }
 
 .example-chip {
   padding: 4px 12px;
   height: 22px;
   border-radius: 16px;
-  border: 1px solid hsl(var(--secondary));
-  background: hsl(var(--secondary));
-  color: hsl(var(--muted-foreground));
+  border: 1px solid var(--slate-100); /* #ECEEF4 */
+  background: var(--slate-100);
+  color: var(--slate-500); /* #5E789A */
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.24px;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+  line-height: 1;
 }
 
 .example-chip:hover {
-  background: hsl(var(--border));  /* #D3D9E5 */
-  border-color: hsl(var(--border));
-  color: hsl(var(--foreground));
+  background: var(--slate-200);  /* #D3D9E5 */
+  border-color: var(--slate-200);
+  color: var(--slate-800); /* #334155 */
 }
 
 .example-chip:active {
@@ -401,23 +450,28 @@ ai-sidebar-nav {
 }
 
 .hero-suggestions {
-  margin-top: 4px;
+  margin-top: 0;
+  width: 100%;
 }
 
 .hero-chip-list {
   justify-content: center;
   gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .hero-chip {
-  background: hsl(var(--secondary));
-  border: 1px solid hsl(var(--secondary));
+  background: var(--slate-100);
+  border: 1px solid var(--slate-100);
+  color: var(--slate-500);
 }
 
 .hero-chip:hover {
-  background: hsl(var(--border));
-  border-color: hsl(var(--border));
-  color: hsl(var(--foreground));
+  background: var(--slate-200);
+  border-color: var(--slate-200);
+  color: var(--slate-800);
 }
 
 @keyframes fadeInScale {
@@ -436,15 +490,16 @@ ai-sidebar-nav {
 
 .input-container.centered {
   margin: 0 auto;
-  width: 460px;
-  max-width: 460px;
+  width: 100%;
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s both;
   border-radius: 20px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid var(--slate-200); /* #D3D9E5 */
+  background: white;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 @keyframes slideUp {
@@ -484,9 +539,9 @@ ai-sidebar-nav {
   width: 32px;
   height: 32px;
   border-radius: 16px;
-  border: 1px solid hsl(var(--border));  /* #D3D9E5 */
-  background: hsl(var(--background));    /* white */
-  color: hsl(var(--foreground));         /* #334155 */
+  border: 1px solid var(--slate-200);  /* #D3D9E5 */
+  background: white;
+  color: var(--slate-800);         /* #334155 */
   display: grid;
   place-items: center;
   font-size: 16px;
@@ -501,21 +556,21 @@ ai-sidebar-nav {
 }
 
 .icon-chip:hover {
-  background: hsl(var(--sidebar-background));  /* #F7F9FC */
-  border-color: var(--slate-300);              /* #ABBCCE */
-  color: hsl(var(--foreground));
+  background: #F7F9FC;
+  border-color: var(--slate-300);  /* #ABBCCE */
+  color: var(--slate-800);
   transform: none;
   box-shadow: none;
 }
 
 .icon-chip:active {
-  background: hsl(var(--secondary));  /* #ECEEF4 */
+  background: var(--slate-100);  /* #ECEEF4 */
 }
 
 .icon-chip.active {
-  border: 2px solid hsl(var(--primary));  /* #1093F4 */
-  color: hsl(var(--primary));
-  background: hsl(var(--background));
+  border: 2px solid var(--blue);  /* #1093F4 */
+  color: var(--blue);
+  background: white;
 }
 
 .relative-container {
@@ -657,10 +712,17 @@ ai-sidebar-nav {
 }
 
 /* Model selector styles */
+ai-model-selector {
+  display: inline-block;
+  width: fit-content;
+  flex-shrink: 0;
+}
+
 .model-selector {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   margin-right: 0;
+  width: fit-content;
 }
 
 .model-select {
@@ -824,8 +886,9 @@ ai-sidebar-nav {
 }
 
 .user-message {
-  --primary-color: #00a4fe;
+  --primary-color: var(--blue); /* #1093F4 */
   align-self: flex-end;
+  margin-top: 16px;
 }
 
 .model-message {
@@ -864,11 +927,14 @@ ai-sidebar-nav {
 
 /* Keep user message styling as requested */
 .user-message .message-content {
-  background: var(--color-primary-container);
-  color: var(--text-color);
-  border: 1.5px solid var(--primary-color);
-  border-radius: var(--bubble-radius-sender);
-  backdrop-filter: blur(10px);
+  background: var(--blue); /* #1093F4 */
+  color: white;
+  border: none;
+  border-radius: 24px 8px 24px 24px; /* Rounded pill style */
+  backdrop-filter: none;
+  padding: 10px 16px; /* Adjusted padding for proper text display */
+  box-shadow: none;
+  transform: none;
 }
 
 .model-message .message-content {
@@ -882,10 +948,36 @@ ai-sidebar-nav {
 }
 
 .message-text {
-  font-size: 14px;
+  font-size: 14px; /* Per Figma spec */
   margin: 0;
-  line-height: 1.6;
-  letter-spacing: 0.01em;
+  line-height: 20px; /* 1.43 ratio */
+  letter-spacing: 0;
+}
+
+/* Agent status row (appears after first message) */
+.agent-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  margin-left: auto;
+  margin-right: 0;
+  font-size: 14px;
+  color: var(--slate-500);
+  width: fit-content;
+}
+
+.agent-status-row .status-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-status-row .status-text {
+  font-weight: 400;
+  line-height: 20px;
 }
 
 /* Time indicator */
@@ -1005,24 +1097,25 @@ ai-sidebar-nav {
 
 /* Input Area */
 .input-container {
-  padding: 0;
-  background-color: hsl(var(--background));
+  padding: 20px;
+  background-color: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border-radius: 20px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid var(--slate-200);
   margin: 0 auto 10px auto;
   transition: all var(--transition-medium);
   width: 100%;
   max-width: 900px;
   box-sizing: border-box;
   overflow: visible;
+  min-height: 110px; /* Match Figma spec with 20px vertical padding = 70px content + 40px padding */
 }
 
 .input-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 12px;
+  padding: 0; /* Padding moved to container */
   width: 100%;
   box-sizing: border-box;
   background: transparent;
@@ -1033,8 +1126,8 @@ ai-sidebar-nav {
 .input-row.stacked {
   flex-direction: column;
   align-items: stretch;
-  padding: 20px 12px;
-  gap: 25px;
+  padding: 0; /* Padding moved to container */
+  gap: 12px; /* Reduced gap for tighter layout */
 }
 
 .input-actions-toolbar {
@@ -1106,7 +1199,9 @@ ai-sidebar-nav {
 
 .text-input::placeholder {
   font-weight: 400;
-  color: hsl(var(--muted-foreground));
+  color: var(--slate-300); /* #ABBCCE per Figma spec */
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .send-button {

@@ -11,6 +11,9 @@ import { createLogger } from '../core/Logger.js';
 
 const logger = createLogger('OnboardingDialog');
 
+const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.svg', import.meta.url).toString();
+const demoGifUrl = new URL('../../../Images/demo.gif', import.meta.url).toString();
+
 const ONBOARDING_COMPLETE_KEY = 'ai_chat_onboarding_complete';
 const SETUP_SKIPPED_KEY = 'ai_chat_setup_skipped';
 
@@ -324,7 +327,7 @@ export class OnboardingDialog {
     const logoContainer = document.createElement('div');
     logoContainer.className = 'welcome-icon';
     const logo = document.createElement('img');
-    logo.src = '/bundled/Images/browser-operator-logo.png';
+    logo.src = browserOperatorLogoUrl;
     logo.alt = 'Browser Operator';
     logo.style.cssText = 'width: 64px; height: 64px; border-radius: 12px;';
     logoContainer.appendChild(logo);
@@ -352,7 +355,7 @@ export class OnboardingDialog {
     gifLink.className = 'demo-gif-link';
 
     const demoGif = document.createElement('img');
-    demoGif.src = '/bundled/Images/demo.gif';
+    demoGif.src = demoGifUrl;
     demoGif.alt = 'Browser Operator Demo - Click to view getting started guide';
     demoGif.className = 'demo-gif';
     gifLink.appendChild(demoGif);

@@ -128,10 +128,10 @@ export class ConnectorsDropdown extends HTMLElement {
           position: fixed;
           transform: translate(-50%, calc(-100% - 8px));
           background: hsl(var(--background));
-          border-radius: 8px;
+          border-radius: 6px;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
           border: 1px solid hsl(var(--border));
-          width: 224px;
+          width: 200px;
           z-index: 10000;
           overflow: hidden;
           animation: dropdownFadeIn 0.15s ease-out;
@@ -140,23 +140,23 @@ export class ConnectorsDropdown extends HTMLElement {
         .search-container {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 12px 16px;
+          gap: 6px;
+          padding: 8px 12px;
           border-bottom: 1px solid hsl(var(--border));
           background: hsl(var(--background));
         }
 
         .search-icon {
           color: hsl(var(--muted-foreground));
-          width: 16px;
-          height: 16px;
+          width: 12px;
+          height: 12px;
           flex-shrink: 0;
         }
 
         .search-input {
           border: none;
           outline: none;
-          font-size: 14px;
+          font-size: 12px;
           color: hsl(var(--foreground));
           flex: 1;
           background: transparent;
@@ -170,8 +170,8 @@ export class ConnectorsDropdown extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 16px 8px;
-          font-size: 12px;
+          padding: 8px 12px 6px;
+          font-size: 10px;
           font-weight: 500;
           color: hsl(var(--foreground));
           text-transform: uppercase;
@@ -180,26 +180,26 @@ export class ConnectorsDropdown extends HTMLElement {
         }
 
         .section-header-hint {
-          font-size: 12px;
+          font-size: 10px;
           color: hsl(var(--muted-foreground));
           font-weight: 500;
         }
 
         .connector-list {
-          padding: 4px 8px 8px;
+          padding: 2px 6px 6px;
           background: hsl(var(--background));
-          max-height: 256px;
+          max-height: 200px;
           overflow-y: auto;
         }
 
         .connector-item {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 10px 8px;
+          gap: 8px;
+          padding: 6px 6px;
           cursor: pointer;
           transition: background-color 0.15s ease;
-          border-radius: 6px;
+          border-radius: 4px;
         }
 
         .connector-item:hover {
@@ -211,36 +211,36 @@ export class ConnectorsDropdown extends HTMLElement {
         }
 
         .connector-icon {
-          width: 16px;
-          height: 16px;
+          width: 12px;
+          height: 12px;
           flex-shrink: 0;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
+          font-size: 11px;
           color: hsl(var(--foreground));
         }
 
         .connector-name {
           flex: 1;
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 400;
           color: hsl(var(--foreground));
         }
 
-        /* Switch matching demo-builder.io (h-6 w-11 = 24px x 44px) */
+        /* Smaller toggle switch */
         .toggle-switch {
           display: inline-flex;
           align-items: center;
-          width: 44px;
-          height: 24px;
-          border-radius: 12px;
+          width: 32px;
+          height: 18px;
+          border-radius: 9px;
           background: hsl(var(--input));
           position: relative;
           transition: background-color 0.2s ease;
           cursor: pointer;
           flex-shrink: 0;
-          border: 2px solid transparent;
+          border: 1.5px solid transparent;
         }
 
         .toggle-switch:focus-visible {
@@ -252,20 +252,20 @@ export class ConnectorsDropdown extends HTMLElement {
           background: hsl(var(--primary));
         }
 
-        /* Thumb matching demo-builder.io (h-5 w-5 = 20px) */
+        /* Smaller toggle knob */
         .toggle-knob {
-          width: 20px;
-          height: 20px;
+          width: 14px;
+          height: 14px;
           border-radius: 50%;
           background: hsl(var(--background));
           position: absolute;
           left: 2px;
           transition: transform 0.2s ease;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
 
         .toggle-switch.enabled .toggle-knob {
-          transform: translateX(20px);
+          transform: translateX(14px);
         }
 
         .divider {
@@ -277,8 +277,8 @@ export class ConnectorsDropdown extends HTMLElement {
         .manage-item {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 10px 16px;
+          gap: 8px;
+          padding: 6px 12px;
           cursor: pointer;
           transition: background-color 0.15s ease;
           background: hsl(var(--background));
@@ -289,14 +289,14 @@ export class ConnectorsDropdown extends HTMLElement {
         }
 
         .manage-icon {
-          width: 16px;
-          height: 16px;
+          width: 12px;
+          height: 12px;
           color: hsl(var(--foreground));
           flex-shrink: 0;
         }
 
         .manage-text {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 400;
           color: hsl(var(--foreground));
         }

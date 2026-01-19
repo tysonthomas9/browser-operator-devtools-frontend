@@ -20,7 +20,12 @@ export class ChatInput extends HTMLElement {
   get placeholder(): string { return this.#placeholder; }
   set placeholder(v: string) { this.#placeholder = v ?? ''; this.#render(); }
   get value(): string { return this.#value; }
-  set value(v: string) { this.#value = v ?? ''; this.#render(); }
+  set value(v: string) {
+    this.#value = v ?? '';
+    this.#render();
+    // Use requestAnimationFrame to ensure DOM is ready before syncing value and autosize
+    requestAnimationFrame(() => this.#syncDomValue());
+  }
 
   connectedCallback(): void { this.#render(); }
   focusInput(): void { (this.querySelector('textarea') as HTMLTextAreaElement | null)?.focus(); }

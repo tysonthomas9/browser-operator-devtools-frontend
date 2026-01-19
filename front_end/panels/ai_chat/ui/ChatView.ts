@@ -13,6 +13,7 @@ import { createLogger } from '../core/Logger.js';
 import type { AgentSession, ToolCallMessage as AgentToolCallMessage, ToolResultMessage as AgentToolResultMessage } from '../agent_framework/AgentSessionTypes.js';
 import { getAgentUIConfig } from '../agent_framework/AgentSessionTypes.js';
 import { VersionChecker, type VersionInfo } from '../core/VersionChecker.js';
+import { CURRENT_VERSION, RELEASE_URL } from '../core/Version.js';
 import { LiveAgentSessionComponent } from './LiveAgentSessionComponent.js';
 import { MarkdownRenderer, renderMarkdown } from './markdown/MarkdownRenderers.js';
 import { ToolDescriptionFormatter } from './ToolDescriptionFormatter.js';
@@ -30,6 +31,10 @@ import { combineMessages } from './message/MessageCombiner.js';
 import './TodoListDisplay.js';
 import './FileListDisplay.js';
 import './SidebarNav.js';
+import './ConnectorsView.js';
+import './SettingsView.js';
+import './HistoryView.js';
+import './EvaluationsView.js';
 
 // Shared chat types
 import type { ChatMessage, ModelChatMessage, ToolResultMessage, AgentSessionMessage, ImageInputData } from '../models/ChatTypes.js';
@@ -39,6 +44,8 @@ import type { SidebarNavItem } from './SidebarNav.js';
 const logger = createLogger('ChatView');
 
 import chatViewStyles from './chatView.css.js';
+
+const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.svg', import.meta.url).toString();
 
 const {html, Decorators} = Lit;
 const {customElement} = Decorators;
@@ -410,7 +417,9 @@ export class ChatView extends HTMLElement {
 
     // Store input disabled state and placeholder
     this.#isInputDisabled = data.isInputDisabled || false;
-    this.#inputPlaceholder = data.inputPlaceholder || 'Ask AI Assistant...';
+    // Update placeholder based on conversation state
+    const hasMessages = data.messages && data.messages.length > 0;
+    this.#inputPlaceholder = data.inputPlaceholder || (hasMessages ? 'Ask another question...' : 'Ask AI Assistant...');
     
     // Store OAuth login state
     this.#showOAuthLogin = data.showOAuthLogin || false;
@@ -866,8 +875,51 @@ export class ChatView extends HTMLElement {
 
     // Determine which view to render based on the first message state
     if (this.#isFirstMessageView) {
-      // Render centered first message view
-      const suggestions = this.#renderExampleSuggestions();
+      // Render first message view with routing support
+      const renderFirstMessageContent = () => {
+        switch (this.#activeSidebarItem) {
+          case 'connectors':
+            return html`<ai-connectors-view></ai-connectors-view>`;
+          case 'settings':
+            return html`<ai-settings-view></ai-settings-view>`;
+          case 'history':
+            return html`<ai-history-view></ai-history-view>`;
+          case 'evaluations':
+            return html`<ai-evaluations-view></ai-evaluations-view>`;
+          case 'chat':
+          default:
+            // Render centered welcome UI
+            const suggestions = this.#renderExampleSuggestions();
+            return html`
+              ${this.#renderVersionBanner()}
+              <!-- What's new pill at the top -->
+              <a class="whats-new-pill" href="${RELEASE_URL}" target="_blank" rel="noopener noreferrer">
+                <span class="pill-icon">✨</span>
+                <span>What's new in v${CURRENT_VERSION}</span>
+              </a>
+              <div class="centered-content">
+                <div class="welcome-hero">
+                  <div class="welcome-icon">
+                    <img src="${browserOperatorLogoUrl}" alt="Browser Operator logo">
+                  </div>
+                  <div class="welcome-title">How can I help you today?</div>
+                </div>
+
+                ${this.#showOAuthLogin ? html`
+                  <ai-oauth-connect
+                    .visible=${true}
+                    @oauth-login=${this.#handleOAuthLogin.bind(this)}
+                    @openai-setup=${this.#handleOpenAISetup.bind(this)}
+                    @manual-setup=${this.#handleManualSetup.bind(this)}
+                  ></ai-oauth-connect>
+                ` : this.#renderInputBar(true)}
+
+                ${suggestions}
+              </div>
+            `;
+        }
+      };
+
       Lit.render(html`
         ${stylesTemplate}
         <div class="chat-view-container centered-view">
@@ -876,31 +928,72 @@ export class ChatView extends HTMLElement {
             .onItemClick=${this.#handleSidebarNavClick.bind(this)}>
           </ai-sidebar-nav>
           <div class="main-content">
-            ${this.#renderVersionBanner()}
-            <div class="centered-content">
-              <div class="welcome-hero">
-                <div class="welcome-icon">
-                  <img src="/bundled/Images/browser-operator-logo.png" alt="Browser Operator logo">
-                </div>
-                <div class="welcome-title">How can I help you today?</div>
-              </div>
-
-              ${this.#showOAuthLogin ? html`
-                <ai-oauth-connect
-                  .visible=${true}
-                  @oauth-login=${this.#handleOAuthLogin.bind(this)}
-                  @openai-setup=${this.#handleOpenAISetup.bind(this)}
-                  @manual-setup=${this.#handleManualSetup.bind(this)}
-                ></ai-oauth-connect>
-              ` : this.#renderInputBar(true)}
-
-              ${suggestions}
-            </div>
+            ${renderFirstMessageContent()}
           </div>
         </div>
       `, this.#shadow, {host: this});
     } else {
       // Render normal expanded view for conversation
+      const renderMainContent = () => {
+        // Render different views based on active sidebar item
+        switch (this.#activeSidebarItem) {
+          case 'connectors':
+            return html`<ai-connectors-view></ai-connectors-view>`;
+          case 'settings':
+            return html`<ai-settings-view></ai-settings-view>`;
+          case 'history':
+            return html`<ai-history-view></ai-history-view>`;
+          case 'evaluations':
+            return html`<ai-evaluations-view></ai-evaluations-view>`;
+          case 'chat':
+          default:
+            // Render chat view
+            return html`
+              ${this.#renderVersionBanner()}
+              <ai-message-list .messages=${[]} .state=${this.#state} .agentViewMode=${this.#agentViewMode}>
+                ${Lit.Directives.repeat(
+                  combinedMessages || [],
+                  (m, i) => this.#messageKey(m, i),
+                  (m, i) => this.#renderMessage(m, i)
+                )}
+
+                ${showGeneralLoading ? html`
+                  <div class="message model-message loading" >
+                    <div class="message-content">
+                      <div class="message-loading">
+                        <svg class="loading-spinner" width="16" height="16" viewBox="0 0 16 16">
+                          <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 12" stroke-linecap="round">
+                            <animateTransform 
+                              attributeName="transform" 
+                              attributeType="XML" 
+                              type="rotate" 
+                              from="0 8 8" 
+                              to="360 8 8" 
+                              dur="1s" 
+                              repeatCount="indefinite" />
+                          </circle>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                ` : Lit.nothing}
+                
+                <!-- Global actions row - only shown when chat is complete -->
+                ${showActionsRow ? renderGlobalActionsRow({
+                  textToCopy: lastModelAnswer || '',
+                  onCopy: () => this.#copyToClipboard(lastModelAnswer || ''),
+                  onThumbsUp: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'up' } })),
+                  onThumbsDown: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'down' } })),
+                  onRetry: () => this.dispatchEvent(new CustomEvent('retry', { bubbles: true }))
+                }) : Lit.nothing}
+              </ai-message-list>
+              <ai-todo-list></ai-todo-list>
+              <ai-file-list-display></ai-file-list-display>
+              ${this.#renderInputBar(false)}
+            `;
+        }
+      };
+
       Lit.render(html`
         ${stylesTemplate}
         <div class="chat-view-container expanded-view">
@@ -909,47 +1002,7 @@ export class ChatView extends HTMLElement {
             .onItemClick=${this.#handleSidebarNavClick.bind(this)}>
           </ai-sidebar-nav>
           <div class="main-content">
-            ${this.#renderVersionBanner()}
-            <ai-message-list .messages=${[]} .state=${this.#state} .agentViewMode=${this.#agentViewMode}>
-              ${Lit.Directives.repeat(
-                combinedMessages || [],
-                (m, i) => this.#messageKey(m, i),
-                (m, i) => this.#renderMessage(m, i)
-              )}
-
-              ${showGeneralLoading ? html`
-                <div class="message model-message loading" >
-                  <div class="message-content">
-                    <div class="message-loading">
-                      <svg class="loading-spinner" width="16" height="16" viewBox="0 0 16 16">
-                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 12" stroke-linecap="round">
-                          <animateTransform 
-                            attributeName="transform" 
-                            attributeType="XML" 
-                            type="rotate" 
-                            from="0 8 8" 
-                            to="360 8 8" 
-                            dur="1s" 
-                            repeatCount="indefinite" />
-                        </circle>
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              ` : Lit.nothing}
-              
-              <!-- Global actions row - only shown when chat is complete -->
-              ${showActionsRow ? renderGlobalActionsRow({
-                textToCopy: lastModelAnswer || '',
-                onCopy: () => this.#copyToClipboard(lastModelAnswer || ''),
-                onThumbsUp: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'up' } })),
-                onThumbsDown: () => this.dispatchEvent(new CustomEvent('feedback', { bubbles: true, detail: { value: 'down' } })),
-                onRetry: () => this.dispatchEvent(new CustomEvent('retry', { bubbles: true }))
-              }) : Lit.nothing}
-            </ai-message-list>
-            <ai-todo-list></ai-todo-list>
-            <ai-file-list-display></ai-file-list-display>
-            ${this.#renderInputBar(false)}
+            ${renderMainContent()}
           </div>
         </div>
       `, this.#shadow, {host: this});

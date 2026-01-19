@@ -9,3 +9,4 @@ export const VERSION_INFO = {
 } as const;
 
 export const CURRENT_VERSION = VERSION_INFO.version;
+export const RELEASE_URL = `https://github.com/tysonthomas9/browser-operator-devtools-frontend/releases/tag/v${CURRENT_VERSION}`;

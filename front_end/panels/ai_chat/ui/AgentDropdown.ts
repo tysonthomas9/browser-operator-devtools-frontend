@@ -88,12 +88,12 @@ export class AgentDropdown extends HTMLElement {
   }
 
   #renderIcon(iconType: string): Lit.TemplateResult {
-    // Icons matching lucide-react style from demo-builder.io
+    // Icons matching lucide-react style (10px for compact dropdown)
     switch (iconType) {
       case 'arrow-right':
         // Lucide ArrowRight icon
         return html`
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14"/>
             <path d="m12 5 7 7-7 7"/>
           </svg>
@@ -101,7 +101,7 @@ export class AgentDropdown extends HTMLElement {
       case 'network':
         // Lucide Network icon
         return html`
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="16" y="16" width="6" height="6" rx="1"/>
             <rect x="2" y="16" width="6" height="6" rx="1"/>
             <rect x="9" y="2" width="6" height="6" rx="1"/>
@@ -112,7 +112,7 @@ export class AgentDropdown extends HTMLElement {
       case 'check-square':
         // Lucide CheckSquare icon
         return html`
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect width="18" height="18" x="3" y="3" rx="2"/>
             <path d="m9 12 2 2 4-4"/>
           </svg>
@@ -120,7 +120,7 @@ export class AgentDropdown extends HTMLElement {
       case 'smile':
         // Lucide Smile icon
         return html`
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
             <line x1="9" x2="9.01" y1="9" y2="9"/>
@@ -130,7 +130,7 @@ export class AgentDropdown extends HTMLElement {
       case 'plus':
         // Lucide Plus icon
         return html`
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14"/>
             <path d="M12 5v14"/>
           </svg>
@@ -184,17 +184,17 @@ export class AgentDropdown extends HTMLElement {
           position: fixed;
           transform: translate(-50%, calc(-100% - 8px));
           background: hsl(var(--background));
-          border-radius: 8px;
+          border-radius: 6px;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
           border: 1px solid hsl(var(--border));
-          width: 224px;
+          width: 200px;
           z-index: 10000;
           overflow: hidden;
           animation: dropdownFadeIn 0.15s ease-out;
         }
 
         .search-box {
-          padding: 12px;
+          padding: 8px;
           border-bottom: 1px solid hsl(var(--border));
         }
 
@@ -204,21 +204,21 @@ export class AgentDropdown extends HTMLElement {
 
         .search-icon {
           position: absolute;
-          left: 12px;
+          left: 10px;
           top: 50%;
           transform: translateY(-50%);
-          width: 16px;
-          height: 16px;
+          width: 12px;
+          height: 12px;
           color: hsl(var(--muted-foreground));
         }
 
         .search-input {
           width: 100%;
-          padding: 8px 12px 8px 36px;
+          padding: 6px 10px 6px 28px;
           border: 1px solid hsl(var(--border));
-          border-radius: 6px;
+          border-radius: 4px;
           background: hsl(var(--background));
-          font-size: 14px;
+          font-size: 12px;
           color: hsl(var(--foreground));
           outline: none;
         }
@@ -236,35 +236,35 @@ export class AgentDropdown extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 16px;
+          padding: 8px 12px;
           border-bottom: 1px solid hsl(var(--border));
         }
 
         .header-title {
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 500;
-          color: hsl(var(--foreground));
+          color: var(--slate-500);
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
 
         .header-hint {
-          font-size: 12px;
+          font-size: 10px;
           color: hsl(var(--muted-foreground));
           font-weight: 500;
         }
 
         .agent-list {
-          padding: 8px 0;
-          max-height: 256px;
+          padding: 4px 0;
+          max-height: 200px;
           overflow-y: auto;
         }
 
         .agent-item {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 10px 16px;
+          gap: 8px;
+          padding: 6px 12px;
           cursor: pointer;
           transition: background-color 0.15s ease;
           width: 100%;
@@ -275,7 +275,7 @@ export class AgentDropdown extends HTMLElement {
         }
 
         .agent-item:hover {
-          background: hsl(var(--sidebar-background));
+          background: var(--slate-100);
         }
 
         .agent-item.selected {
@@ -283,8 +283,8 @@ export class AgentDropdown extends HTMLElement {
         }
 
         .agent-icon {
-          width: 16px;
-          height: 16px;
+          width: 10px;
+          height: 10px;
           flex-shrink: 0;
           display: flex;
           align-items: center;
@@ -293,12 +293,12 @@ export class AgentDropdown extends HTMLElement {
         }
 
         .icon-emoji {
-          font-size: 14px;
+          font-size: 11px;
         }
 
         .agent-name {
           flex: 1;
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 400;
           color: hsl(var(--foreground));
         }
@@ -312,8 +312,8 @@ export class AgentDropdown extends HTMLElement {
         .add-agent-item {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 10px 16px;
+          gap: 8px;
+          padding: 6px 12px;
           cursor: pointer;
           transition: background-color 0.15s ease;
           width: 100%;
@@ -328,8 +328,8 @@ export class AgentDropdown extends HTMLElement {
         }
 
         .add-agent-icon {
-          width: 16px;
-          height: 16px;
+          width: 12px;
+          height: 12px;
           flex-shrink: 0;
           display: flex;
           align-items: center;
@@ -338,7 +338,7 @@ export class AgentDropdown extends HTMLElement {
         }
 
         .add-agent-text {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 400;
           color: hsl(var(--foreground));
         }
