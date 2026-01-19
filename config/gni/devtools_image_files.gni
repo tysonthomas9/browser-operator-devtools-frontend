@@ -21,6 +21,7 @@ devtools_image_files = [
   "gdp-logo-light.png",
   "gdp-logo-dark.png",
   "demo.gif",
+  "browser-operator-logo.png",
 ]
 
 devtools_svg_sources = [

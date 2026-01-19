@@ -727,7 +727,7 @@ Common.Settings.registerSettingExtension({
   category: Common.Settings.SettingCategory.GLOBAL,
   settingName: 'currentDockState',
   settingType: Common.Settings.SettingType.ENUM,
-  defaultValue: 'right',
+  defaultValue: 'left',
   options: [
     {
       value: 'right',

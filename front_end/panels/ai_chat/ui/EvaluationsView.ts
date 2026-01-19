@@ -14,6 +14,7 @@ import { webTaskAgentTests } from '../evaluation/test-cases/web-task-agent-tests
 import type { TestResult } from '../evaluation/framework/types.js';
 import { createLogger } from '../core/Logger.js';
 import { AIChatPanel } from './AIChatPanel.js';
+import './common/Dropdown.js';
 
 const logger = createLogger('EvaluationsView');
 
@@ -269,7 +270,7 @@ export class EvaluationsView extends HTMLElement {
           width: 100%;
           height: 100%;
           background: white;
-          overflow: hidden;
+          overflow: visible;
           align-self: stretch;
           box-sizing: border-box;
         }
@@ -282,10 +283,11 @@ export class EvaluationsView extends HTMLElement {
           max-width: 100%;
           padding: 20px 16px;
           gap: 16px;
-          overflow: hidden;
+          overflow: visible;
           font-size: 13px;
           box-sizing: border-box;
           flex: 1;
+          min-height: 0;
         }
 
         .header {
@@ -379,22 +381,6 @@ export class EvaluationsView extends HTMLElement {
         .selector label {
           font-size: 12px;
           color: var(--slate-500);
-        }
-
-        .selector select {
-          padding: 6px 10px;
-          border: 1px solid var(--slate-200);
-          border-radius: 6px;
-          font-size: 12px;
-          color: var(--slate-800);
-          background: white;
-          cursor: pointer;
-          min-width: 200px;
-          height: 32px;
-        }
-
-        .selector select:hover {
-          border-color: var(--slate-300);
         }
 
         .selection-info {
@@ -606,18 +592,20 @@ export class EvaluationsView extends HTMLElement {
           <div class="selector">
             ${this.#state.activeTab === 'tool-tests' ? html`
               <label>Tool:</label>
-              <select @change=${(e: Event) => { this.#state.toolType = (e.target as HTMLSelectElement).value; this.#state.testResults.clear(); this.#state.selectedTests.clear(); this.#render(); }}>
-                ${Object.entries(TOOL_TEST_MAPPING).map(([key, val]) => html`
-                  <option value=${key} ?selected=${this.#state.toolType === key}>${val.displayName}</option>
-                `)}
-              </select>
+              <ai-dropdown
+                .options=${Object.entries(TOOL_TEST_MAPPING).map(([key, val]) => ({ value: key, label: val.displayName }))}
+                .selectedValue=${this.#state.toolType}
+                .placeholder=${'Select Tool'}
+                .onChange=${(value: string) => { this.#state.toolType = value; this.#state.testResults.clear(); this.#state.selectedTests.clear(); this.#render(); }}
+              ></ai-dropdown>
             ` : html`
               <label>Agent:</label>
-              <select @change=${(e: Event) => { this.#state.agentType = (e.target as HTMLSelectElement).value; this.#state.testResults.clear(); this.#state.selectedTests.clear(); this.#render(); }}>
-                ${Object.entries(AGENT_TEST_MAPPING).map(([key, val]) => html`
-                  <option value=${key} ?selected=${this.#state.agentType === key}>${val.displayName}</option>
-                `)}
-              </select>
+              <ai-dropdown
+                .options=${Object.entries(AGENT_TEST_MAPPING).map(([key, val]) => ({ value: key, label: val.displayName }))}
+                .selectedValue=${this.#state.agentType}
+                .placeholder=${'Select Agent'}
+                .onChange=${(value: string) => { this.#state.agentType = value; this.#state.testResults.clear(); this.#state.selectedTests.clear(); this.#render(); }}
+              ></ai-dropdown>
             `}
           </div>
           <span class="selection-info">

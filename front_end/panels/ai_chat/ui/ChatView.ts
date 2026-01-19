@@ -45,7 +45,7 @@ const logger = createLogger('ChatView');
 
 import chatViewStyles from './chatView.css.js';
 
-const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.svg', import.meta.url).toString();
+const browserOperatorLogoUrl = new URL('../../../Images/browser-operator-logo.png', import.meta.url).toString();
 
 const {html, Decorators} = Lit;
 const {customElement} = Decorators;
@@ -767,6 +767,14 @@ export class ChatView extends HTMLElement {
   }
 
   #handleSidebarNavClick(item: SidebarNavItem): void {
+    if (item === 'settings') {
+      // Dispatch event for AIChatPanel to handle opening SettingsDialog
+      this.dispatchEvent(new CustomEvent('open-settings-dialog', {
+        bubbles: true,
+        composed: true,
+      }));
+      return;
+    }
     this.#activeSidebarItem = item;
     this.dispatchEvent(new CustomEvent('sidebar-nav', {
       bubbles: true,
@@ -880,8 +888,6 @@ export class ChatView extends HTMLElement {
         switch (this.#activeSidebarItem) {
           case 'connectors':
             return html`<ai-connectors-view></ai-connectors-view>`;
-          case 'settings':
-            return html`<ai-settings-view></ai-settings-view>`;
           case 'history':
             return html`<ai-history-view></ai-history-view>`;
           case 'evaluations':
@@ -939,8 +945,6 @@ export class ChatView extends HTMLElement {
         switch (this.#activeSidebarItem) {
           case 'connectors':
             return html`<ai-connectors-view></ai-connectors-view>`;
-          case 'settings':
-            return html`<ai-settings-view></ai-settings-view>`;
           case 'history':
             return html`<ai-history-view></ai-history-view>`;
           case 'evaluations':

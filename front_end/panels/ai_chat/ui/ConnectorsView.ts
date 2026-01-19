@@ -142,8 +142,7 @@ export class ConnectorsView extends HTMLElement {
           max-width: 100%;
           padding: 20px 16px;
           gap: 16px;
-          overflow-y: auto;
-          scrollbar-gutter: stable;
+          overflow: hidden;
           font-size: 13px;
           box-sizing: border-box;
           flex: 1;
@@ -156,6 +155,7 @@ export class ConnectorsView extends HTMLElement {
           gap: 12px;
           width: 100%;
           box-sizing: border-box;
+          flex-shrink: 0;
         }
 
         .title {
@@ -174,6 +174,7 @@ export class ConnectorsView extends HTMLElement {
           max-width: 100%;
           padding: 0;
           box-sizing: border-box;
+          flex-shrink: 0;
         }
 
 
@@ -258,6 +259,8 @@ export class ConnectorsView extends HTMLElement {
           max-width: 100%;
           box-sizing: border-box;
           flex: 1;
+          overflow-y: auto;
+          min-height: 0;
         }
 
         .categories-list {

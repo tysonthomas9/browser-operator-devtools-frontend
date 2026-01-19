@@ -59,9 +59,16 @@ export class DockController extends Common.ObjectWrapper.ObjectWrapper<EventType
       return;
     }
 
+    // One-time migration to dock left (v1)
+    const dockLeftMigration = Common.Settings.Settings.instance().createSetting('dock-left-migration-v1', false);
+    if (!dockLeftMigration.get()) {
+      this.currentDockStateSetting.set(DockState.LEFT);
+      dockLeftMigration.set(true);
+    }
+
     this.currentDockStateSetting.addChangeListener(this.dockSideChanged, this);
     if (states.indexOf(this.currentDockStateSetting.get()) === -1) {
-      this.currentDockStateSetting.set(DockState.RIGHT);
+      this.currentDockStateSetting.set(DockState.LEFT);
     }
     if (states.indexOf(this.lastDockStateSetting.get()) === -1) {
       this.currentDockStateSetting.set(DockState.BOTTOM);

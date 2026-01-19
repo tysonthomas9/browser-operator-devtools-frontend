@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import * as Lit from '../../../ui/lit/lit.js';
+import './common/Dropdown.js';
 
 const {html, Decorators} = Lit;
 const {customElement} = Decorators as any;
@@ -35,12 +36,39 @@ export class SettingsView extends HTMLElement {
       tier: 'main',
       label: 'Main Model',
       description: 'Primary model for complex tasks',
-      selectedModel: 'gpt-4',
+      selectedModel: 'claude-3.5-sonnet',
       apiKey: '',
       modelOptions: [
         { value: 'gpt-4', label: 'GPT-4' },
         { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+        { value: 'gpt-4o', label: 'GPT-4o' },
+        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { value: 'gpt-4.1', label: 'GPT-4.1' },
+        { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+        { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+        { value: 'o1', label: 'o1' },
+        { value: 'o1-mini', label: 'o1 Mini' },
+        { value: 'o1-pro', label: 'o1 Pro' },
+        { value: 'o3', label: 'o3' },
+        { value: 'o3-mini', label: 'o3 Mini' },
         { value: 'claude-3-opus', label: 'Claude 3 Opus' },
+        { value: 'claude-3-sonnet', label: 'Claude 3 Sonnet' },
+        { value: 'claude-3-haiku', label: 'Claude 3 Haiku' },
+        { value: 'claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+        { value: 'claude-3.5-haiku', label: 'Claude 3.5 Haiku' },
+        { value: 'claude-4-opus', label: 'Claude 4 Opus' },
+        { value: 'claude-4-sonnet', label: 'Claude 4 Sonnet' },
+        { value: 'gemini-pro', label: 'Gemini Pro' },
+        { value: 'gemini-ultra', label: 'Gemini Ultra' },
+        { value: 'gemini-flash', label: 'Gemini Flash' },
+        { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+        { value: 'llama-3.1-70b', label: 'Llama 3.1 70B' },
+        { value: 'llama-3.1-405b', label: 'Llama 3.1 405B' },
+        { value: 'llama-3.3-70b', label: 'Llama 3.3 70B' },
+        { value: 'mistral-large', label: 'Mistral Large' },
+        { value: 'mistral-medium', label: 'Mistral Medium' },
+        { value: 'deepseek-v3', label: 'DeepSeek V3' },
       ],
     },
     {
@@ -68,7 +96,6 @@ export class SettingsView extends HTMLElement {
   ];
 
   #showAdvancedSettings = false;
-  #openDropdownTier: string | null = null;
   #onModelChange?: (tier: string, model: string) => void;
   #onApiKeyChange?: (tier: string, apiKey: string) => void;
   #onSave?: () => void;
@@ -92,7 +119,6 @@ export class SettingsView extends HTMLElement {
     const config = this.#modelConfigs.find(c => c.tier === tier);
     if (config) {
       config.selectedModel = model;
-      this.#openDropdownTier = null;
       this.#render();
     }
   }
@@ -106,11 +132,6 @@ export class SettingsView extends HTMLElement {
       config.apiKey = value;
       this.#render();
     }
-  }
-
-  #toggleDropdown(tier: string): void {
-    this.#openDropdownTier = this.#openDropdownTier === tier ? null : tier;
-    this.#render();
   }
 
   #toggleAdvancedSettings(): void {
@@ -140,8 +161,9 @@ export class SettingsView extends HTMLElement {
           max-width: 600px;
           margin: 0 auto;
           padding: 32px 24px;
-          gap: 32px;
-          overflow-y: auto;
+          gap: 24px;
+          overflow: hidden;
+          flex: 1;
         }
 
         .title {
@@ -150,12 +172,17 @@ export class SettingsView extends HTMLElement {
           color: var(--slate-800);
           text-align: center;
           margin: 0;
+          flex-shrink: 0;
         }
 
         .model-sections {
           display: flex;
           flex-direction: column;
           gap: 24px;
+          flex: 1;
+          overflow-y: auto;
+          min-height: 0;
+          padding-right: 8px;
         }
 
         .model-section {
@@ -186,71 +213,9 @@ export class SettingsView extends HTMLElement {
           line-height: 1.4;
         }
 
-        .dropdown-row {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 12px;
-          border: 1px solid var(--slate-200);
-          border-radius: 6px;
-          background: white;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .dropdown-row:hover {
-          border-color: var(--slate-300);
-          background: #F7F9FC;
-        }
-
-        .dropdown-text {
-          font-size: 14px;
-          color: var(--slate-800);
-        }
-
-        .dropdown-chevron {
-          width: 16px;
-          height: 16px;
-          color: var(--slate-500);
-          transition: transform 0.2s ease;
-        }
-
-        .dropdown-chevron.open {
-          transform: rotate(180deg);
-        }
-
-        .dropdown-menu {
-          position: absolute;
-          top: calc(100% + 4px);
-          left: 0;
-          right: 0;
-          background: white;
-          border: 1px solid var(--slate-200);
-          border-radius: 6px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-          z-index: 1000;
-          overflow: hidden;
-          max-height: 200px;
-          overflow-y: auto;
-        }
-
-        .dropdown-option {
-          padding: 10px 12px;
-          font-size: 14px;
-          color: var(--slate-800);
-          cursor: pointer;
-          transition: background-color 0.2s ease;
-        }
-
-        .dropdown-option:hover {
-          background: #F7F9FC;
-        }
-
-        .dropdown-option.selected {
-          background: var(--blue-selected);
-          color: var(--blue);
-          font-weight: 500;
+        ai-dropdown {
+          display: block;
+          width: 100%;
         }
 
         .api-key-input {
@@ -279,6 +244,7 @@ export class SettingsView extends HTMLElement {
           gap: 12px;
           padding-top: 16px;
           border-top: 1px solid var(--slate-200);
+          flex-shrink: 0;
         }
 
         .button {
@@ -376,47 +342,29 @@ export class SettingsView extends HTMLElement {
         <h1 class="title">Settings</h1>
 
         <div class="model-sections">
-          ${this.#modelConfigs.map(config => {
-            const isDropdownOpen = this.#openDropdownTier === config.tier;
-            const selectedOption = config.modelOptions.find(opt => opt.value === config.selectedModel);
-
-            return html`
-              <div class="model-section">
-                <div class="model-header">
-                  <div class="model-label">${config.label}</div>
-                  <div class="model-description">${config.description}</div>
-                </div>
-
-                <div class="dropdown-row" @click=${() => this.#toggleDropdown(config.tier)}>
-                  <span class="dropdown-text">${selectedOption?.label || 'Select a model'}</span>
-                  <svg class="dropdown-chevron ${isDropdownOpen ? 'open' : ''}" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-
-                  ${isDropdownOpen ? html`
-                    <div class="dropdown-menu" @click=${(e: Event) => e.stopPropagation()}>
-                      ${config.modelOptions.map(option => html`
-                        <div
-                          class="dropdown-option ${option.value === config.selectedModel ? 'selected' : ''}"
-                          @click=${() => this.#handleModelSelect(config.tier, option.value)}
-                        >
-                          ${option.label}
-                        </div>
-                      `)}
-                    </div>
-                  ` : ''}
-                </div>
-
-                <input
-                  type="password"
-                  class="api-key-input"
-                  placeholder="Enter API Key"
-                  .value=${config.apiKey || ''}
-                  @input=${(e: Event) => this.#handleApiKeyChange(config.tier, (e.target as HTMLInputElement).value)}
-                />
+          ${this.#modelConfigs.map(config => html`
+            <div class="model-section">
+              <div class="model-header">
+                <div class="model-label">${config.label}</div>
+                <div class="model-description">${config.description}</div>
               </div>
-            `;
-          })}
+
+              <ai-dropdown
+                .options=${config.modelOptions}
+                .selectedValue=${config.selectedModel || ''}
+                .placeholder=${'Select a model'}
+                .onChange=${(value: string) => this.#handleModelSelect(config.tier, value)}
+              ></ai-dropdown>
+
+              <input
+                type="password"
+                class="api-key-input"
+                placeholder="Enter API Key"
+                .value=${config.apiKey || ''}
+                @input=${(e: Event) => this.#handleApiKeyChange(config.tier, (e.target as HTMLInputElement).value)}
+              />
+            </div>
+          `)}
         </div>
 
         <div class="advanced-settings-row">

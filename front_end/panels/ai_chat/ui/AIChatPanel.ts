@@ -581,6 +581,8 @@ export class AIChatPanel extends UI.Panel.Panel {
     this.#chatView.addEventListener('manual-setup-requested', this.#handleManualSetupRequest.bind(this));
     // Wire sidebar navigation actions
     this.#chatView.addEventListener('sidebar-nav', this.#handleSidebarNavEvent.bind(this));
+    // Wire settings dialog opening from sidebar
+    this.#chatView.addEventListener('open-settings-dialog', () => this.#onSettingsClick());
 
     // Wire HistoryView events
     this.#chatView.addEventListener(HistoryViewEvents.REQUEST_DATA, this.#handleHistoryRequestData.bind(this));
@@ -1241,9 +1243,9 @@ export class AIChatPanel extends UI.Panel.Panel {
         break;
       case 'chat':
       case 'connectors':  // Let ChatView handle routing to ConnectorsView
-      case 'settings':    // Let ChatView handle routing to SettingsView
       case 'history':     // Let ChatView handle routing to HistoryView
       case 'evaluations': // Let ChatView handle routing to EvaluationsView
+      // Note: 'settings' is handled via 'open-settings-dialog' event, not sidebar-nav
       default:
         // ChatView will handle these via its internal routing
         break;
