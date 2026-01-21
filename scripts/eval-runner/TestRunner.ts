@@ -5,13 +5,25 @@
  * and BraintrustTracker to run evaluations.
  */
 
-import { getStatusIcon, type TestCase, type TestResult, type RunSummary, type CLIOptions, type CriteriaResult } from './types.ts';
+import {
+  getStatusIcon,
+  type TestCase,
+  type TestResult,
+  type RunSummary,
+  type CLIOptions,
+  type CriteriaResult,
+  type RubricConfig,
+  type TestRubricConfig,
+  type DimensionalEvaluationResult,
+  type ExecutionData,
+} from './types.ts';
 import { BrowserExecutor, type ExecutionContext } from './BrowserExecutor.ts';
 import { BraintrustTracker } from './BraintrustTracker.ts';
 import { AgentBridge } from './AgentBridge.ts';
 import { LLMJudge } from './LLMJudge.ts';
 import { TestLogger } from './TestLogger.ts';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 // Resolve __dirname for ES modules
@@ -29,6 +41,8 @@ export class TestRunner {
   private llmJudge: LLMJudge;
   private testLogger: TestLogger;
   private results: TestResult[] = [];
+  /** Rubric configs for dimensional evaluation (loaded from Python orchestrator) */
+  private rubricConfigs: Map<string, RubricConfig[]> = new Map();
 
   constructor(options: CLIOptions) {
     this.options = options;
@@ -84,7 +98,35 @@ export class TestRunner {
       console.warn('   DOM tests will still run with assertion-based evaluation.\n');
     }
 
+    // Load rubric configs if specified (for dimensional evaluation)
+    if (this.options.rubricConfigFile) {
+      this.loadRubricConfigs(this.options.rubricConfigFile);
+    }
+
     console.log('✅ Initialization complete\n');
+  }
+
+  /**
+   * Load rubric configurations from Python orchestrator
+   */
+  private loadRubricConfigs(configPath: string): void {
+    try {
+      if (!fs.existsSync(configPath)) {
+        console.warn(`⚠️  Rubric config file not found: ${configPath}`);
+        return;
+      }
+
+      const data = fs.readFileSync(configPath, 'utf-8');
+      const configs: TestRubricConfig[] = JSON.parse(data);
+
+      for (const config of configs) {
+        this.rubricConfigs.set(config.testId, config.rubrics);
+      }
+
+      console.log(`📋 Loaded rubric configs for ${configs.length} tests`);
+    } catch (error) {
+      console.warn(`⚠️  Failed to load rubric configs: ${error}`);
+    }
   }
 
   /**
@@ -261,12 +303,20 @@ export class TestRunner {
           this.testLogger.logScreenshot('after', afterScreenshot);
         }
 
+        // Build execution data for dimensional evaluation
+        const executionData: ExecutionData = {
+          finalUrl: context.page.url(),
+          totalToolCalls: agentResult.metrics?.totalToolCalls || 0,
+          actionSequence: agentResult.metrics?.toolCalls?.map((tc: any) => tc.name) || [],
+          errorsEncountered: context.consoleErrors.map(e => e.text || String(e)),
+        };
+
         // Evaluate with LLM Judge
         this.testLogger.logExecution('Starting evaluation...');
         const validation = await this.evaluateResult(testCase, agentResult, {
           beforeScreenshot,
           afterScreenshot,
-        });
+        }, executionData);
         this.testLogger.logExecution(`Evaluation complete: ${validation.passed ? 'PASSED' : 'FAILED'} (score: ${(validation.score * 100).toFixed(1)}%)`);
 
         const duration = Date.now() - startTime;
@@ -412,12 +462,15 @@ export class TestRunner {
   private async evaluateResult(
     testCase: TestCase,
     agentResult: unknown,
-    screenshots: { beforeScreenshot?: string; afterScreenshot?: string }
+    screenshots: { beforeScreenshot?: string; afterScreenshot?: string },
+    executionData?: ExecutionData
   ): Promise<{
     passed: boolean;
     score: number;
     explanation: string;
     criteria: CriteriaResult[];
+    /** Dimensional evaluation result (when --dimensional-scores enabled) */
+    dimensional?: DimensionalEvaluationResult;
   }> {
     // For search tool tests, use deterministic evaluation
     if (testCase.tool === 'search') {
@@ -457,8 +510,73 @@ export class TestRunner {
       };
     }
 
-    // Use LLM judge for evaluation
+    // === DIMENSIONAL EVALUATION (DR Tulu Style) ===
+    // When --dimensional-scores is enabled, use rubric-based evaluation
+    // Python orchestrator will compute weighted scores and pass/fail
+    if (this.options.dimensionalScores) {
+      const rubrics = this.rubricConfigs.get(testCase.id) ||
+        this.convertCriteriaToRubrics(testCase);
+
+      const execData = executionData || {
+        finalUrl: '',
+        totalToolCalls: 0,
+        actionSequence: [],
+        errorsEncountered: [],
+      };
+
+      const dimensional = await this.llmJudge.evaluateWithRubrics(
+        testCase,
+        agentResult,
+        screenshots,
+        rubrics,
+        execData,
+      );
+
+      // For dimensional mode, we still need to return a traditional result
+      // Python will override pass/fail based on threshold
+      const passThreshold = this.options.passThreshold ?? 0.80;
+
+      // Compute weighted average score (matching Python's compute_weighted_score)
+      const totalWeight = dimensional.rubricScores.reduce(
+        (sum, rs) => sum + Math.abs(rs.weight),
+        0
+      );
+      const avgScore = totalWeight > 0
+        ? dimensional.rubricScores.reduce((sum, rs) => {
+            // For negative rubrics, invert: high score = bad behavior = low adjusted
+            const adjustedScore = rs.weight < 0 ? (1 - rs.score) : rs.score;
+            return sum + Math.abs(rs.weight) * adjustedScore;
+          }, 0) / totalWeight
+        : 0;
+
+      return {
+        passed: avgScore >= passThreshold,
+        score: avgScore,
+        explanation: dimensional.failureReason || 'Dimensional evaluation complete',
+        criteria: dimensional.rubricScores.map(rs => ({
+          criterion: rs.description,
+          passed: rs.weight < 0 ? rs.score < 0.5 : rs.score >= 0.5,
+          explanation: `Score: ${rs.score.toFixed(2)} - ${rs.explanation}`,
+        })),
+        dimensional,
+      };
+    }
+
+    // Use LLM judge for evaluation (traditional mode)
     return await this.llmJudge.evaluate(testCase, agentResult, screenshots);
+  }
+
+  /**
+   * Convert test case criteria to rubrics (for backward compatibility)
+   */
+  private convertCriteriaToRubrics(testCase: TestCase): RubricConfig[] {
+    const criteria = testCase.validation.llmJudge?.criteria || [];
+    return criteria.map((criterion, i) => ({
+      id: `${testCase.id}_p${i}`,
+      description: criterion,
+      weight: 1.0,
+      type: 'persistent' as const,
+    }));
   }
 
   /**

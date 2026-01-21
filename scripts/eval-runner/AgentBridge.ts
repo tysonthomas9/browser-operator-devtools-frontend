@@ -66,8 +66,10 @@ export class AgentBridge {
       providerURL: this.options.providerURL,
     });
 
-    // Register all DevTools tools/agents
-    await setupToolsForEval();
+    // Register all DevTools tools/agents (with optional prompt override)
+    await setupToolsForEval({
+      promptOverrideFile: this.options.promptOverrideFile,
+    });
 
     this.initialized = true;
     logger.info('Initialization complete');

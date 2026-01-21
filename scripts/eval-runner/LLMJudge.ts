@@ -5,7 +5,17 @@
  * based on defined criteria and visual evidence.
  */
 
-import { getProviderConfig, type TestCase, type CriteriaResult, type LLMProvider } from './types.ts';
+import {
+  getProviderConfig,
+  type TestCase,
+  type CriteriaResult,
+  type LLMProvider,
+  type RubricConfig,
+  type RubricScore,
+  type DimensionalEvaluationResult,
+  type FailureCategory,
+  type ExecutionData,
+} from './types.ts';
 import fs from 'fs';
 import path from 'path';
 
@@ -249,6 +259,235 @@ Respond in JSON format:
           passed: false,
           explanation: 'Parse error',
         })),
+      };
+    }
+  }
+
+  // ============================================================================
+  // Dimensional Rubric Evaluation
+  // ============================================================================
+
+  /**
+   * Evaluate a test result using dimensional rubric scoring.
+   * Returns per-rubric scores (0-1) for Python processing.
+   * Python orchestrator handles pass/fail decision and score aggregation.
+   */
+  async evaluateWithRubrics(
+    testCase: TestCase,
+    agentResult: unknown,
+    screenshots: { beforeScreenshot?: string; afterScreenshot?: string },
+    rubrics: RubricConfig[],
+    executionData: ExecutionData,
+  ): Promise<DimensionalEvaluationResult> {
+    // Check if client is initialized
+    if (!this.client) {
+      throw new Error(`LLM Judge not initialized. Set ${this.config.provider === 'openai' ? 'OPENAI_API_KEY' : this.config.provider.toUpperCase() + '_API_KEY'} environment variable.`);
+    }
+
+    // If no rubrics provided, convert test case criteria to rubrics
+    if (rubrics.length === 0) {
+      rubrics = this.convertCriteriaToRubrics(testCase);
+    }
+
+    // Build dimensional evaluation prompt
+    const prompt = this.buildDimensionalPrompt(testCase, agentResult, rubrics);
+
+    // Include screenshots if available
+    const messages = await this.buildMessages(prompt, screenshots);
+
+    // Call LLM for evaluation
+    const response = await this.callLLM(messages);
+
+    // Parse response to dimensional result
+    return this.parseDimensionalResponse(
+      response,
+      rubrics,
+      testCase,
+      executionData,
+    );
+  }
+
+  /**
+   * Convert test case criteria to rubrics (for backward compatibility)
+   */
+  private convertCriteriaToRubrics(testCase: TestCase): RubricConfig[] {
+    const criteria = testCase.validation.llmJudge?.criteria || [];
+    return criteria.map((criterion, i) => ({
+      id: `${testCase.id}_p${i}`,
+      description: criterion,
+      weight: 1.0,  // All persistent rubrics are positive
+      type: 'persistent' as const,
+    }));
+  }
+
+  /**
+   * Build dimensional evaluation prompt for rubric scoring
+   */
+  private buildDimensionalPrompt(
+    testCase: TestCase,
+    agentResult: unknown,
+    rubrics: RubricConfig[]
+  ): string {
+    // Separate positive and negative rubrics for clearer evaluation
+    const positiveRubrics = rubrics.filter(r => r.weight > 0);
+    const negativeRubrics = rubrics.filter(r => r.weight < 0);
+
+    let rubricList = '';
+
+    if (positiveRubrics.length > 0) {
+      rubricList += '### Positive Rubrics (Excellence Indicators)\n';
+      rubricList += 'Score 1.0 = agent fully exhibited this quality, 0.0 = completely absent\n';
+      rubricList += positiveRubrics.map((r, i) =>
+        `${i + 1}. [${r.id}] ${r.description}`
+      ).join('\n');
+    }
+
+    if (negativeRubrics.length > 0) {
+      rubricList += '\n\n### Negative Rubrics (Failure Patterns)\n';
+      rubricList += 'Score 0.0 = agent avoided this problem, 1.0 = agent exhibited this bad behavior\n';
+      rubricList += negativeRubrics.map((r, i) =>
+        `${positiveRubrics.length + i + 1}. [${r.id}] ${r.description}`
+      ).join('\n');
+    }
+
+    return `You are an evaluation judge for web automation agents. Your task is to score the agent's performance on specific rubric dimensions.
+
+## Test Information
+- **Test Name**: ${testCase.name}
+- **Description**: ${testCase.description}
+- **URL**: ${testCase.url}
+- **Objective**: ${JSON.stringify(testCase.input)}
+
+## Agent Result
+\`\`\`json
+${JSON.stringify(agentResult, null, 2)}
+\`\`\`
+
+## Rubrics to Score
+${rubricList}
+
+## Instructions
+1. Analyze the agent's result and any visual evidence (screenshots if provided)
+2. Score each rubric on a continuous scale from 0.0 to 1.0:
+   - For POSITIVE rubrics: 1.0 = perfect, 0.5 = partial, 0.0 = absent
+   - For NEGATIVE rubrics: 0.0 = didn't exhibit problem, 1.0 = exhibited bad behavior
+3. Provide a brief explanation for each score
+4. Identify the failure category if the agent failed (or null if successful)
+
+## Failure Categories
+- auth_wall: Blocked by login/authentication requirement
+- timeout: Agent ran out of time/iterations
+- no_actions: Agent didn't take any meaningful actions
+- partial: Partial completion of task
+- wrong_target: Clicked/interacted with wrong element
+- wrong_action: Right target but wrong action type
+- page_error: Page JavaScript error or crash
+- network_error: Network/loading failures
+- not_found: Element not found on page
+- unknown: Uncategorized failure
+
+Respond in JSON format:
+{
+  "rubricScores": [
+    {"rubricId": "id", "score": 0.0-1.0, "explanation": "why this score"}
+  ],
+  "failureCategory": "auth_wall|timeout|no_actions|partial|wrong_target|wrong_action|page_error|network_error|not_found|unknown|null",
+  "failureReason": "description of failure or null if successful"
+}`;
+  }
+
+  /**
+   * Parse LLM response for dimensional evaluation
+   */
+  private parseDimensionalResponse(
+    response: string,
+    rubrics: RubricConfig[],
+    testCase: TestCase,
+    executionData: ExecutionData,
+  ): DimensionalEvaluationResult {
+    try {
+      // Extract JSON from response (handle markdown code blocks)
+      let jsonStr = response;
+      const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      }
+
+      const parsed = JSON.parse(jsonStr);
+
+      // Map rubric scores with weights from config
+      const rubricScores: RubricScore[] = (parsed.rubricScores || []).map((rs: any) => {
+        const rubricConfig = rubrics.find(r => r.id === rs.rubricId);
+        // Clamp score to 0-1 range (LLM may return invalid values)
+        const rawScore = typeof rs.score === 'number' ? rs.score : 0;
+        const clampedScore = Math.max(0, Math.min(1, rawScore));
+        return {
+          rubricId: rs.rubricId,
+          description: rubricConfig?.description || rs.rubricId,
+          score: clampedScore,
+          explanation: rs.explanation || 'No explanation',
+          weight: rubricConfig?.weight || 1.0,
+        };
+      });
+
+      // Add any missing rubrics with score 0
+      for (const rubric of rubrics) {
+        if (!rubricScores.find(rs => rs.rubricId === rubric.id)) {
+          rubricScores.push({
+            rubricId: rubric.id,
+            description: rubric.description,
+            score: 0,
+            explanation: 'Rubric not scored by judge',
+            weight: rubric.weight,
+          });
+        }
+      }
+
+      // Validate failure category
+      const validCategories: FailureCategory[] = [
+        'auth_wall', 'timeout', 'no_actions', 'partial',
+        'wrong_target', 'wrong_action', 'page_error',
+        'network_error', 'not_found', 'unknown'
+      ];
+      const failureCategory = parsed.failureCategory &&
+        validCategories.includes(parsed.failureCategory)
+          ? parsed.failureCategory as FailureCategory
+          : undefined;
+
+      return {
+        testId: testCase.id,
+        testName: testCase.name,
+        status: 'evaluated',
+        rubricScores,
+        failureCategory,
+        failureReason: parsed.failureReason || undefined,
+        // null - Python computes these from rubric scores
+        aggregateScore: null,
+        passed: null,
+        executionData,
+        duration: 0, // Set by caller
+      };
+    } catch (error) {
+      console.warn('Failed to parse dimensional LLM response:', error);
+
+      // Return error result with all rubrics scored 0
+      return {
+        testId: testCase.id,
+        testName: testCase.name,
+        status: 'evaluated',
+        rubricScores: rubrics.map(r => ({
+          rubricId: r.id,
+          description: r.description,
+          score: 0,
+          explanation: `Parse error: ${error}`,
+          weight: r.weight,
+        })),
+        failureCategory: 'unknown',
+        failureReason: `Failed to parse evaluation response: ${error}`,
+        aggregateScore: null,
+        passed: null,
+        executionData,
+        duration: 0,
       };
     }
   }

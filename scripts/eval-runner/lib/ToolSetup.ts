@@ -6,8 +6,10 @@
  * skips browser-specific initializations.
  */
 
-import { ConfigurableAgentTool, ToolRegistry } from '../../../front_end/panels/ai_chat/agent_framework/ConfigurableAgentTool.ts';
+import fs from 'fs';
+import { ConfigurableAgentTool, ToolRegistry, type AgentToolConfig } from '../../../front_end/panels/ai_chat/agent_framework/ConfigurableAgentTool.ts';
 import { createLogger } from '../../../front_end/panels/ai_chat/core/Logger.ts';
+import type { PromptOverride } from '../types.ts';
 
 const logger = createLogger('ToolSetup');
 
@@ -50,11 +52,60 @@ import { GetAccessibilityTreeToolV0 } from '../../../front_end/panels/ai_chat/to
 // DOM tools registration is lazy-loaded since it requires SDK (browser-only)
 
 /**
+ * Options for tool setup
+ */
+export interface ToolSetupOptions {
+  /** Path to JSON file containing prompt overrides */
+  promptOverrideFile?: string;
+}
+
+/**
+ * Apply prompt override to an agent config
+ */
+function applyPromptOverride(config: AgentToolConfig, override: PromptOverride): AgentToolConfig {
+  logger.info(`Applying prompt override to ${config.name}`);
+  return {
+    ...config,
+    systemPrompt: override.systemPrompt ?? config.systemPrompt,
+    description: override.description ?? config.description,
+    tools: override.tools ?? config.tools,
+    maxIterations: override.maxIterations ?? config.maxIterations,
+    temperature: override.temperature ?? config.temperature,
+  };
+}
+
+/**
+ * Load prompt override from file
+ */
+function loadPromptOverride(filePath: string): PromptOverride | null {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const override = JSON.parse(content) as PromptOverride;
+    logger.info(`Loaded prompt override for agent: ${override.agentName}`);
+    if (override.metadata?.hypothesis) {
+      logger.info(`Hypothesis: ${override.metadata.hypothesis}`);
+    }
+    return override;
+  } catch (error) {
+    logger.error(`Failed to load prompt override from ${filePath}: ${error}`);
+    return null;
+  }
+}
+
+/**
  * Setup tools and agents for eval runner context.
  * Only registers tools needed for eval tests, skipping browser-specific features.
+ *
+ * @param options - Optional configuration including prompt override file
  */
-export async function setupToolsForEval(): Promise<void> {
+export async function setupToolsForEval(options?: ToolSetupOptions): Promise<void> {
   logger.info('Registering tools for eval runner...');
+
+  // Load prompt override if specified
+  let promptOverride: PromptOverride | null = null;
+  if (options?.promptOverrideFile) {
+    promptOverride = loadPromptOverride(options.promptOverrideFile);
+  }
 
   // Skip DOM tools in Node.js - they require browser SDK
   // DOM tools (hybrid accessibility tree, EncodedId resolver) will be available in browser only
@@ -93,28 +144,36 @@ export async function setupToolsForEval(): Promise<void> {
   // Register V0 baseline tool (now default 'get_page_content')
   ToolRegistry.registerToolFactory('get_page_content', () => new GetAccessibilityTreeToolV0());
 
+  // Helper to conditionally apply prompt override
+  const maybeApplyOverride = (config: AgentToolConfig): AgentToolConfig => {
+    if (promptOverride && promptOverride.agentName === config.name) {
+      return applyPromptOverride(config, promptOverride);
+    }
+    return config;
+  };
+
   // Register Action Agent (default)
-  const actionAgentConfig = createActionAgentConfig();
+  const actionAgentConfig = maybeApplyOverride(createActionAgentConfig());
   const actionAgent = new ConfigurableAgentTool(actionAgentConfig);
   ToolRegistry.registerToolFactory('action_agent', () => actionAgent);
 
   // Register V1 for comparison testing
-  const actionAgentV1Config = createActionAgentV1Config();
+  const actionAgentV1Config = maybeApplyOverride(createActionAgentV1Config());
   const actionAgentV1 = new ConfigurableAgentTool(actionAgentV1Config);
   ToolRegistry.registerToolFactory('action_agent_v1', () => actionAgentV1);
 
   // Register Action Agent V2 (with XPath caching for A/B testing)
-  const actionAgentV2Config = createActionAgentV2Config();
+  const actionAgentV2Config = maybeApplyOverride(createActionAgentV2Config());
   const actionAgentV2 = new ConfigurableAgentTool(actionAgentV2Config);
   ToolRegistry.registerToolFactory('action_agent_v2', () => actionAgentV2);
 
   // Register Web Task Agent
-  const webTaskAgentConfig = createWebTaskAgentConfig();
+  const webTaskAgentConfig = maybeApplyOverride(createWebTaskAgentConfig());
   const webTaskAgent = new ConfigurableAgentTool(webTaskAgentConfig);
   ToolRegistry.registerToolFactory('web_task_agent', () => webTaskAgent);
 
   // Register Research Agent
-  const researchAgentConfig = createResearchAgentConfig();
+  const researchAgentConfig = maybeApplyOverride(createResearchAgentConfig());
   const researchAgent = new ConfigurableAgentTool(researchAgentConfig);
   ToolRegistry.registerToolFactory('research_agent', () => researchAgent);
 

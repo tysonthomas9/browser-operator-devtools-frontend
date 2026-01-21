@@ -1,0 +1,25 @@
+[project]
+name = "prompt-optimizer"
+version = "0.1.0"
+description = "Multi-agent system for optimizing Browser Operator agent prompts"
+requires-python = ">=3.10"
+dependencies = [
+    "claude-agent-sdk>=0.1.0",
+    "mcp>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+prompt-optimizer = "prompt_optimizer.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["prompt_optimizer*"]
+
+[tool.setuptools.package-data]
+prompt_optimizer = ["prompts/*.txt"]

@@ -313,7 +313,15 @@ async function main() {
     .option('--no-detailed-logs', 'Disable detailed per-test logging')
 
     // Version comparison
-    .option('--compare', 'Run comparison between v0 (baseline) and v1 (current) versions', false);
+    .option('--compare', 'Run comparison between v0 (baseline) and v1 (current) versions', false)
+
+    // Prompt optimization
+    .option('--prompt-override-file <path>', 'JSON file with prompt overrides for testing variations')
+
+    // Rubric-based evaluation
+    .option('--rubric-config <path>', 'JSON file with rubric configs from Python orchestrator')
+    .option('--dimensional-scores', 'Return per-rubric dimensional scores for Python processing', false)
+    .option('--pass-threshold <n>', 'Pass threshold 0-1 for scoring (default: 0.80)', parseFloat, 0.80);
 
   program.parse(process.argv);
 
@@ -374,6 +382,10 @@ async function main() {
     logDir: opts.logDir,
     detailedLogs: opts.detailedLogs,
     compare: opts.compare,
+    promptOverrideFile: opts.promptOverrideFile,
+    rubricConfigFile: opts.rubricConfig,
+    dimensionalScores: opts.dimensionalScores,
+    passThreshold: opts.passThreshold,
   };
 
   // Configure logging based on verbose flag

@@ -63,3 +63,9 @@ node_modules/
 **/.idea/
 node_modules/**
 eval-logs/**
+
+# Prompt Optimizer
+prompt-optimizer-output/
+python/.venv/
+python/src/*.egg-info/
+__pycache__/
