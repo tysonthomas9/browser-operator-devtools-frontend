@@ -18,7 +18,8 @@ import type { FileSummary } from '../../../tools/FileStorageManager.js';
  */
 export class MemorySettings {
   private container: HTMLElement;
-  private memoryEnabledCheckbox: HTMLInputElement | null = null;
+  private isEnabled: boolean = false;
+  private toggleElement: HTMLDivElement | null = null;
   private blockListContainer: HTMLElement | null = null;
   private blockManager: MemoryBlockManager;
   private statusMessageElement: HTMLElement | null = null;
@@ -33,42 +34,43 @@ export class MemorySettings {
     this.container.innerHTML = '';
     this.container.className = 'settings-section memory-section';
 
+    // Get current state - default to enabled (true) if not set
+    const storedValue = localStorage.getItem(MEMORY_ENABLED_KEY);
+    this.isEnabled = storedValue !== 'false';
+
     // Title
     const memoryTitle = document.createElement('h3');
     memoryTitle.textContent = i18nString(UIStrings.memoryLabel);
     memoryTitle.classList.add('settings-subtitle');
     this.container.appendChild(memoryTitle);
 
-    // Memory enabled checkbox
-    const memoryEnabledContainer = document.createElement('div');
-    memoryEnabledContainer.className = 'tracing-enabled-container';
-    this.container.appendChild(memoryEnabledContainer);
+    // Header with toggle
+    const headerContainer = document.createElement('div');
+    headerContainer.className = 'settings-toggle-container';
+    this.container.appendChild(headerContainer);
 
-    this.memoryEnabledCheckbox = document.createElement('input');
-    this.memoryEnabledCheckbox.type = 'checkbox';
-    this.memoryEnabledCheckbox.id = 'memory-enabled';
-    this.memoryEnabledCheckbox.className = 'tracing-checkbox';
-    // Default to enabled (true) if not set
-    const storedValue = localStorage.getItem(MEMORY_ENABLED_KEY);
-    this.memoryEnabledCheckbox.checked = storedValue !== 'false';
-    memoryEnabledContainer.appendChild(this.memoryEnabledCheckbox);
+    const infoContainer = document.createElement('div');
+    infoContainer.className = 'settings-toggle-info';
+    headerContainer.appendChild(infoContainer);
 
-    const memoryEnabledLabel = document.createElement('label');
-    memoryEnabledLabel.htmlFor = 'memory-enabled';
-    memoryEnabledLabel.className = 'tracing-label';
-    memoryEnabledLabel.textContent = i18nString(UIStrings.memoryEnabled);
-    memoryEnabledContainer.appendChild(memoryEnabledLabel);
+    const title = document.createElement('div');
+    title.className = 'settings-toggle-title';
+    title.textContent = i18nString(UIStrings.memoryEnabled);
+    infoContainer.appendChild(title);
 
-    const memoryEnabledHint = document.createElement('div');
-    memoryEnabledHint.className = 'settings-hint';
-    memoryEnabledHint.textContent = i18nString(UIStrings.memoryEnabledHint);
-    this.container.appendChild(memoryEnabledHint);
+    const description = document.createElement('div');
+    description.className = 'settings-toggle-description';
+    description.textContent = i18nString(UIStrings.memoryEnabledHint);
+    infoContainer.appendChild(description);
 
-    // Toggle memory and save to localStorage
-    this.memoryEnabledCheckbox.addEventListener('change', () => {
-      localStorage.setItem(MEMORY_ENABLED_KEY, this.memoryEnabledCheckbox!.checked.toString());
-      this.updateBlockListVisibility();
-    });
+    // Toggle switch
+    this.toggleElement = document.createElement('div');
+    this.toggleElement.className = 'settings-toggle';
+    if (this.isEnabled) {
+      this.toggleElement.classList.add('active');
+    }
+    this.toggleElement.addEventListener('click', () => this.handleToggle());
+    headerContainer.appendChild(this.toggleElement);
 
     // Memory blocks list container
     this.blockListContainer = document.createElement('div');
@@ -81,11 +83,25 @@ export class MemorySettings {
   }
 
   /**
+   * Handle toggle click
+   */
+  private handleToggle(): void {
+    this.isEnabled = !this.isEnabled;
+
+    if (this.toggleElement) {
+      this.toggleElement.classList.toggle('active', this.isEnabled);
+    }
+
+    localStorage.setItem(MEMORY_ENABLED_KEY, this.isEnabled.toString());
+    this.updateBlockListVisibility();
+  }
+
+  /**
    * Update visibility of block list based on memory enabled state
    */
   private updateBlockListVisibility(): void {
-    if (this.blockListContainer && this.memoryEnabledCheckbox) {
-      this.blockListContainer.style.display = this.memoryEnabledCheckbox.checked ? 'block' : 'none';
+    if (this.blockListContainer) {
+      this.blockListContainer.style.display = this.isEnabled ? 'block' : 'none';
     }
   }
 
@@ -112,14 +128,39 @@ export class MemorySettings {
     this.blockListContainer.appendChild(this.statusMessageElement);
 
     try {
-      const blocks = await this.blockManager.getAllBlocks();
+      let blocks = await this.blockManager.getAllBlocks();
 
+      // Add dummy data for testing if no blocks exist
       if (blocks.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'memory-blocks-empty';
-        emptyMessage.textContent = 'No memory blocks stored yet. Memory will be extracted from conversations automatically.';
-        this.blockListContainer.appendChild(emptyMessage);
-        return;
+        blocks = [
+          {
+            filename: 'memory_user.md',
+            type: 'user' as const,
+            label: 'User Preferences',
+            description: 'Personal preferences and settings',
+            content: '# User Preferences\n\n- Prefers dark mode\n- Uses TypeScript for all projects\n- Likes concise code comments',
+            charLimit: 10000,
+            updatedAt: Date.now() - 86400000, // yesterday
+          },
+          {
+            filename: 'memory_facts.md',
+            type: 'facts' as const,
+            label: 'Session Facts',
+            description: 'Facts learned from conversations',
+            content: '# Session Facts\n\n- Working on Browser Operator project\n- Uses React and Lit for UI components\n- DevTools frontend codebase',
+            charLimit: 10000,
+            updatedAt: Date.now() - 3600000, // 1 hour ago
+          },
+          {
+            filename: 'memory_project_browser-operator.md',
+            type: 'project' as const,
+            label: 'Browser Operator Project',
+            description: 'Project-specific memory',
+            content: '# Browser Operator\n\nAI-native browser with multi-agent framework.\n\n## Key Files\n- SettingsDialog.ts\n- MemorySettings.ts',
+            charLimit: 10000,
+            updatedAt: Date.now(), // now
+          },
+        ];
       }
 
       // Create block list

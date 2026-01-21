@@ -12,7 +12,9 @@ import { getTracingConfig, setTracingConfig, isTracingEnabled } from '../../../t
  */
 export class TracingSettings {
   private container: HTMLElement;
-  private tracingEnabledCheckbox: HTMLInputElement | null = null;
+  private isEnabled: boolean = false;
+  private toggleElement: HTMLDivElement | null = null;
+  private configContainer: HTMLDivElement | null = null;
   private endpointInput: HTMLInputElement | null = null;
   private publicKeyInput: HTMLInputElement | null = null;
   private secretKeyInput: HTMLInputElement | null = null;
@@ -26,182 +28,203 @@ export class TracingSettings {
     this.container.innerHTML = '';
     this.container.className = 'settings-section tracing-section';
 
-    // Title
-    const tracingSectionTitle = document.createElement('h3');
-    tracingSectionTitle.className = 'settings-subtitle';
-    tracingSectionTitle.textContent = i18nString(UIStrings.tracingSection);
-    this.container.appendChild(tracingSectionTitle);
-
     // Get current tracing configuration
     const currentTracingConfig = getTracingConfig();
+    this.isEnabled = isTracingEnabled();
 
-    // Tracing enabled checkbox
-    const tracingEnabledContainer = document.createElement('div');
-    tracingEnabledContainer.className = 'tracing-enabled-container';
-    this.container.appendChild(tracingEnabledContainer);
+    // Header with toggle
+    const headerContainer = document.createElement('div');
+    headerContainer.className = 'settings-toggle-container';
+    this.container.appendChild(headerContainer);
 
-    this.tracingEnabledCheckbox = document.createElement('input');
-    this.tracingEnabledCheckbox.type = 'checkbox';
-    this.tracingEnabledCheckbox.id = 'tracing-enabled';
-    this.tracingEnabledCheckbox.className = 'tracing-checkbox';
-    this.tracingEnabledCheckbox.checked = isTracingEnabled();
-    tracingEnabledContainer.appendChild(this.tracingEnabledCheckbox);
+    const infoContainer = document.createElement('div');
+    infoContainer.className = 'settings-toggle-info';
+    headerContainer.appendChild(infoContainer);
 
-    const tracingEnabledLabel = document.createElement('label');
-    tracingEnabledLabel.htmlFor = 'tracing-enabled';
-    tracingEnabledLabel.className = 'tracing-label';
-    tracingEnabledLabel.textContent = i18nString(UIStrings.tracingEnabled);
-    tracingEnabledContainer.appendChild(tracingEnabledLabel);
+    const title = document.createElement('div');
+    title.className = 'settings-toggle-title';
+    title.textContent = i18nString(UIStrings.tracingSection);
+    infoContainer.appendChild(title);
 
-    const tracingEnabledHint = document.createElement('div');
-    tracingEnabledHint.className = 'settings-hint';
-    tracingEnabledHint.textContent = i18nString(UIStrings.tracingEnabledHint);
-    this.container.appendChild(tracingEnabledHint);
+    const description = document.createElement('div');
+    description.className = 'settings-toggle-description';
+    description.textContent = i18nString(UIStrings.tracingEnabledHint);
+    infoContainer.appendChild(description);
 
-    // Tracing configuration container (shown when enabled)
-    const tracingConfigContainer = document.createElement('div');
-    tracingConfigContainer.className = 'tracing-config-container';
-    tracingConfigContainer.style.display = this.tracingEnabledCheckbox.checked ? 'block' : 'none';
-    this.container.appendChild(tracingConfigContainer);
+    // Toggle switch
+    this.toggleElement = document.createElement('div');
+    this.toggleElement.className = 'settings-toggle';
+    if (this.isEnabled) {
+      this.toggleElement.classList.add('active');
+    }
+    this.toggleElement.addEventListener('click', () => this.handleToggle());
+    headerContainer.appendChild(this.toggleElement);
+
+    // Configuration container (shown when enabled)
+    this.configContainer = document.createElement('div');
+    this.configContainer.className = 'tracing-config-container';
+    this.configContainer.style.display = this.isEnabled ? 'flex' : 'none';
+    this.configContainer.style.flexDirection = 'column';
+    this.configContainer.style.gap = '20px';
+    this.configContainer.style.marginTop = '20px';
+    this.container.appendChild(this.configContainer);
 
     // Langfuse endpoint
-    const endpointLabel = document.createElement('div');
-    endpointLabel.className = 'settings-label';
-    endpointLabel.textContent = i18nString(UIStrings.langfuseEndpoint);
-    tracingConfigContainer.appendChild(endpointLabel);
-
-    const endpointHint = document.createElement('div');
-    endpointHint.className = 'settings-hint';
-    endpointHint.textContent = i18nString(UIStrings.langfuseEndpointHint);
-    tracingConfigContainer.appendChild(endpointHint);
+    const endpointGroup = this.createFieldGroup(
+      i18nString(UIStrings.langfuseEndpoint),
+      i18nString(UIStrings.langfuseEndpointHint)
+    );
+    this.configContainer.appendChild(endpointGroup.container);
 
     this.endpointInput = document.createElement('input');
     this.endpointInput.className = 'settings-input';
     this.endpointInput.type = 'text';
-    this.endpointInput.placeholder = 'http://localhost:3000';
-    this.endpointInput.value = currentTracingConfig.endpoint || 'http://localhost:3000';
-    tracingConfigContainer.appendChild(this.endpointInput);
+    this.endpointInput.placeholder = 'Enter URL';
+    this.endpointInput.value = currentTracingConfig.endpoint || '';
+    endpointGroup.container.appendChild(this.endpointInput);
 
     // Langfuse public key
-    const publicKeyLabel = document.createElement('div');
-    publicKeyLabel.className = 'settings-label';
-    publicKeyLabel.textContent = i18nString(UIStrings.langfusePublicKey);
-    tracingConfigContainer.appendChild(publicKeyLabel);
-
-    const publicKeyHint = document.createElement('div');
-    publicKeyHint.className = 'settings-hint';
-    publicKeyHint.textContent = i18nString(UIStrings.langfusePublicKeyHint);
-    tracingConfigContainer.appendChild(publicKeyHint);
+    const publicKeyGroup = this.createFieldGroup(
+      i18nString(UIStrings.langfusePublicKey),
+      i18nString(UIStrings.langfusePublicKeyHint)
+    );
+    this.configContainer.appendChild(publicKeyGroup.container);
 
     this.publicKeyInput = document.createElement('input');
     this.publicKeyInput.className = 'settings-input';
     this.publicKeyInput.type = 'text';
-    this.publicKeyInput.placeholder = 'pk-lf-...';
+    this.publicKeyInput.placeholder = 'Enter public key';
     this.publicKeyInput.value = currentTracingConfig.publicKey || '';
-    tracingConfigContainer.appendChild(this.publicKeyInput);
+    publicKeyGroup.container.appendChild(this.publicKeyInput);
 
     // Langfuse secret key
-    const secretKeyLabel = document.createElement('div');
-    secretKeyLabel.className = 'settings-label';
-    secretKeyLabel.textContent = i18nString(UIStrings.langfuseSecretKey);
-    tracingConfigContainer.appendChild(secretKeyLabel);
-
-    const secretKeyHint = document.createElement('div');
-    secretKeyHint.className = 'settings-hint';
-    secretKeyHint.textContent = i18nString(UIStrings.langfuseSecretKeyHint);
-    tracingConfigContainer.appendChild(secretKeyHint);
+    const secretKeyGroup = this.createFieldGroup(
+      i18nString(UIStrings.langfuseSecretKey),
+      i18nString(UIStrings.langfuseSecretKeyHint)
+    );
+    this.configContainer.appendChild(secretKeyGroup.container);
 
     this.secretKeyInput = document.createElement('input');
     this.secretKeyInput.className = 'settings-input';
     this.secretKeyInput.type = 'password';
-    this.secretKeyInput.placeholder = 'sk-lf-...';
+    this.secretKeyInput.placeholder = 'Enter secret key';
     this.secretKeyInput.value = currentTracingConfig.secretKey || '';
-    tracingConfigContainer.appendChild(this.secretKeyInput);
+    secretKeyGroup.container.appendChild(this.secretKeyInput);
 
-    // Test connection button
-    const testTracingButton = document.createElement('button');
-    testTracingButton.className = 'settings-button test-button';
-    testTracingButton.textContent = i18nString(UIStrings.testTracing);
-    tracingConfigContainer.appendChild(testTracingButton);
+    // Footer with Test Connection button
+    const footer = document.createElement('div');
+    footer.className = 'settings-section-footer';
+    this.configContainer.appendChild(footer);
 
-    // Test status message
-    const testTracingStatus = document.createElement('div');
-    testTracingStatus.className = 'settings-status';
-    testTracingStatus.style.display = 'none';
-    tracingConfigContainer.appendChild(testTracingStatus);
+    const testButton = document.createElement('button');
+    testButton.className = 'settings-button primary';
+    testButton.textContent = 'Test Connection';
+    testButton.addEventListener('click', () => this.testConnection(testButton));
+    footer.appendChild(testButton);
+  }
 
-    // Toggle tracing config visibility
-    this.tracingEnabledCheckbox.addEventListener('change', () => {
-      tracingConfigContainer.style.display = this.tracingEnabledCheckbox!.checked ? 'block' : 'none';
-    });
+  private createFieldGroup(label: string, hint: string): { container: HTMLDivElement } {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '4px';
 
-    // Test tracing connection
-    testTracingButton.addEventListener('click', async () => {
-      testTracingButton.disabled = true;
-      testTracingStatus.style.display = 'block';
-      testTracingStatus.textContent = 'Testing connection...';
-      testTracingStatus.style.backgroundColor = 'var(--color-background-elevation-1)';
-      testTracingStatus.style.color = 'var(--color-text-primary)';
+    const labelEl = document.createElement('div');
+    labelEl.className = 'settings-label';
+    labelEl.textContent = label;
+    container.appendChild(labelEl);
 
-      try {
-        const endpoint = this.endpointInput!.value.trim();
-        const publicKey = this.publicKeyInput!.value.trim();
-        const secretKey = this.secretKeyInput!.value.trim();
+    const hintEl = document.createElement('div');
+    hintEl.className = 'settings-hint';
+    hintEl.textContent = hint;
+    container.appendChild(hintEl);
 
-        if (!endpoint || !publicKey || !secretKey) {
-          throw new Error('All fields are required for testing');
-        }
+    return { container };
+  }
 
-        // Test the connection with a simple trace
-        const testPayload = {
-          batch: [{
-            id: `test-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            type: 'trace-create',
-            body: {
-              id: `trace-test-${Date.now()}`,
-              name: 'Connection Test',
-              timestamp: new Date().toISOString()
-            }
-          }]
-        };
+  private handleToggle(): void {
+    this.isEnabled = !this.isEnabled;
 
-        const response = await fetch(`${endpoint}/api/public/ingestion`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Basic ' + btoa(`${publicKey}:${secretKey}`)
-          },
-          body: JSON.stringify(testPayload)
-        });
+    if (this.toggleElement) {
+      this.toggleElement.classList.toggle('active', this.isEnabled);
+    }
 
-        if (response.ok) {
-          testTracingStatus.textContent = '✓ Connection successful';
-          testTracingStatus.style.backgroundColor = 'var(--color-accent-green-background)';
-          testTracingStatus.style.color = 'var(--color-accent-green)';
-        } else {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-      } catch (error) {
-        testTracingStatus.textContent = `✗ ${error instanceof Error ? error.message : 'Connection failed'}`;
-        testTracingStatus.style.backgroundColor = 'var(--color-accent-red-background)';
-        testTracingStatus.style.color = 'var(--color-accent-red)';
-      } finally {
-        testTracingButton.disabled = false;
-        setTimeout(() => {
-          testTracingStatus.style.display = 'none';
-        }, 5000);
+    if (this.configContainer) {
+      this.configContainer.style.display = this.isEnabled ? 'flex' : 'none';
+    }
+
+    // Auto-save toggle state
+    if (!this.isEnabled) {
+      setTracingConfig({ provider: 'disabled' });
+    }
+  }
+
+  private async testConnection(testButton: HTMLButtonElement): Promise<void> {
+    testButton.disabled = true;
+    testButton.textContent = 'Testing...';
+
+    try {
+      const endpoint = this.endpointInput?.value.trim() || '';
+      const publicKey = this.publicKeyInput?.value.trim() || '';
+      const secretKey = this.secretKeyInput?.value.trim() || '';
+
+      if (!endpoint || !publicKey || !secretKey) {
+        throw new Error('All fields are required for testing');
       }
-    });
+
+      // Test the connection with a simple trace
+      const testPayload = {
+        batch: [{
+          id: `test-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          type: 'trace-create',
+          body: {
+            id: `trace-test-${Date.now()}`,
+            name: 'Connection Test',
+            timestamp: new Date().toISOString()
+          }
+        }]
+      };
+
+      const response = await fetch(`${endpoint}/api/public/ingestion`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + btoa(`${publicKey}:${secretKey}`)
+        },
+        body: JSON.stringify(testPayload)
+      });
+
+      if (response.ok) {
+        testButton.textContent = 'Connected!';
+        // Enable toggle if not already
+        if (!this.isEnabled) {
+          this.isEnabled = true;
+          if (this.toggleElement) {
+            this.toggleElement.classList.add('active');
+          }
+        }
+      } else {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+    } catch (error) {
+      testButton.textContent = 'Failed';
+      console.error('Tracing test failed:', error);
+    } finally {
+      setTimeout(() => {
+        testButton.disabled = false;
+        testButton.textContent = 'Test Connection';
+      }, 2000);
+    }
   }
 
   save(): void {
-    if (!this.tracingEnabledCheckbox || !this.endpointInput || !this.publicKeyInput || !this.secretKeyInput) {
+    if (!this.endpointInput || !this.publicKeyInput || !this.secretKeyInput) {
       return;
     }
 
-    if (this.tracingEnabledCheckbox.checked) {
+    if (this.isEnabled) {
       const endpoint = this.endpointInput.value.trim();
       const publicKey = this.publicKeyInput.value.trim();
       const secretKey = this.secretKeyInput.value.trim();

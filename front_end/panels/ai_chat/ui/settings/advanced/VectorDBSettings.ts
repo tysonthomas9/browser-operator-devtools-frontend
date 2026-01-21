@@ -19,7 +19,9 @@ import {
  */
 export class VectorDBSettings {
   private container: HTMLElement;
-  private vectorDBEnabledCheckbox: HTMLInputElement | null = null;
+  private isEnabled: boolean = false;
+  private toggleElement: HTMLDivElement | null = null;
+  private configContainer: HTMLDivElement | null = null;
   private vectorDBEndpointInput: HTMLInputElement | null = null;
   private vectorDBApiKeyInput: HTMLInputElement | null = null;
   private milvusPasswordInput: HTMLInputElement | null = null;
@@ -35,253 +37,238 @@ export class VectorDBSettings {
     this.container.innerHTML = '';
     this.container.className = 'settings-section vector-db-section';
 
-    // Title
-    const vectorDBTitle = document.createElement('h3');
-    vectorDBTitle.textContent = i18nString(UIStrings.vectorDBLabel);
-    vectorDBTitle.classList.add('settings-subtitle');
-    this.container.appendChild(vectorDBTitle);
+    this.isEnabled = localStorage.getItem(VECTOR_DB_ENABLED_KEY) === 'true';
 
-    // Vector DB enabled checkbox
-    const vectorDBEnabledContainer = document.createElement('div');
-    vectorDBEnabledContainer.className = 'tracing-enabled-container';
-    this.container.appendChild(vectorDBEnabledContainer);
+    // Header with toggle
+    const headerContainer = document.createElement('div');
+    headerContainer.className = 'settings-toggle-container';
+    this.container.appendChild(headerContainer);
 
-    this.vectorDBEnabledCheckbox = document.createElement('input');
-    this.vectorDBEnabledCheckbox.type = 'checkbox';
-    this.vectorDBEnabledCheckbox.id = 'vector-db-enabled';
-    this.vectorDBEnabledCheckbox.className = 'tracing-checkbox';
-    this.vectorDBEnabledCheckbox.checked = localStorage.getItem(VECTOR_DB_ENABLED_KEY) === 'true';
-    vectorDBEnabledContainer.appendChild(this.vectorDBEnabledCheckbox);
+    const infoContainer = document.createElement('div');
+    infoContainer.className = 'settings-toggle-info';
+    headerContainer.appendChild(infoContainer);
 
-    const vectorDBEnabledLabel = document.createElement('label');
-    vectorDBEnabledLabel.htmlFor = 'vector-db-enabled';
-    vectorDBEnabledLabel.className = 'tracing-label';
-    vectorDBEnabledLabel.textContent = i18nString(UIStrings.vectorDBEnabled);
-    vectorDBEnabledContainer.appendChild(vectorDBEnabledLabel);
+    const title = document.createElement('div');
+    title.className = 'settings-toggle-title';
+    title.textContent = i18nString(UIStrings.vectorDBLabel);
+    infoContainer.appendChild(title);
 
-    const vectorDBEnabledHint = document.createElement('div');
-    vectorDBEnabledHint.className = 'settings-hint';
-    vectorDBEnabledHint.textContent = i18nString(UIStrings.vectorDBEnabledHint);
-    this.container.appendChild(vectorDBEnabledHint);
+    const description = document.createElement('div');
+    description.className = 'settings-toggle-description';
+    description.textContent = i18nString(UIStrings.vectorDBEnabledHint);
+    infoContainer.appendChild(description);
 
-    // Vector DB configuration container (shown when enabled)
-    const vectorDBConfigContainer = document.createElement('div');
-    vectorDBConfigContainer.className = 'tracing-config-container';
-    vectorDBConfigContainer.style.display = this.vectorDBEnabledCheckbox.checked ? 'block' : 'none';
-    this.container.appendChild(vectorDBConfigContainer);
+    // Toggle switch
+    this.toggleElement = document.createElement('div');
+    this.toggleElement.className = 'settings-toggle';
+    if (this.isEnabled) {
+      this.toggleElement.classList.add('active');
+    }
+    this.toggleElement.addEventListener('click', () => this.handleToggle());
+    headerContainer.appendChild(this.toggleElement);
 
-    // Vector DB Endpoint
-    const vectorDBEndpointDiv = document.createElement('div');
-    vectorDBEndpointDiv.classList.add('settings-field');
-    vectorDBConfigContainer.appendChild(vectorDBEndpointDiv);
+    // Configuration container (shown when enabled)
+    this.configContainer = document.createElement('div');
+    this.configContainer.className = 'vector-db-config-container';
+    this.configContainer.style.display = this.isEnabled ? 'flex' : 'none';
+    this.configContainer.style.flexDirection = 'column';
+    this.configContainer.style.gap = '20px';
+    this.configContainer.style.marginTop = '20px';
+    this.container.appendChild(this.configContainer);
 
-    const vectorDBEndpointLabel = document.createElement('label');
-    vectorDBEndpointLabel.textContent = i18nString(UIStrings.vectorDBEndpoint);
-    vectorDBEndpointLabel.classList.add('settings-label');
-    vectorDBEndpointDiv.appendChild(vectorDBEndpointLabel);
-
-    const vectorDBEndpointHint = document.createElement('div');
-    vectorDBEndpointHint.textContent = i18nString(UIStrings.vectorDBEndpointHint);
-    vectorDBEndpointHint.classList.add('settings-hint');
-    vectorDBEndpointDiv.appendChild(vectorDBEndpointHint);
+    // Milvus Endpoint
+    const endpointGroup = this.createFieldGroup(
+      i18nString(UIStrings.vectorDBEndpoint),
+      i18nString(UIStrings.vectorDBEndpointHint)
+    );
+    this.configContainer.appendChild(endpointGroup.container);
 
     this.vectorDBEndpointInput = document.createElement('input');
     this.vectorDBEndpointInput.classList.add('settings-input');
     this.vectorDBEndpointInput.type = 'text';
-    this.vectorDBEndpointInput.placeholder = 'http://localhost:19530';
+    this.vectorDBEndpointInput.placeholder = 'Enter URL';
     this.vectorDBEndpointInput.value = localStorage.getItem(MILVUS_ENDPOINT_KEY) || '';
-    vectorDBEndpointDiv.appendChild(this.vectorDBEndpointInput);
+    this.vectorDBEndpointInput.addEventListener('input', () => this.saveSettings());
+    endpointGroup.container.appendChild(this.vectorDBEndpointInput);
 
-    // Vector DB API Key (Username)
-    const vectorDBApiKeyDiv = document.createElement('div');
-    vectorDBApiKeyDiv.classList.add('settings-field');
-    vectorDBConfigContainer.appendChild(vectorDBApiKeyDiv);
-
-    const vectorDBApiKeyLabel = document.createElement('label');
-    vectorDBApiKeyLabel.textContent = i18nString(UIStrings.vectorDBApiKey);
-    vectorDBApiKeyLabel.classList.add('settings-label');
-    vectorDBApiKeyDiv.appendChild(vectorDBApiKeyLabel);
-
-    const vectorDBApiKeyHint = document.createElement('div');
-    vectorDBApiKeyHint.textContent = i18nString(UIStrings.vectorDBApiKeyHint);
-    vectorDBApiKeyHint.classList.add('settings-hint');
-    vectorDBApiKeyDiv.appendChild(vectorDBApiKeyHint);
+    // Milvus Username
+    const usernameGroup = this.createFieldGroup(
+      i18nString(UIStrings.vectorDBApiKey),
+      i18nString(UIStrings.vectorDBApiKeyHint)
+    );
+    this.configContainer.appendChild(usernameGroup.container);
 
     this.vectorDBApiKeyInput = document.createElement('input');
     this.vectorDBApiKeyInput.classList.add('settings-input');
     this.vectorDBApiKeyInput.type = 'text';
-    this.vectorDBApiKeyInput.placeholder = 'root';
+    this.vectorDBApiKeyInput.placeholder = 'Enter username';
     this.vectorDBApiKeyInput.value = localStorage.getItem(MILVUS_USERNAME_KEY) || 'root';
-    vectorDBApiKeyDiv.appendChild(this.vectorDBApiKeyInput);
+    this.vectorDBApiKeyInput.addEventListener('input', () => this.saveSettings());
+    usernameGroup.container.appendChild(this.vectorDBApiKeyInput);
 
-    // Milvus Password
-    const milvusPasswordDiv = document.createElement('div');
-    milvusPasswordDiv.classList.add('settings-field');
-    vectorDBConfigContainer.appendChild(milvusPasswordDiv);
-
-    const milvusPasswordLabel = document.createElement('label');
-    milvusPasswordLabel.textContent = i18nString(UIStrings.milvusPassword);
-    milvusPasswordLabel.classList.add('settings-label');
-    milvusPasswordDiv.appendChild(milvusPasswordLabel);
-
-    const milvusPasswordHint = document.createElement('div');
-    milvusPasswordHint.textContent = i18nString(UIStrings.milvusPasswordHint);
-    milvusPasswordHint.classList.add('settings-hint');
-    milvusPasswordDiv.appendChild(milvusPasswordHint);
+    // Milvus Password / API Token
+    const passwordGroup = this.createFieldGroup(
+      i18nString(UIStrings.milvusPassword),
+      i18nString(UIStrings.milvusPasswordHint)
+    );
+    this.configContainer.appendChild(passwordGroup.container);
 
     this.milvusPasswordInput = document.createElement('input');
     this.milvusPasswordInput.classList.add('settings-input');
     this.milvusPasswordInput.type = 'password';
-    this.milvusPasswordInput.placeholder = 'Milvus (self-hosted) or API token (cloud)';
-    this.milvusPasswordInput.value = localStorage.getItem(MILVUS_PASSWORD_KEY) || 'Milvus';
-    milvusPasswordDiv.appendChild(this.milvusPasswordInput);
+    this.milvusPasswordInput.placeholder = 'Enter password / api token';
+    this.milvusPasswordInput.value = localStorage.getItem(MILVUS_PASSWORD_KEY) || '';
+    this.milvusPasswordInput.addEventListener('input', () => this.saveSettings());
+    passwordGroup.container.appendChild(this.milvusPasswordInput);
 
     // OpenAI API Key for embeddings
-    const milvusOpenAIDiv = document.createElement('div');
-    milvusOpenAIDiv.classList.add('settings-field');
-    vectorDBConfigContainer.appendChild(milvusOpenAIDiv);
-
-    const milvusOpenAILabel = document.createElement('label');
-    milvusOpenAILabel.textContent = i18nString(UIStrings.milvusOpenAIKey);
-    milvusOpenAILabel.classList.add('settings-label');
-    milvusOpenAIDiv.appendChild(milvusOpenAILabel);
-
-    const milvusOpenAIHint = document.createElement('div');
-    milvusOpenAIHint.textContent = i18nString(UIStrings.milvusOpenAIKeyHint);
-    milvusOpenAIHint.classList.add('settings-hint');
-    milvusOpenAIDiv.appendChild(milvusOpenAIHint);
+    const openaiGroup = this.createFieldGroup(
+      i18nString(UIStrings.milvusOpenAIKey),
+      i18nString(UIStrings.milvusOpenAIKeyHint)
+    );
+    this.configContainer.appendChild(openaiGroup.container);
 
     this.milvusOpenAIInput = document.createElement('input');
     this.milvusOpenAIInput.classList.add('settings-input');
     this.milvusOpenAIInput.type = 'password';
-    this.milvusOpenAIInput.placeholder = 'sk-...';
+    this.milvusOpenAIInput.placeholder = 'Enter api key';
     this.milvusOpenAIInput.value = localStorage.getItem(MILVUS_OPENAI_KEY) || '';
-    milvusOpenAIDiv.appendChild(this.milvusOpenAIInput);
+    this.milvusOpenAIInput.addEventListener('input', () => this.saveSettings());
+    openaiGroup.container.appendChild(this.milvusOpenAIInput);
 
-    // Vector DB Collection Name
-    const vectorDBCollectionDiv = document.createElement('div');
-    vectorDBCollectionDiv.classList.add('settings-field');
-    vectorDBConfigContainer.appendChild(vectorDBCollectionDiv);
-
-    const vectorDBCollectionLabel = document.createElement('label');
-    vectorDBCollectionLabel.textContent = i18nString(UIStrings.vectorDBCollection);
-    vectorDBCollectionLabel.classList.add('settings-label');
-    vectorDBCollectionDiv.appendChild(vectorDBCollectionLabel);
-
-    const vectorDBCollectionHint = document.createElement('div');
-    vectorDBCollectionHint.textContent = i18nString(UIStrings.vectorDBCollectionHint);
-    vectorDBCollectionHint.classList.add('settings-hint');
-    vectorDBCollectionDiv.appendChild(vectorDBCollectionHint);
+    // Collection Name
+    const collectionGroup = this.createFieldGroup(
+      i18nString(UIStrings.vectorDBCollection),
+      i18nString(UIStrings.vectorDBCollectionHint)
+    );
+    this.configContainer.appendChild(collectionGroup.container);
 
     this.vectorDBCollectionInput = document.createElement('input');
     this.vectorDBCollectionInput.classList.add('settings-input');
     this.vectorDBCollectionInput.type = 'text';
-    this.vectorDBCollectionInput.placeholder = 'bookmarks';
+    this.vectorDBCollectionInput.placeholder = 'Enter collection name';
     this.vectorDBCollectionInput.value = localStorage.getItem(MILVUS_COLLECTION_KEY) || 'bookmarks';
-    vectorDBCollectionDiv.appendChild(this.vectorDBCollectionInput);
+    this.vectorDBCollectionInput.addEventListener('input', () => this.saveSettings());
+    collectionGroup.container.appendChild(this.vectorDBCollectionInput);
 
-    // Test Vector DB Connection Button
-    const vectorDBTestDiv = document.createElement('div');
-    vectorDBTestDiv.classList.add('settings-field', 'test-connection-field');
-    vectorDBConfigContainer.appendChild(vectorDBTestDiv);
+    // Footer with Test Connection button
+    const footer = document.createElement('div');
+    footer.className = 'settings-section-footer';
+    this.configContainer.appendChild(footer);
 
-    const vectorDBTestButton = document.createElement('button');
-    vectorDBTestButton.classList.add('settings-button', 'test-button');
-    vectorDBTestButton.setAttribute('type', 'button');
-    vectorDBTestButton.textContent = i18nString(UIStrings.testVectorDBConnection);
-    vectorDBTestDiv.appendChild(vectorDBTestButton);
+    const testButton = document.createElement('button');
+    testButton.className = 'settings-button primary';
+    testButton.textContent = 'Test Connection';
+    testButton.addEventListener('click', () => this.testConnection(testButton));
+    footer.appendChild(testButton);
+  }
 
-    const vectorDBTestStatus = document.createElement('div');
-    vectorDBTestStatus.classList.add('settings-status');
-    vectorDBTestStatus.style.display = 'none';
-    vectorDBTestDiv.appendChild(vectorDBTestStatus);
+  private createFieldGroup(label: string, hint: string): { container: HTMLDivElement } {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '4px';
 
-    // Toggle vector DB config visibility
-    this.vectorDBEnabledCheckbox.addEventListener('change', () => {
-      vectorDBConfigContainer.style.display = this.vectorDBEnabledCheckbox!.checked ? 'block' : 'none';
-      localStorage.setItem(VECTOR_DB_ENABLED_KEY, this.vectorDBEnabledCheckbox!.checked.toString());
-    });
+    const labelEl = document.createElement('div');
+    labelEl.className = 'settings-label';
+    labelEl.textContent = label;
+    container.appendChild(labelEl);
 
-    // Save Vector DB settings on input change
-    const saveVectorDBSettings = () => {
-      if (!this.vectorDBEnabledCheckbox || !this.vectorDBEndpointInput || !this.vectorDBApiKeyInput ||
-          !this.milvusPasswordInput || !this.vectorDBCollectionInput || !this.milvusOpenAIInput) {
-        return;
-      }
+    const hintEl = document.createElement('div');
+    hintEl.className = 'settings-hint';
+    hintEl.textContent = hint;
+    container.appendChild(hintEl);
 
-      localStorage.setItem(VECTOR_DB_ENABLED_KEY, this.vectorDBEnabledCheckbox.checked.toString());
-      localStorage.setItem(MILVUS_ENDPOINT_KEY, this.vectorDBEndpointInput.value);
-      localStorage.setItem(MILVUS_USERNAME_KEY, this.vectorDBApiKeyInput.value);
-      localStorage.setItem(MILVUS_PASSWORD_KEY, this.milvusPasswordInput.value);
-      localStorage.setItem(MILVUS_COLLECTION_KEY, this.vectorDBCollectionInput.value);
-      localStorage.setItem(MILVUS_OPENAI_KEY, this.milvusOpenAIInput.value);
-    };
+    return { container };
+  }
 
-    this.vectorDBEndpointInput.addEventListener('input', saveVectorDBSettings);
-    this.vectorDBApiKeyInput.addEventListener('input', saveVectorDBSettings);
-    this.milvusPasswordInput.addEventListener('input', saveVectorDBSettings);
-    this.vectorDBCollectionInput.addEventListener('input', saveVectorDBSettings);
-    this.milvusOpenAIInput.addEventListener('input', saveVectorDBSettings);
+  private handleToggle(): void {
+    this.isEnabled = !this.isEnabled;
 
-    // Test Vector DB connection
-    vectorDBTestButton.addEventListener('click', async () => {
-      if (!this.vectorDBEndpointInput || !this.vectorDBApiKeyInput ||
-          !this.milvusPasswordInput || !this.vectorDBCollectionInput || !this.milvusOpenAIInput) {
-        return;
-      }
+    if (this.toggleElement) {
+      this.toggleElement.classList.toggle('active', this.isEnabled);
+    }
 
-      const endpoint = this.vectorDBEndpointInput.value.trim();
+    if (this.configContainer) {
+      this.configContainer.style.display = this.isEnabled ? 'flex' : 'none';
+    }
 
-      if (!endpoint) {
-        vectorDBTestStatus.textContent = 'Please enter an endpoint URL';
-        vectorDBTestStatus.style.color = 'var(--color-accent-red)';
-        vectorDBTestStatus.style.display = 'block';
-        setTimeout(() => {
-          vectorDBTestStatus.style.display = 'none';
-        }, 3000);
-        return;
-      }
+    localStorage.setItem(VECTOR_DB_ENABLED_KEY, this.isEnabled.toString());
+  }
 
-      vectorDBTestButton.disabled = true;
-      vectorDBTestStatus.textContent = i18nString(UIStrings.testingVectorDBConnection);
-      vectorDBTestStatus.style.color = 'var(--color-text-secondary)';
-      vectorDBTestStatus.style.display = 'block';
+  private saveSettings(): void {
+    if (!this.vectorDBEndpointInput || !this.vectorDBApiKeyInput ||
+        !this.milvusPasswordInput || !this.vectorDBCollectionInput || !this.milvusOpenAIInput) {
+      return;
+    }
 
-      try {
-        // Import and test the Vector DB client
-        const { VectorDBClient } = await import('../../../tools/VectorDBClient.js');
-        const vectorClient = new VectorDBClient({
-          endpoint,
-          username: this.vectorDBApiKeyInput.value || 'root',
-          password: this.milvusPasswordInput.value || 'Milvus',
-          collection: this.vectorDBCollectionInput.value || 'bookmarks',
-          openaiApiKey: this.milvusOpenAIInput.value || undefined
-        });
+    localStorage.setItem(VECTOR_DB_ENABLED_KEY, this.isEnabled.toString());
+    localStorage.setItem(MILVUS_ENDPOINT_KEY, this.vectorDBEndpointInput.value);
+    localStorage.setItem(MILVUS_USERNAME_KEY, this.vectorDBApiKeyInput.value);
+    localStorage.setItem(MILVUS_PASSWORD_KEY, this.milvusPasswordInput.value);
+    localStorage.setItem(MILVUS_COLLECTION_KEY, this.vectorDBCollectionInput.value);
+    localStorage.setItem(MILVUS_OPENAI_KEY, this.milvusOpenAIInput.value);
+  }
 
-        const testResult = await vectorClient.testConnection();
+  private async testConnection(testButton: HTMLButtonElement): Promise<void> {
+    if (!this.vectorDBEndpointInput || !this.vectorDBApiKeyInput ||
+        !this.milvusPasswordInput || !this.vectorDBCollectionInput || !this.milvusOpenAIInput) {
+      return;
+    }
 
-        if (testResult.success) {
-          vectorDBTestStatus.textContent = i18nString(UIStrings.vectorDBConnectionSuccess);
-          vectorDBTestStatus.style.color = 'var(--color-accent-green)';
-        } else {
-          vectorDBTestStatus.textContent = `${i18nString(UIStrings.vectorDBConnectionFailed)}: ${testResult.error}`;
-          vectorDBTestStatus.style.color = 'var(--color-accent-red)';
+    const endpoint = this.vectorDBEndpointInput.value.trim();
+
+    if (!endpoint) {
+      testButton.textContent = 'Enter endpoint';
+      setTimeout(() => {
+        testButton.textContent = 'Test Connection';
+      }, 2000);
+      return;
+    }
+
+    testButton.disabled = true;
+    testButton.textContent = 'Testing...';
+
+    try {
+      // Import and test the Vector DB client
+      const { VectorDBClient } = await import('../../../tools/VectorDBClient.js');
+      const vectorClient = new VectorDBClient({
+        endpoint,
+        username: this.vectorDBApiKeyInput.value || 'root',
+        password: this.milvusPasswordInput.value || 'Milvus',
+        collection: this.vectorDBCollectionInput.value || 'bookmarks',
+        openaiApiKey: this.milvusOpenAIInput.value || undefined
+      });
+
+      const testResult = await vectorClient.testConnection();
+
+      if (testResult.success) {
+        testButton.textContent = 'Connected!';
+        // Enable toggle if not already
+        if (!this.isEnabled) {
+          this.isEnabled = true;
+          if (this.toggleElement) {
+            this.toggleElement.classList.add('active');
+          }
+          localStorage.setItem(VECTOR_DB_ENABLED_KEY, 'true');
         }
-      } catch (error: any) {
-        vectorDBTestStatus.textContent = `${i18nString(UIStrings.vectorDBConnectionFailed)}: ${error.message}`;
-        vectorDBTestStatus.style.color = 'var(--color-accent-red)';
-      } finally {
-        vectorDBTestButton.disabled = false;
-        setTimeout(() => {
-          vectorDBTestStatus.style.display = 'none';
-        }, 5000);
+      } else {
+        testButton.textContent = 'Failed';
+        console.error('Vector DB test failed:', testResult.error);
       }
-    });
+    } catch (error: any) {
+      testButton.textContent = 'Failed';
+      console.error('Vector DB test error:', error.message);
+    } finally {
+      setTimeout(() => {
+        testButton.disabled = false;
+        testButton.textContent = 'Test Connection';
+      }, 2000);
+    }
   }
 
   save(): void {
-    // Vector DB settings are auto-saved on input change
-    // No need to save on dialog save
+    this.saveSettings();
   }
 
   cleanup(): void {

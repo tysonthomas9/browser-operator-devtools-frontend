@@ -440,6 +440,13 @@ export class SettingsDialog extends HTMLElement {
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.reattach(() => window.location.reload());
   }
 
+  #handlePanelFilterToggle(): void {
+    const currentValue = localStorage.getItem(PANEL_FILTER_ENABLED_KEY) !== 'false';
+    const newValue = !currentValue;
+    localStorage.setItem(PANEL_FILTER_ENABLED_KEY, newValue.toString());
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.reattach(() => window.location.reload());
+  }
+
   async #handleSave(): Promise<void> {
     this.#saveStatus = 'saving';
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#boundRender);
@@ -844,49 +851,81 @@ export class SettingsDialog extends HTMLElement {
           gap: 8px;
         }
 
-        /* Checkbox container styles for advanced settings */
-        .tracing-enabled-container {
+        /* Toggle switch styles for advanced settings sections */
+        .settings-toggle-container {
           display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-bottom: 4px;
+          justify-content: space-between;
+          align-items: flex-start;
+          width: 100%;
         }
 
-        .tracing-checkbox {
-          width: 14px;
-          height: 14px;
-          margin: 0;
+        .settings-toggle-info {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          flex: 1;
+          max-width: 327px;
+        }
+
+        .settings-toggle-title {
+          font-size: 14px;
+          font-weight: 500;
+          color: #334155;
+          line-height: 14px;
+        }
+
+        .settings-toggle-description {
+          font-size: 12px;
+          font-weight: 400;
+          color: #5E789A;
+          line-height: normal;
+        }
+
+        .settings-toggle {
+          position: relative;
+          width: 44px;
+          height: 24px;
+          background: #CBD5E1;
+          border-radius: 12px;
           cursor: pointer;
+          transition: background 0.2s ease;
           flex-shrink: 0;
         }
 
-        .tracing-label {
-          font-size: 13px;
-          font-weight: 500;
-          color: #1e293b;
-          cursor: pointer;
+        .settings-toggle:hover {
+          background: #94a3b8;
         }
 
-        .evaluation-enabled-container {
+        .settings-toggle.active {
+          background: #1093F4;
+        }
+
+        .settings-toggle.active:hover {
+          background: #0d7fd4;
+        }
+
+        .settings-toggle::after {
+          content: '';
+          position: absolute;
+          width: 20px;
+          height: 20px;
+          background: white;
+          border-radius: 50%;
+          top: 2px;
+          left: 2px;
+          transition: transform 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .settings-toggle.active::after {
+          transform: translateX(20px);
+        }
+
+        .settings-section-footer {
           display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-bottom: 4px;
-        }
-
-        .evaluation-checkbox {
-          width: 14px;
-          height: 14px;
-          margin: 0;
-          cursor: pointer;
-          flex-shrink: 0;
-        }
-
-        .evaluation-label {
-          font-size: 13px;
-          font-weight: 500;
-          color: #1e293b;
-          cursor: pointer;
+          justify-content: flex-end;
+          width: 100%;
+          margin-top: 8px;
         }
 
         .settings-footer {
@@ -1076,17 +1115,17 @@ export class SettingsDialog extends HTMLElement {
           <!-- Panel Filter -->
           <div class="settings-section">
             <h3 class="settings-subtitle">Panel Visibility</h3>
-            <div class="panel-filter-container">
-              <input
-                type="checkbox"
-                id="panel-filter-toggle"
-                .checked=${panelFilterEnabled}
-                @change=${this.#handlePanelFilterChange.bind(this)}
-              />
-              <label for="panel-filter-toggle">Show only AI Chat panel</label>
-            </div>
-            <div class="settings-hint">
-              When disabled, shows all standard DevTools panels (Elements, Console, etc.). Requires DevTools reload.
+            <div class="settings-toggle-container">
+              <div class="settings-toggle-info">
+                <div class="settings-toggle-title">Show only AI Chat panel</div>
+                <div class="settings-toggle-description">
+                  When disabled, shows all standard DevTools panels (Elements, Console, etc.). Requires DevTools reload.
+                </div>
+              </div>
+              <div
+                class="settings-toggle ${panelFilterEnabled ? 'active' : ''}"
+                @click=${this.#handlePanelFilterToggle.bind(this)}
+              ></div>
             </div>
           </div>
         ` : nothing}

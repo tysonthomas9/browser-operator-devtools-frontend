@@ -24,9 +24,11 @@ const logger = createLogger('EvaluationSettings');
 export class EvaluationSettings {
   private container: HTMLElement;
   private statusUpdateInterval: number | null = null;
-  private evaluationEnabledCheckbox: HTMLInputElement | null = null;
+  private isEnabled: boolean = false;
+  private toggleElement: HTMLDivElement | null = null;
   private evaluationEndpointInput: HTMLInputElement | null = null;
   private evaluationSecretKeyInput: HTMLInputElement | null = null;
+  private configContainer: HTMLDivElement | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -37,99 +39,53 @@ export class EvaluationSettings {
     this.container.innerHTML = '';
     this.container.className = 'settings-section evaluation-section';
 
-    // Title
-    const evaluationSectionTitle = document.createElement('h3');
-    evaluationSectionTitle.className = 'settings-subtitle';
-    evaluationSectionTitle.textContent = i18nString(UIStrings.evaluationSection);
-    this.container.appendChild(evaluationSectionTitle);
-
     // Get current evaluation configuration
     const currentEvaluationConfig = getEvaluationConfig();
+    this.isEnabled = isEvaluationEnabled();
 
-    // Evaluation enabled checkbox
-    const evaluationEnabledContainer = document.createElement('div');
-    evaluationEnabledContainer.className = 'evaluation-enabled-container';
-    this.container.appendChild(evaluationEnabledContainer);
+    // Header with toggle
+    const headerContainer = document.createElement('div');
+    headerContainer.className = 'settings-toggle-container';
+    this.container.appendChild(headerContainer);
 
-    this.evaluationEnabledCheckbox = document.createElement('input');
-    this.evaluationEnabledCheckbox.type = 'checkbox';
-    this.evaluationEnabledCheckbox.id = 'evaluation-enabled';
-    this.evaluationEnabledCheckbox.className = 'evaluation-checkbox';
-    this.evaluationEnabledCheckbox.checked = isEvaluationEnabled();
-    evaluationEnabledContainer.appendChild(this.evaluationEnabledCheckbox);
+    const infoContainer = document.createElement('div');
+    infoContainer.className = 'settings-toggle-info';
+    headerContainer.appendChild(infoContainer);
 
-    const evaluationEnabledLabel = document.createElement('label');
-    evaluationEnabledLabel.htmlFor = 'evaluation-enabled';
-    evaluationEnabledLabel.className = 'evaluation-label';
-    evaluationEnabledLabel.textContent = i18nString(UIStrings.evaluationEnabled);
-    evaluationEnabledContainer.appendChild(evaluationEnabledLabel);
+    const title = document.createElement('div');
+    title.className = 'settings-toggle-title';
+    title.textContent = i18nString(UIStrings.evaluationSection);
+    infoContainer.appendChild(title);
 
-    const evaluationEnabledHint = document.createElement('div');
-    evaluationEnabledHint.className = 'settings-hint';
-    evaluationEnabledHint.textContent = i18nString(UIStrings.evaluationEnabledHint);
-    this.container.appendChild(evaluationEnabledHint);
+    const description = document.createElement('div');
+    description.className = 'settings-toggle-description';
+    description.textContent = i18nString(UIStrings.evaluationEnabledHint);
+    infoContainer.appendChild(description);
 
-    // Connection status indicator
-    const connectionStatusContainer = document.createElement('div');
-    connectionStatusContainer.className = 'connection-status-container';
-    connectionStatusContainer.style.display = 'flex';
-    connectionStatusContainer.style.alignItems = 'center';
-    connectionStatusContainer.style.gap = '8px';
-    connectionStatusContainer.style.marginTop = '8px';
-    connectionStatusContainer.style.fontSize = '13px';
-    this.container.appendChild(connectionStatusContainer);
+    // Toggle switch
+    this.toggleElement = document.createElement('div');
+    this.toggleElement.className = 'settings-toggle';
+    if (this.isEnabled) {
+      this.toggleElement.classList.add('active');
+    }
+    this.toggleElement.addEventListener('click', () => this.handleToggle());
+    headerContainer.appendChild(this.toggleElement);
 
-    const connectionStatusDot = document.createElement('div');
-    connectionStatusDot.className = 'connection-status-dot';
-    connectionStatusDot.style.width = '8px';
-    connectionStatusDot.style.height = '8px';
-    connectionStatusDot.style.borderRadius = '50%';
-    connectionStatusDot.style.flexShrink = '0';
-    connectionStatusContainer.appendChild(connectionStatusDot);
-
-    const connectionStatusText = document.createElement('span');
-    connectionStatusText.className = 'connection-status-text';
-    connectionStatusContainer.appendChild(connectionStatusText);
-
-    // Function to update connection status
-    const updateConnectionStatus = () => {
-      const isConnected = isEvaluationConnected();
-
-      logger.debug('Updating connection status', { isConnected });
-
-      if (isConnected) {
-        connectionStatusDot.style.backgroundColor = 'var(--color-accent-green)';
-        connectionStatusText.textContent = 'Connected to evaluation server';
-        connectionStatusText.style.color = 'var(--color-accent-green)';
-      } else {
-        connectionStatusDot.style.backgroundColor = 'var(--color-text-disabled)';
-        connectionStatusText.textContent = 'Not connected';
-        connectionStatusText.style.color = 'var(--color-text-disabled)';
-      }
-    };
-
-    // Update status initially and when evaluation is enabled/disabled
-    updateConnectionStatus();
-
-    // Set up periodic status updates every 2 seconds
-    this.statusUpdateInterval = setInterval(updateConnectionStatus, 2000);
-
-    // Evaluation configuration container (shown when enabled)
-    const evaluationConfigContainer = document.createElement('div');
-    evaluationConfigContainer.className = 'evaluation-config-container';
-    evaluationConfigContainer.style.display = this.evaluationEnabledCheckbox.checked ? 'block' : 'none';
-    this.container.appendChild(evaluationConfigContainer);
+    // Configuration container (shown when enabled)
+    this.configContainer = document.createElement('div');
+    this.configContainer.className = 'evaluation-config-container';
+    this.configContainer.style.display = this.isEnabled ? 'flex' : 'none';
+    this.configContainer.style.flexDirection = 'column';
+    this.configContainer.style.gap = '20px';
+    this.configContainer.style.marginTop = '20px';
+    this.container.appendChild(this.configContainer);
 
     // Client ID display (read-only)
-    const clientIdLabel = document.createElement('div');
-    clientIdLabel.className = 'settings-label';
-    clientIdLabel.textContent = 'Client ID';
-    evaluationConfigContainer.appendChild(clientIdLabel);
-
-    const clientIdHint = document.createElement('div');
-    clientIdHint.className = 'settings-hint';
-    clientIdHint.textContent = 'Unique identifier for this DevTools instance';
-    evaluationConfigContainer.appendChild(clientIdHint);
+    const clientIdGroup = this.createFieldGroup(
+      'Client ID',
+      'Unique identifier for this DevTools instance'
+    );
+    this.configContainer.appendChild(clientIdGroup.container);
 
     const clientIdInput = document.createElement('input');
     clientIdInput.type = 'text';
@@ -138,143 +94,155 @@ export class EvaluationSettings {
     clientIdInput.readOnly = true;
     clientIdInput.style.backgroundColor = 'var(--color-background-elevation-1)';
     clientIdInput.style.cursor = 'default';
-    evaluationConfigContainer.appendChild(clientIdInput);
+    clientIdGroup.container.appendChild(clientIdInput);
 
     // Evaluation endpoint
-    const evaluationEndpointLabel = document.createElement('div');
-    evaluationEndpointLabel.className = 'settings-label';
-    evaluationEndpointLabel.textContent = i18nString(UIStrings.evaluationEndpoint);
-    evaluationConfigContainer.appendChild(evaluationEndpointLabel);
-
-    const evaluationEndpointHint = document.createElement('div');
-    evaluationEndpointHint.className = 'settings-hint';
-    evaluationEndpointHint.textContent = i18nString(UIStrings.evaluationEndpointHint);
-    evaluationConfigContainer.appendChild(evaluationEndpointHint);
+    const endpointGroup = this.createFieldGroup(
+      i18nString(UIStrings.evaluationEndpoint),
+      i18nString(UIStrings.evaluationEndpointHint)
+    );
+    this.configContainer.appendChild(endpointGroup.container);
 
     this.evaluationEndpointInput = document.createElement('input');
     this.evaluationEndpointInput.type = 'text';
     this.evaluationEndpointInput.className = 'settings-input';
     this.evaluationEndpointInput.placeholder = 'ws://localhost:8080';
     this.evaluationEndpointInput.value = currentEvaluationConfig.endpoint || 'ws://localhost:8080';
-    evaluationConfigContainer.appendChild(this.evaluationEndpointInput);
+    endpointGroup.container.appendChild(this.evaluationEndpointInput);
 
     // Evaluation secret key
-    const evaluationSecretKeyLabel = document.createElement('div');
-    evaluationSecretKeyLabel.className = 'settings-label';
-    evaluationSecretKeyLabel.textContent = i18nString(UIStrings.evaluationSecretKey);
-    evaluationConfigContainer.appendChild(evaluationSecretKeyLabel);
-
-    const evaluationSecretKeyHint = document.createElement('div');
-    evaluationSecretKeyHint.className = 'settings-hint';
-    evaluationSecretKeyHint.textContent = i18nString(UIStrings.evaluationSecretKeyHint);
-    evaluationConfigContainer.appendChild(evaluationSecretKeyHint);
+    const secretKeyGroup = this.createFieldGroup(
+      i18nString(UIStrings.evaluationSecretKey),
+      i18nString(UIStrings.evaluationSecretKeyHint)
+    );
+    this.configContainer.appendChild(secretKeyGroup.container);
 
     this.evaluationSecretKeyInput = document.createElement('input');
     this.evaluationSecretKeyInput.type = 'password';
     this.evaluationSecretKeyInput.className = 'settings-input';
-    this.evaluationSecretKeyInput.placeholder = 'Optional secret key';
+    this.evaluationSecretKeyInput.placeholder = 'Evaluation secret key (optional)';
     this.evaluationSecretKeyInput.value = currentEvaluationConfig.secretKey || '';
-    evaluationConfigContainer.appendChild(this.evaluationSecretKeyInput);
+    secretKeyGroup.container.appendChild(this.evaluationSecretKeyInput);
 
-    // Connection status message
-    const connectionStatusMessage = document.createElement('div');
-    connectionStatusMessage.className = 'settings-status';
-    connectionStatusMessage.style.display = 'none';
-    evaluationConfigContainer.appendChild(connectionStatusMessage);
+    // Footer with Test Connection button
+    const footer = document.createElement('div');
+    footer.className = 'settings-section-footer';
+    this.configContainer.appendChild(footer);
 
-    // Auto-connect when evaluation is enabled/disabled
-    this.evaluationEnabledCheckbox.addEventListener('change', async () => {
-      const isEnabled = this.evaluationEnabledCheckbox!.checked;
-      evaluationConfigContainer.style.display = isEnabled ? 'block' : 'none';
+    const testButton = document.createElement('button');
+    testButton.className = 'settings-button primary';
+    testButton.textContent = 'Test Connection';
+    testButton.addEventListener('click', () => this.testConnection(clientIdInput));
+    footer.appendChild(testButton);
+  }
 
-      // Show connection status
-      connectionStatusMessage.style.display = 'block';
+  private createFieldGroup(label: string, hint: string): { container: HTMLDivElement } {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '4px';
 
-      if (isEnabled) {
-        // Auto-connect when enabled
-        connectionStatusMessage.textContent = 'Connecting...';
-        connectionStatusMessage.style.backgroundColor = 'var(--color-background-elevation-1)';
-        connectionStatusMessage.style.color = 'var(--color-text-primary)';
+    const labelEl = document.createElement('div');
+    labelEl.className = 'settings-label';
+    labelEl.textContent = label;
+    container.appendChild(labelEl);
 
-        try {
-          const endpoint = this.evaluationEndpointInput!.value.trim() || 'ws://localhost:8080';
-          const secretKey = this.evaluationSecretKeyInput!.value.trim();
+    const hintEl = document.createElement('div');
+    hintEl.className = 'settings-hint';
+    hintEl.textContent = hint;
+    container.appendChild(hintEl);
 
-          // Update config and connect
-          setEvaluationConfig({
-            enabled: true,
-            endpoint,
-            secretKey
-          });
+    return { container };
+  }
 
-          await connectToEvaluationService();
+  private async handleToggle(): Promise<void> {
+    this.isEnabled = !this.isEnabled;
 
-          // Update client ID display after connection
-          const clientId = getEvaluationClientId();
-          if (clientId) {
-            clientIdInput.value = clientId;
-          }
+    if (this.toggleElement) {
+      this.toggleElement.classList.toggle('active', this.isEnabled);
+    }
 
-          connectionStatusMessage.textContent = '✓ Connected successfully';
-          connectionStatusMessage.style.backgroundColor = 'var(--color-accent-green-background)';
-          connectionStatusMessage.style.color = 'var(--color-accent-green)';
+    if (this.configContainer) {
+      this.configContainer.style.display = this.isEnabled ? 'flex' : 'none';
+    }
 
-          // Update connection status indicator
-          setTimeout(updateConnectionStatus, 500);
-        } catch (error) {
-          connectionStatusMessage.textContent = `✗ ${error instanceof Error ? error.message : 'Connection failed'}`;
-          connectionStatusMessage.style.backgroundColor = 'var(--color-accent-red-background)';
-          connectionStatusMessage.style.color = 'var(--color-accent-red)';
+    if (this.isEnabled) {
+      // Auto-connect when enabled
+      try {
+        const endpoint = this.evaluationEndpointInput?.value.trim() || 'ws://localhost:8080';
+        const secretKey = this.evaluationSecretKeyInput?.value.trim() || '';
 
-          // Uncheck the checkbox if connection failed
-          this.evaluationEnabledCheckbox!.checked = false;
-          evaluationConfigContainer.style.display = 'none';
+        setEvaluationConfig({
+          enabled: true,
+          endpoint,
+          secretKey
+        });
+
+        await connectToEvaluationService();
+      } catch (error) {
+        logger.error('Failed to connect to evaluation service', error);
+        // Revert toggle on failure
+        this.isEnabled = false;
+        if (this.toggleElement) {
+          this.toggleElement.classList.remove('active');
         }
-      } else {
-        // Auto-disconnect when disabled
-        connectionStatusMessage.textContent = 'Disconnecting...';
-        connectionStatusMessage.style.backgroundColor = 'var(--color-background-elevation-1)';
-        connectionStatusMessage.style.color = 'var(--color-text-primary)';
-
-        try {
-          disconnectFromEvaluationService();
-
-          // Update config
-          setEvaluationConfig({
-            enabled: false,
-            endpoint: this.evaluationEndpointInput!.value.trim() || 'ws://localhost:8080',
-            secretKey: this.evaluationSecretKeyInput!.value.trim()
-          });
-
-          connectionStatusMessage.textContent = '✓ Disconnected';
-          connectionStatusMessage.style.backgroundColor = 'var(--color-background-elevation-1)';
-          connectionStatusMessage.style.color = 'var(--color-text-primary)';
-
-          // Update connection status indicator
-          updateConnectionStatus();
-        } catch (error) {
-          connectionStatusMessage.textContent = `✗ Disconnect error: ${error instanceof Error ? error.message : 'Unknown error'}`;
-          connectionStatusMessage.style.backgroundColor = 'var(--color-accent-red-background)';
-          connectionStatusMessage.style.color = 'var(--color-accent-red)';
+        if (this.configContainer) {
+          this.configContainer.style.display = 'none';
         }
       }
+    } else {
+      // Disconnect when disabled
+      try {
+        disconnectFromEvaluationService();
+        setEvaluationConfig({
+          enabled: false,
+          endpoint: this.evaluationEndpointInput?.value.trim() || 'ws://localhost:8080',
+          secretKey: this.evaluationSecretKeyInput?.value.trim() || ''
+        });
+      } catch (error) {
+        logger.error('Failed to disconnect from evaluation service', error);
+      }
+    }
+  }
 
-      // Hide status message after 3 seconds
-      setTimeout(() => {
-        connectionStatusMessage.style.display = 'none';
-      }, 3000);
-    });
+  private async testConnection(clientIdInput: HTMLInputElement): Promise<void> {
+    try {
+      const endpoint = this.evaluationEndpointInput?.value.trim() || 'ws://localhost:8080';
+      const secretKey = this.evaluationSecretKeyInput?.value.trim() || '';
+
+      setEvaluationConfig({
+        enabled: true,
+        endpoint,
+        secretKey
+      });
+
+      await connectToEvaluationService();
+
+      // Update client ID display after connection
+      const clientId = getEvaluationClientId();
+      if (clientId) {
+        clientIdInput.value = clientId;
+      }
+
+      // Update toggle state
+      this.isEnabled = true;
+      if (this.toggleElement) {
+        this.toggleElement.classList.add('active');
+      }
+
+      logger.info('Test connection successful');
+    } catch (error) {
+      logger.error('Test connection failed', error);
+    }
   }
 
   save(): void {
-    // Evaluation settings are auto-saved on enable/disable toggle
-    // Final save happens in the checkbox change handler
-    if (!this.evaluationEnabledCheckbox || !this.evaluationEndpointInput || !this.evaluationSecretKeyInput) {
+    if (!this.evaluationEndpointInput || !this.evaluationSecretKeyInput) {
       return;
     }
 
     setEvaluationConfig({
-      enabled: this.evaluationEnabledCheckbox.checked,
+      enabled: this.isEnabled,
       endpoint: this.evaluationEndpointInput.value.trim() || 'ws://localhost:8080',
       secretKey: this.evaluationSecretKeyInput.value.trim()
     });
