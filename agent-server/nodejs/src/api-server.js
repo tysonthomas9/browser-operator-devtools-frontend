@@ -555,14 +555,18 @@ class APIServer {
       timeout
     );
 
+    // RPC response wraps the tool result in a 'result' field
+    // e.g., { result: { success: true, output: {...} } }
+    const toolResult = result?.result ?? result;
+
     return {
       clientId: baseClientId,
       tabId,
       tool,
-      success: result?.result?.success ?? false,
-      output: result?.result?.output,
-      executionTime: result?.result?.executionTime,
-      error: result?.error?.message,
+      success: toolResult?.success ?? false,
+      output: toolResult?.output,
+      executionTime: toolResult?.executionTime,
+      error: toolResult?.error,
       timestamp: Date.now()
     };
   }
@@ -716,6 +720,23 @@ class APIServer {
   async handleActionClick(payload) {
     const { clientId, tabId, nodeId, timeout = 30000 } = payload;
 
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    if (nodeId === undefined || nodeId === null) {
+      throw new Error('Node ID is required for click action');
+    }
+
+    // Ensure DevTools connection is ready before executing
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+    await this.waitForClientConnection(compositeClientId);
+
     return this.executeToolDirect({
       clientId,
       tabId,
@@ -738,9 +759,26 @@ class APIServer {
   async handleActionType(payload) {
     const { clientId, tabId, nodeId, text, timeout = 30000 } = payload;
 
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    if (nodeId === undefined || nodeId === null) {
+      throw new Error('Node ID is required for type action');
+    }
+
     if (!text) {
       throw new Error('Text is required for type action');
     }
+
+    // Ensure DevTools connection is ready before executing
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+    await this.waitForClientConnection(compositeClientId);
 
     return this.executeToolDirect({
       clientId,
@@ -765,6 +803,19 @@ class APIServer {
   async handleActionScroll(payload) {
     const { clientId, tabId, direction = 'down', amount, pages, timeout = 30000 } = payload;
 
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    // Ensure DevTools connection is ready before executing
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+    await this.waitForClientConnection(compositeClientId);
+
     return this.executeToolDirect({
       clientId,
       tabId,
@@ -787,9 +838,22 @@ class APIServer {
   async handleActionNavigate(payload) {
     const { clientId, tabId, url, timeout = 30000 } = payload;
 
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
     if (!url) {
       throw new Error('URL is required for navigate action');
     }
+
+    // Ensure DevTools connection is ready before executing
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+    await this.waitForClientConnection(compositeClientId);
 
     return this.executeToolDirect({
       clientId,
@@ -811,6 +875,23 @@ class APIServer {
    */
   async handleActionHover(payload) {
     const { clientId, tabId, nodeId, timeout = 30000 } = payload;
+
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    if (nodeId === undefined || nodeId === null) {
+      throw new Error('Node ID is required for hover action');
+    }
+
+    // Ensure DevTools connection is ready before executing
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+    await this.waitForClientConnection(compositeClientId);
 
     return this.executeToolDirect({
       clientId,
@@ -841,6 +922,11 @@ class APIServer {
     if (!tabId) {
       throw new Error('Tab ID is required');
     }
+
+    // Ensure DevTools connection is ready before executing
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+    await this.waitForClientConnection(compositeClientId);
 
     return this.executeToolDirect({
       clientId,
