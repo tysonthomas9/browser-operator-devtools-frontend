@@ -20,17 +20,23 @@ import {
   EvaluationRequest,
   EvaluationSuccessResponse,
   EvaluationErrorResponse,
+  ToolExecutionRequest,
+  ToolExecutionSuccessResponse,
+  ToolExecutionErrorResponse,
   ErrorCodes,
   isWelcomeMessage,
   isRegistrationAckMessage,
   isEvaluationRequest,
+  isToolExecutionRequest,
   isPongMessage,
   createRegisterMessage,
   createReadyMessage,
   createAuthVerifyMessage,
   createStatusMessage,
   createSuccessResponse,
-  createErrorResponse
+  createErrorResponse,
+  createToolExecutionSuccessResponse,
+  createToolExecutionErrorResponse
 } from './EvaluationProtocol.js';
 
 const logger = createLogger('EvaluationAgent');
@@ -170,6 +176,9 @@ export class EvaluationAgent {
       }
       else if (isEvaluationRequest(message)) {
         await this.handleEvaluationRequest(message);
+      }
+      else if (isToolExecutionRequest(message)) {
+        await this.handleToolExecutionRequest(message);
       }
       else if (isPongMessage(message)) {
         logger.debug('Received pong');
@@ -596,6 +605,91 @@ export class EvaluationAgent {
 
     } finally {
       this.activeEvaluations.delete(params.evaluationId);
+    }
+  }
+
+  /**
+   * Handle direct tool execution request (no LLM orchestration)
+   * This allows calling browser automation tools directly via API
+   */
+  private async handleToolExecutionRequest(request: ToolExecutionRequest): Promise<void> {
+    const { params, id } = request;
+    const startTime = Date.now();
+
+    logger.info('Received tool execution request', {
+      tool: params.tool,
+      hasArgs: !!params.args,
+      timeout: params.timeout
+    });
+
+    try {
+      // Get the tool from registry
+      const tool = ToolRegistry.getRegisteredTool(params.tool);
+      if (!tool) {
+        const errorResponse = createToolExecutionErrorResponse(
+          id,
+          ErrorCodes.INVALID_TOOL,
+          `Tool not found: ${params.tool}`,
+          params.tool,
+          `Tool '${params.tool}' is not registered in the ToolRegistry`
+        );
+        if (this.client) {
+          this.client.send(errorResponse);
+        }
+        return;
+      }
+
+      // Execute the tool directly (no LLM, no navigation, no retries)
+      const timeout = params.timeout || 30000;
+      const result = await this.executeToolWithTimeout(
+        tool,
+        params.args,
+        timeout,
+        undefined, // No tracing context for direct tool calls
+        params.tool
+      );
+
+      const executionTime = Date.now() - startTime;
+
+      // Send success response
+      const successResponse = createToolExecutionSuccessResponse(
+        id,
+        params.tool,
+        result,
+        executionTime
+      );
+
+      if (this.client) {
+        this.client.send(successResponse);
+      }
+
+      logger.info('Tool execution completed', {
+        tool: params.tool,
+        executionTime,
+        success: true
+      });
+
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      logger.error(`Tool execution failed: ${errorMessage}`, {
+        tool: params.tool,
+        executionTime
+      });
+
+      // Send error response
+      const errorResponse = createToolExecutionErrorResponse(
+        id,
+        ErrorCodes.TOOL_EXECUTION_ERROR,
+        'Tool execution failed',
+        params.tool,
+        errorMessage
+      );
+
+      if (this.client) {
+        this.client.send(errorResponse);
+      }
     }
   }
 

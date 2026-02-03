@@ -79,6 +79,44 @@ export interface EvaluationRequest {
   id: string;
 }
 
+// Direct tool execution request (no LLM orchestration)
+export interface ToolExecutionRequest {
+  jsonrpc: '2.0';
+  method: 'execute_tool';
+  params: ToolExecutionParams;
+  id: string;
+}
+
+export interface ToolExecutionParams {
+  tool: string;           // Tool name (e.g., 'perform_action', 'navigate_url')
+  args: any;              // Tool-specific arguments
+  timeout?: number;       // Optional timeout (default 30000ms)
+}
+
+export interface ToolExecutionSuccessResponse {
+  jsonrpc: '2.0';
+  result: {
+    success: true;
+    output: any;
+    executionTime: number;
+    tool: string;
+  };
+  id: string;
+}
+
+export interface ToolExecutionErrorResponse {
+  jsonrpc: '2.0';
+  error: {
+    code: number;
+    message: string;
+    data?: {
+      tool: string;
+      error: string;
+    };
+  };
+  id: string;
+}
+
 export interface EvaluationParams {
   evaluationId: string;
   name: string;
@@ -170,6 +208,10 @@ export function isEvaluationRequest(msg: any): msg is EvaluationRequest {
   return msg?.jsonrpc === '2.0' && msg?.method === 'evaluate';
 }
 
+export function isToolExecutionRequest(msg: any): msg is ToolExecutionRequest {
+  return msg?.jsonrpc === '2.0' && msg?.method === 'execute_tool';
+}
+
 export function isPongMessage(msg: any): msg is PongMessage {
   return msg?.type === 'pong';
 }
@@ -251,6 +293,45 @@ export function createErrorResponse(
       code,
       message,
       data
+    },
+    id
+  };
+}
+
+export function createToolExecutionSuccessResponse(
+  id: string,
+  tool: string,
+  output: any,
+  executionTime: number
+): ToolExecutionSuccessResponse {
+  return {
+    jsonrpc: '2.0',
+    result: {
+      success: true,
+      output,
+      executionTime,
+      tool
+    },
+    id
+  };
+}
+
+export function createToolExecutionErrorResponse(
+  id: string,
+  code: number,
+  message: string,
+  tool: string,
+  error: string
+): ToolExecutionErrorResponse {
+  return {
+    jsonrpc: '2.0',
+    error: {
+      code,
+      message,
+      data: {
+        tool,
+        error
+      }
     },
     id
   };

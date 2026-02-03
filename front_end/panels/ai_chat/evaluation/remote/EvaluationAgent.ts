@@ -29,11 +29,13 @@ import {
   EvaluationErrorResponse,
   LLMConfigurationRequest,
   LLMConfigurationResponse,
+  ToolExecutionRequest,
   ErrorCodes,
   isWelcomeMessage,
   isRegistrationAckMessage,
   isEvaluationRequest,
   isLLMConfigurationRequest,
+  isToolExecutionRequest,
   isPongMessage,
   createRegisterMessage,
   createReadyMessage,
@@ -41,7 +43,9 @@ import {
   createStatusMessage,
   createSuccessResponse,
   createErrorResponse,
-  createLLMConfigurationResponse
+  createLLMConfigurationResponse,
+  createToolExecutionSuccessResponse,
+  createToolExecutionErrorResponse
 } from './EvaluationProtocol.js';
 
 const logger = createLogger('EvaluationAgent');
@@ -197,6 +201,9 @@ export class EvaluationAgent {
       }
       else if (isLLMConfigurationRequest(message)) {
         await this.handleLLMConfigurationRequest(message);
+      }
+      else if (isToolExecutionRequest(message)) {
+        await this.handleToolExecutionRequest(message);
       }
       else if (isPongMessage(message)) {
         logger.debug('Received pong');
@@ -463,6 +470,7 @@ export class EvaluationAgent {
 
       logger.info('DevTools Langfuse tracing configured successfully from request');
     }
+
 
     // Create a trace for this evaluation - use tracing from request if available
     const traceId = requestTracing.trace_id || `eval-${params.evaluationId}-${Date.now()}`;
@@ -1342,6 +1350,89 @@ export class EvaluationAgent {
           error: error instanceof Error ? error.message : String(error),
           timestamp: new Date().toISOString()
         }
+      );
+
+      if (this.client) {
+        this.client.send(errorResponse);
+      }
+    }
+  }
+
+  /**
+   * Handle direct tool execution requests without LLM orchestration
+   */
+  private async handleToolExecutionRequest(request: ToolExecutionRequest): Promise<void> {
+    const { params, id } = request;
+    const startTime = Date.now();
+
+    logger.info('Received tool execution request', {
+      tool: params.tool,
+      hasArgs: !!params.args,
+      timeout: params.timeout || 30000
+    });
+
+    try {
+      // Get the tool from registry
+      const tool = ToolRegistry.getRegisteredTool(params.tool);
+      if (!tool) {
+        const errorResponse = createToolExecutionErrorResponse(
+          id,
+          ErrorCodes.INVALID_PARAMS,
+          `Tool not found: ${params.tool}`,
+          params.tool,
+          `Tool '${params.tool}' is not registered`
+        );
+        if (this.client) {
+          this.client.send(errorResponse);
+        }
+        logger.error('Tool not found', { tool: params.tool });
+        return;
+      }
+
+      // Execute the tool with timeout
+      const timeout = params.timeout || 30000;
+      const result = await this.executeToolWithTimeout(
+        tool,
+        params.args || {},
+        timeout,
+        undefined,
+        params.tool
+      );
+
+      const executionTime = Date.now() - startTime;
+
+      // Send success response
+      const successResponse = createToolExecutionSuccessResponse(
+        id,
+        params.tool,
+        result,
+        executionTime
+      );
+
+      if (this.client) {
+        this.client.send(successResponse);
+      }
+
+      logger.info('Tool execution completed', {
+        tool: params.tool,
+        executionTime,
+        hasResult: !!result
+      });
+
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+      logger.error('Tool execution failed', {
+        tool: params.tool,
+        error: error instanceof Error ? error.message : String(error),
+        executionTime
+      });
+
+      const errorResponse = createToolExecutionErrorResponse(
+        id,
+        ErrorCodes.INTERNAL_ERROR,
+        'Tool execution failed',
+        params.tool,
+        error instanceof Error ? error.message : String(error)
       );
 
       if (this.client) {
