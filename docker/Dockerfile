@@ -1,4 +1,5 @@
-# Multi-stage build for Chrome DevTools Frontend
+# Multi-stage build for Browser Operator DevTools Frontend
+# This builds directly from the Browser Operator codebase without mixing with upstream.
 FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
 # Install required packages
@@ -27,20 +28,31 @@ RUN git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
 ENV PATH="/workspace/depot_tools:${PATH}"
 ENV DEPOT_TOOLS_UPDATE=0
 
-# Follow README instructions exactly:
-# fetching code
-RUN mkdir devtools
-WORKDIR /workspace/devtools
-RUN fetch devtools-frontend
+# Create workspace for Browser Operator
+RUN mkdir browser-operator
+WORKDIR /workspace/browser-operator
 
-# Build steps
-WORKDIR /workspace/devtools/devtools-frontend
+# Copy entire Browser Operator repository
+COPY . /workspace/browser-operator/src
 
-RUN gclient sync
+# Fix submodule .git reference - initialize as a fresh git repo
+WORKDIR /workspace/browser-operator/src
+RUN rm -f .git && git init && \
+    git config user.email "docker@build" && \
+    git config user.name "Docker Build" && \
+    git add -A && git commit -m "Docker build"
+
+# Create .gclient file pointing to local source
+WORKDIR /workspace/browser-operator
+RUN echo 'solutions = [{"name": "src", "url": None, "managed": False}]' > .gclient
+
+WORKDIR /workspace/browser-operator/src
+
+# Ensure bootstrap is available
 RUN /workspace/depot_tools/ensure_bootstrap
 
-# Build standard DevTools first
-RUN npm run build
+# Sync dependencies using Browser Operator's DEPS file
+RUN gclient sync --nohooks --no-history
 
 # Add Browser Operator fork and switch to it
 # Branch is configurable via build arg (default: main)
@@ -90,7 +102,7 @@ FROM --platform=linux/amd64 nginx:alpine
 RUN apk add --no-cache nodejs npm bash
 
 # Copy the built DevTools frontend
-COPY --from=builder /workspace/devtools/devtools-frontend/out/Default/gen/front_end /usr/share/nginx/html
+COPY --from=builder /workspace/browser-operator/src/out/Default/gen/front_end /usr/share/nginx/html
 
 # Copy agent-server from builder stage
 COPY --from=agent-server-builder /workspace/agent-server /opt/agent-server

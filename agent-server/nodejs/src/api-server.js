@@ -228,6 +228,31 @@ class APIServer {
             result = await this.getAccessibilityTree(method === 'POST' ? JSON.parse(body) : parsedUrl.query);
             break;
 
+          // Recording control endpoints
+          case '/recording/start':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.startRecording(JSON.parse(body));
+            break;
+
+          case '/recording/stop':
+            if (method !== 'POST') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.stopRecording(JSON.parse(body));
+            break;
+
+          case '/recording/status':
+            if (method !== 'GET') {
+              this.sendError(res, 405, 'Method not allowed');
+              return;
+            }
+            result = await this.getRecordingStatus(parsedUrl.query);
+            break;
+
           default:
             this.sendError(res, 404, 'Not found');
             return;
@@ -1412,6 +1437,274 @@ class APIServer {
     }
 
     return response;
+  }
+
+  // ============================================================================
+  // Recording Control Methods
+  // ============================================================================
+
+  /**
+   * Start recording user interactions on a browser tab.
+   * @param {Object} payload - Request payload
+   * @param {string} payload.clientId - The client ID (DevTools connection)
+   * @param {string} payload.tabId - The tab ID to record
+   * @param {string} [payload.title] - Optional title for the recording
+   * @param {string[]} [payload.selectorTypes] - Selector types to record (aria, css, xpath, text)
+   * @returns {Object} Recording start result
+   */
+  async startRecording(payload) {
+    const { clientId, tabId, title, selectorTypes, selectorAttribute } = payload;
+
+    // Validate required params
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    // Get the base client ID (without tab suffix)
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+
+    // Find the connected client
+    const connection = this.browserAgentServer.connectedClients.get(compositeClientId);
+    if (!connection) {
+      logger.warn('Recording requires DevTools connection', {
+        compositeClientId,
+        availableClients: Array.from(this.browserAgentServer.connectedClients.keys())
+      });
+      return {
+        success: false,
+        message: `Tab ${tabId} not connected. DevTools may still be initializing - try again in a moment.`,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    }
+
+    logger.info('Starting recording', {
+      clientId: baseClientId,
+      tabId,
+      title,
+      selectorTypes
+    });
+
+    // Send RPC request to DevTools to start recording
+    const rpcId = uuidv4();
+    const rpcRequest = {
+      jsonrpc: '2.0',
+      method: 'recording_control',
+      params: {
+        action: 'start',
+        title: title || `Recording ${Date.now()}`,
+        selectorTypes: selectorTypes || ['aria', 'css', 'xpath', 'text'],
+        selectorAttribute
+      },
+      id: rpcId
+    };
+
+    try {
+      const response = await connection.rpcClient.callMethod(
+        connection.ws,
+        'recording_control',
+        rpcRequest.params,
+        30000 // 30 second timeout
+      );
+
+      return {
+        success: response.success,
+        recordingId: response.recordingId,
+        message: response.message,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      logger.error('Failed to start recording:', error);
+      return {
+        success: false,
+        message: error.message,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    }
+  }
+
+  /**
+   * Stop recording and return the captured data.
+   * @param {Object} payload - Request payload
+   * @param {string} payload.clientId - The client ID
+   * @param {string} payload.tabId - The tab ID
+   * @param {string} [payload.format] - Output format: 'userflow' or 'replay'
+   * @returns {Object} Recording result with userFlow or replayTranscript
+   */
+  async stopRecording(payload) {
+    const { clientId, tabId, format = 'userflow' } = payload;
+
+    // Validate required params
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    // Get the base client ID (without tab suffix)
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+
+    // Find the connected client
+    const connection = this.browserAgentServer.connectedClients.get(compositeClientId);
+    if (!connection) {
+      logger.warn('Stop recording requires DevTools connection', {
+        compositeClientId,
+        availableClients: Array.from(this.browserAgentServer.connectedClients.keys())
+      });
+      return {
+        success: false,
+        message: `Tab ${tabId} not connected. DevTools may still be initializing - try again in a moment.`,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    }
+
+    logger.info('Stopping recording', {
+      clientId: baseClientId,
+      tabId,
+      format
+    });
+
+    // Send RPC request to DevTools to stop recording
+    const rpcId = uuidv4();
+    const rpcRequest = {
+      jsonrpc: '2.0',
+      method: 'recording_control',
+      params: {
+        action: 'stop',
+        format
+      },
+      id: rpcId
+    };
+
+    try {
+      const response = await connection.rpcClient.callMethod(
+        connection.ws,
+        'recording_control',
+        rpcRequest.params,
+        20000 // DevTools-side stop has 10s internal timeout; allow extra for serialization + transport
+      );
+
+      return {
+        success: response.success,
+        recordingId: response.recordingId,
+        message: response.message,
+        userFlow: response.userFlow,
+        replayTranscript: response.replayTranscript,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      logger.error('Failed to stop recording:', error);
+      return {
+        success: false,
+        message: error.message,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    }
+  }
+
+  /**
+   * Get the current recording status.
+   * @param {Object} query - Query parameters
+   * @param {string} query.clientId - The client ID
+   * @param {string} query.tabId - The tab ID
+   * @returns {Object} Recording status
+   */
+  async getRecordingStatus(query) {
+    const { clientId, tabId } = query;
+
+    // Validate required params
+    if (!clientId) {
+      throw new Error('Client ID is required');
+    }
+    if (!tabId) {
+      throw new Error('Tab ID is required');
+    }
+
+    // Get the base client ID (without tab suffix)
+    const baseClientId = clientId.split(':')[0];
+    const compositeClientId = `${baseClientId}:${tabId}`;
+
+    // Find the connected client
+    const connection = this.browserAgentServer.connectedClients.get(compositeClientId);
+    if (!connection) {
+      logger.warn('Recording status requires DevTools connection', {
+        compositeClientId,
+        availableClients: Array.from(this.browserAgentServer.connectedClients.keys())
+      });
+      return {
+        success: false,
+        message: `Tab ${tabId} not connected. DevTools may still be initializing - try again in a moment.`,
+        isRecording: false,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    }
+
+    logger.info('Getting recording status', {
+      clientId: baseClientId,
+      tabId
+    });
+
+    // Send RPC request to DevTools to get status
+    const rpcId = uuidv4();
+    const rpcRequest = {
+      jsonrpc: '2.0',
+      method: 'recording_control',
+      params: {
+        action: 'status'
+      },
+      id: rpcId
+    };
+
+    try {
+      const response = await connection.rpcClient.callMethod(
+        connection.ws,
+        'recording_control',
+        rpcRequest.params,
+        10000 // 10 second timeout
+      );
+
+      return {
+        success: response.success,
+        recordingId: response.recordingId,
+        isRecording: response.status?.isRecording || false,
+        isPaused: response.status?.isPaused || false,
+        stepCount: response.status?.stepCount || 0,
+        duration_ms: response.status?.duration_ms || 0,
+        title: response.status?.title,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      logger.error('Failed to get recording status:', error);
+      return {
+        success: false,
+        message: error.message,
+        isRecording: false,
+        clientId: baseClientId,
+        tabId,
+        timestamp: Date.now()
+      };
+    }
   }
 
   sendResponse(res, statusCode, data) {
