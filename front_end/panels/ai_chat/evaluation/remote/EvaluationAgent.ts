@@ -30,12 +30,17 @@ import {
   LLMConfigurationRequest,
   LLMConfigurationResponse,
   ToolExecutionRequest,
+  RecordingControlRequest,
+  RecordingControlResponse,
+  RecordingControlResult,
+  RecordingUpdateMessage,
   ErrorCodes,
   isWelcomeMessage,
   isRegistrationAckMessage,
   isEvaluationRequest,
   isLLMConfigurationRequest,
   isToolExecutionRequest,
+  isRecordingControlRequest,
   isPongMessage,
   createRegisterMessage,
   createReadyMessage,
@@ -45,8 +50,16 @@ import {
   createErrorResponse,
   createLLMConfigurationResponse,
   createToolExecutionSuccessResponse,
-  createToolExecutionErrorResponse
+  createToolExecutionErrorResponse,
+  createRecordingControlResponse,
+  createRecordingUpdateMessage,
+  type RecordingSelectorType,
 } from './EvaluationProtocol.js';
+import * as SDK from '../../../../core/sdk/sdk.js';
+import { RecordingSession, Events as RecordingEvents } from '../../../recorder/models/RecordingSession.js';
+import type { UserFlow, SelectorType } from '../../../recorder/models/Schema.js';
+import { getUserFlowConverter } from '../../replay/UserFlowConverter.js';
+import type { ReplayTranscript } from '../../replay/ReplayTranscript.js';
 
 const logger = createLogger('EvaluationAgent');
 
@@ -78,6 +91,12 @@ export class EvaluationAgent {
   private miniModel: string;
   private nanoModel: string;
   private orchestratorDescriptorPromise: Promise<AgentDescriptor | null>;
+
+  // Recording state
+  private recordingSession: RecordingSession | null = null;
+  private currentRecordingId: string | null = null;
+  private recordingStartTime: number | null = null;
+  private recordingUpdateListener: ((event: any) => void) | null = null;
 
   constructor(options: EvaluationAgentOptions) {
     this.clientId = options.clientId;
@@ -204,6 +223,9 @@ export class EvaluationAgent {
       }
       else if (isToolExecutionRequest(message)) {
         await this.handleToolExecutionRequest(message);
+      }
+      else if (isRecordingControlRequest(message)) {
+        await this.handleRecordingControlRequest(message);
       }
       else if (isPongMessage(message)) {
         logger.debug('Received pong');
@@ -1439,5 +1461,323 @@ export class EvaluationAgent {
         this.client.send(errorResponse);
       }
     }
+  }
+
+  /**
+   * Handle recording control requests (start, stop, status).
+   * Integrates with DevTools Recorder to capture user interactions.
+   */
+  private async handleRecordingControlRequest(request: RecordingControlRequest): Promise<void> {
+    const { params, id } = request;
+
+    logger.info('Received recording control request', {
+      action: params.action,
+      hasTitle: !!params.title,
+      selectorTypes: params.selectorTypes,
+      format: params.format
+    });
+
+    try {
+      let result: RecordingControlResult;
+
+      switch (params.action) {
+        case 'start':
+          result = await this.startRecording(params);
+          break;
+        case 'stop':
+          result = await this.stopRecording(params.format || 'userflow');
+          break;
+        case 'status':
+          result = this.getRecordingStatus();
+          break;
+        case 'pause':
+          result = this.pauseRecording();
+          break;
+        case 'resume':
+          result = await this.resumeRecording();
+          break;
+        default:
+          result = {
+            success: false,
+            message: `Unknown action: ${params.action}`
+          };
+      }
+
+      // Send response
+      const response = createRecordingControlResponse(id, result);
+      if (this.client) {
+        this.client.send(response);
+      }
+
+    } catch (error) {
+      logger.error('Recording control failed:', error);
+
+      const errorResponse = createErrorResponse(
+        id,
+        ErrorCodes.INTERNAL_ERROR,
+        'Recording control failed',
+        {
+          action: params.action,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString()
+        }
+      );
+
+      if (this.client) {
+        this.client.send(errorResponse);
+      }
+    }
+  }
+
+  /**
+   * Start a new recording session.
+   */
+  private async startRecording(params: RecordingControlRequest['params']): Promise<RecordingControlResult> {
+    // Check if already recording
+    if (this.recordingSession) {
+      return {
+        success: false,
+        recordingId: this.currentRecordingId || undefined,
+        message: 'Recording already in progress'
+      };
+    }
+
+    // Get the primary page target
+    const targetManager = SDK.TargetManager.TargetManager.instance();
+    const target = targetManager.primaryPageTarget();
+
+    if (!target) {
+      return {
+        success: false,
+        message: 'No primary page target available. Is a page loaded?'
+      };
+    }
+
+    // Generate recording ID
+    this.currentRecordingId = `rec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.recordingStartTime = Date.now();
+
+    // Map selector types from protocol to recorder format
+    const selectorTypes: SelectorType[] = (params.selectorTypes || ['aria', 'css', 'xpath', 'text'])
+      .map(type => type as SelectorType);
+
+    // Create recording session
+    this.recordingSession = new RecordingSession(target, {
+      title: params.title || `Recording ${this.currentRecordingId}`,
+      selectorTypesToRecord: selectorTypes,
+      selectorAttribute: params.selectorAttribute
+    });
+
+    // Set up update listener to send real-time updates
+    this.recordingUpdateListener = (event: any) => {
+      const userFlow = event.data as UserFlow;
+      if (this.client && this.currentRecordingId) {
+        const latestStep = userFlow.steps[userFlow.steps.length - 1];
+        // Normalize selectors: Selector is (string | string[]), but we need string[][]
+        const normalizeSelectors = (selectors: any[] | undefined): string[][] | undefined => {
+          if (!selectors) return undefined;
+          return selectors.map(s => Array.isArray(s) ? s : [s]);
+        };
+        const updateMessage = createRecordingUpdateMessage(
+          this.currentRecordingId,
+          userFlow.steps.length,
+          latestStep ? {
+            type: latestStep.type,
+            selectors: 'selectors' in latestStep ? normalizeSelectors((latestStep as any).selectors) : undefined,
+            url: 'url' in latestStep ? (latestStep as any).url : undefined,
+            value: 'value' in latestStep ? (latestStep as any).value : undefined
+          } : undefined
+        );
+        this.client.send(updateMessage);
+      }
+    };
+
+    this.recordingSession.addEventListener(
+      RecordingEvents.RECORDING_UPDATED,
+      this.recordingUpdateListener as any
+    );
+
+    // Start recording
+    await this.recordingSession.start();
+
+    logger.info('Recording started', {
+      recordingId: this.currentRecordingId,
+      title: params.title,
+      selectorTypes
+    });
+
+    return {
+      success: true,
+      recordingId: this.currentRecordingId,
+      message: 'Recording started successfully'
+    };
+  }
+
+  /**
+   * Stop the current recording and return the captured data.
+   *
+   * IMPORTANT ordering: stop() must be called BEFORE cloneUserFlow() because
+   * RecordingClient defers all user interaction steps (clicks, keyboard, input)
+   * to #pendingSteps. These are only flushed to the UserFlow when stop()
+   * triggers DevToolsRecorder.stopRecording() → RecordingClient.stop() →
+   * #processPendingSteps() → window.addStep(). Cloning before stop() would
+   * return a UserFlow missing all user interaction steps.
+   */
+  private async stopRecording(format: 'userflow' | 'replay'): Promise<RecordingControlResult> {
+    if (!this.recordingSession) {
+      return {
+        success: false,
+        message: 'No recording in progress'
+      };
+    }
+
+    // Remove event listener before stopping
+    if (this.recordingUpdateListener) {
+      this.recordingSession.removeEventListener(
+        RecordingEvents.RECORDING_UPDATED,
+        this.recordingUpdateListener as any
+      );
+      this.recordingUpdateListener = null;
+    }
+
+    // Stop the recording first to flush pending steps. RecordingSession.stop()
+    // tears down targets and injects cleanup scripts, which can hang on complex
+    // pages with unresponsive frames/service workers. Use a timeout so we don't
+    // block indefinitely.
+    const session = this.recordingSession;
+    const STOP_TIMEOUT_MS = 10000;
+    let stopTimedOut = false;
+    try {
+      await Promise.race([
+        session.stop(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('RecordingSession.stop() timed out')), STOP_TIMEOUT_MS)
+        ),
+      ]);
+    } catch (e) {
+      stopTimedOut = true;
+      logger.warn('Recording stop did not complete cleanly', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    // Brief grace period for async binding events (window.addStep calls from
+    // the flushed pending steps) to be processed by #handleAddStepBinding.
+    if (!stopTimedOut) {
+      await new Promise<void>(resolve => setTimeout(resolve, 200));
+    }
+
+    // Clone AFTER stop so the UserFlow includes all flushed interaction steps.
+    const userFlow = session.cloneUserFlow();
+
+    const recordingId = this.currentRecordingId;
+    const duration = this.recordingStartTime ? Date.now() - this.recordingStartTime : 0;
+
+    // Clean up state
+    this.recordingSession = null;
+    this.currentRecordingId = null;
+    this.recordingStartTime = null;
+
+    logger.info('Recording stopped', {
+      recordingId,
+      stepCount: userFlow.steps.length,
+      duration,
+      format,
+      stopTimedOut,
+    });
+
+    // Prepare result based on format
+    const result: RecordingControlResult = {
+      success: true,
+      recordingId: recordingId || undefined,
+      message: `Recording stopped. Captured ${userFlow.steps.length} steps.`
+    };
+
+    if (format === 'userflow') {
+      result.userFlow = userFlow;
+    } else if (format === 'replay') {
+      // Convert to ReplayTranscript format
+      const converter = getUserFlowConverter();
+      const transcript = converter.convert(userFlow, {
+        sessionId: recordingId || undefined
+      });
+      result.replayTranscript = transcript;
+    }
+
+    return result;
+  }
+
+  /**
+   * Get the current recording status.
+   */
+  private getRecordingStatus(): RecordingControlResult {
+    if (!this.recordingSession) {
+      return {
+        success: true,
+        message: 'No recording in progress',
+        status: {
+          isRecording: false,
+          isPaused: false,
+          stepCount: 0,
+          duration_ms: 0
+        }
+      };
+    }
+
+    const userFlow = this.recordingSession.cloneUserFlow();
+    const duration = this.recordingStartTime ? Date.now() - this.recordingStartTime : 0;
+
+    return {
+      success: true,
+      recordingId: this.currentRecordingId || undefined,
+      message: 'Recording in progress',
+      status: {
+        isRecording: true,
+        isPaused: false, // RecordingSession doesn't support pause natively
+        stepCount: userFlow.steps.length,
+        duration_ms: duration,
+        title: userFlow.title
+      }
+    };
+  }
+
+  /**
+   * Pause recording (not fully supported by RecordingSession).
+   */
+  private pauseRecording(): RecordingControlResult {
+    // RecordingSession doesn't have native pause support
+    // This is a placeholder for future implementation
+    if (!this.recordingSession) {
+      return {
+        success: false,
+        message: 'No recording in progress'
+      };
+    }
+
+    return {
+      success: false,
+      recordingId: this.currentRecordingId || undefined,
+      message: 'Pause is not supported by the current recording implementation'
+    };
+  }
+
+  /**
+   * Resume recording (not fully supported by RecordingSession).
+   */
+  private async resumeRecording(): Promise<RecordingControlResult> {
+    // RecordingSession doesn't have native pause/resume support
+    // This is a placeholder for future implementation
+    if (!this.recordingSession) {
+      return {
+        success: false,
+        message: 'No recording in progress'
+      };
+    }
+
+    return {
+      success: false,
+      recordingId: this.currentRecordingId || undefined,
+      message: 'Resume is not supported by the current recording implementation'
+    };
   }
 }

@@ -437,3 +437,165 @@ export function createToolExecutionErrorResponse(
     id
   };
 }
+
+// ============================================================================
+// Recording Control Messages
+// ============================================================================
+
+/**
+ * Selector types for recording configuration.
+ */
+export type RecordingSelectorType = 'aria' | 'css' | 'xpath' | 'pierce' | 'text';
+
+/**
+ * Recording control actions.
+ */
+export type RecordingAction = 'start' | 'stop' | 'status' | 'pause' | 'resume';
+
+/**
+ * Request to control recording (start, stop, status).
+ */
+export interface RecordingControlRequest {
+  jsonrpc: '2.0';
+  method: 'recording_control';
+  params: RecordingControlParams;
+  id: string;
+}
+
+export interface RecordingControlParams {
+  /**
+   * The action to perform.
+   */
+  action: RecordingAction;
+
+  /**
+   * Recording title (for 'start' action).
+   */
+  title?: string;
+
+  /**
+   * Selector types to record (for 'start' action).
+   * Defaults to ['aria', 'css', 'xpath', 'text'].
+   */
+  selectorTypes?: RecordingSelectorType[];
+
+  /**
+   * Custom selector attribute (for 'start' action).
+   */
+  selectorAttribute?: string;
+
+  /**
+   * Output format when stopping (for 'stop' action).
+   * 'userflow' returns Puppeteer UserFlow JSON.
+   * 'replay' returns unified ReplayTranscript format.
+   */
+  format?: 'userflow' | 'replay';
+}
+
+/**
+ * Response for recording control operations.
+ */
+export interface RecordingControlResponse {
+  jsonrpc: '2.0';
+  result: RecordingControlResult;
+  id: string;
+}
+
+export interface RecordingControlResult {
+  success: boolean;
+
+  /**
+   * Recording ID (present after 'start' or for 'status').
+   */
+  recordingId?: string;
+
+  /**
+   * Human-readable message.
+   */
+  message: string;
+
+  /**
+   * Current recording status (for 'status' action).
+   */
+  status?: {
+    isRecording: boolean;
+    isPaused: boolean;
+    stepCount: number;
+    duration_ms: number;
+    title?: string;
+  };
+
+  /**
+   * UserFlow data (when format is 'userflow' and action is 'stop').
+   */
+  userFlow?: any;
+
+  /**
+   * ReplayTranscript data (when format is 'replay' and action is 'stop').
+   */
+  replayTranscript?: any;
+}
+
+/**
+ * Real-time recording update message (pushed from DevTools to server).
+ */
+export interface RecordingUpdateMessage {
+  type: 'recording_update';
+  recordingId: string;
+  stepCount: number;
+  latestStep?: {
+    type: string;
+    selectors?: string[][];
+    url?: string;
+    value?: string;
+  };
+}
+
+// Type guard for recording control request
+export function isRecordingControlRequest(msg: any): msg is RecordingControlRequest {
+  return msg?.jsonrpc === '2.0' && msg?.method === 'recording_control';
+}
+
+// Type guard for recording update message
+export function isRecordingUpdateMessage(msg: any): msg is RecordingUpdateMessage {
+  return msg?.type === 'recording_update';
+}
+
+// Helper function to create recording control request
+export function createRecordingControlRequest(
+  id: string,
+  params: RecordingControlParams
+): RecordingControlRequest {
+  return {
+    jsonrpc: '2.0',
+    method: 'recording_control',
+    params,
+    id
+  };
+}
+
+// Helper function to create recording control response
+export function createRecordingControlResponse(
+  id: string,
+  result: RecordingControlResult
+): RecordingControlResponse {
+  return {
+    jsonrpc: '2.0',
+    result,
+    id
+  };
+}
+
+// Helper function to create recording update message
+export function createRecordingUpdateMessage(
+  recordingId: string,
+  stepCount: number,
+  latestStep?: RecordingUpdateMessage['latestStep']
+): RecordingUpdateMessage {
+  return {
+    type: 'recording_update',
+    recordingId,
+    stepCount,
+    latestStep
+  };
+}

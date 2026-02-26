@@ -59,6 +59,7 @@ devtools_entrypoint("bundle") {
     "../../recorder/controllers/*",
     "../../recorder/converters/*",
     "../components/*",
+    "../../ai_chat/*",
   ]
 }
 
