@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as SDK from '../../../../../core/sdk/sdk.js';
 import { createLogger } from '../../../core/Logger.js';
 import { TestStorageManager } from '../../../core/TestStorageManager.js';
-import { TestExecutor } from './TestExecutor.js';
 import { LLMConfigurationManager } from '../../../core/LLMConfigurationManager.js';
 import { ConfigurableAgentTool, ToolRegistry, type CallCtx } from '../../../agent_framework/ConfigurableAgentTool.js';
 import { createQATestGeneratorAgentConfig } from '../../../agent_framework/implementation/agents/QATestGeneratorAgent.js';
@@ -773,12 +773,12 @@ class QAAgentMiniAppController implements MiniAppController {
         payload: { message: 'Analyzing page and generating test steps...', type: 'info' },
       });
 
-      // Execute the agent to generate steps
+      // Execute the agent to generate the test script
       // Note: ConfigurableAgentArgs requires query and reasoning, plus custom properties
       const result = await agent.execute(
         {
           query: testCase.description,
-          reasoning: `Generate test steps for: ${testCase.name}`,
+          reasoning: `Generate test script for: ${testCase.name}`,
           testDescription: testCase.description,
           startingUrl: testCase.url,
           additionalContext: `Test name: ${testCase.name}`,
@@ -787,40 +787,41 @@ class QAAgentMiniAppController implements MiniAppController {
       );
 
       if (!result.success) {
-        throw new Error(result.error || 'Step generation failed');
+        throw new Error(result.error || 'Script generation failed');
       }
 
-      // Parse the generated steps from the output
-      const steps = this.parseGeneratedSteps(result.output || '');
+      // Parse the generated JavaScript from the output
+      const generatedCode = this.parseGeneratedScript(result.output || '');
 
-      if (steps.length === 0) {
-        throw new Error('No valid steps were generated. Please try again with a more detailed description.');
+      if (!generatedCode) {
+        throw new Error('No valid JavaScript was generated. Please try again with a more detailed description.');
       }
 
-      // Update the test case with the generated steps
+      // Update the test case with the generated code
       const updatedTestCase = await this.storageManager.updateTestCase(testCase.id, {
-        steps,
+        generatedCode,
+        steps: [], // Clear old steps - we now use generatedCode
         updatedAt: new Date().toISOString(),
       });
 
-      logger.info(`Generated ${steps.length} steps for test case: ${testCase.name}`);
+      logger.info(`Generated JavaScript test script for: ${testCase.name}`);
 
       // Refresh test case list
       const { testCases } = await this.loadAllData();
 
-      // Send the generated steps to the SPA
+      // Send the generated script to the SPA
       await this.bridge?.sendToSPA({
         action: 'steps-generated',
         payload: {
           testCase: updatedTestCase,
           testCases,
-          steps,
+          generatedCode,
         },
       });
 
       await this.bridge?.sendToSPA({
         action: 'notification',
-        payload: { message: `Successfully generated ${steps.length} test steps!`, type: 'success' },
+        payload: { message: 'Successfully generated test script!', type: 'success' },
       });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -839,12 +840,45 @@ class QAAgentMiniAppController implements MiniAppController {
   }
 
   /**
-   * Parse generated steps from the agent output
+   * Parse generated JavaScript test script from the agent output
    *
-   * The agent outputs a JSON array of test steps.
-   * This function extracts and validates the steps.
+   * The agent outputs JavaScript code in a code block.
+   * This function extracts the JavaScript code.
    */
-  private parseGeneratedSteps(output: string): TestStep[] {
+  parseGeneratedScript(output: string): string {
+    // Look for JavaScript in markdown code block
+    const jsCodeBlockMatch = output.match(/```(?:javascript|js)?\s*([\s\S]*?)```/);
+    if (jsCodeBlockMatch) {
+      const script = jsCodeBlockMatch[1].trim();
+      if (script) {
+        logger.info('Extracted JavaScript from code block');
+        return script;
+      }
+    }
+
+    // Try to find an IIFE pattern directly in the output
+    const iifeMatch = output.match(/\(async\s+function\s+\w*\s*\(\)\s*\{[\s\S]*\}\)\s*\(\s*\)\s*;?/);
+    if (iifeMatch) {
+      logger.info('Found IIFE pattern in output');
+      return iifeMatch[0].trim();
+    }
+
+    // If all else fails, check if the entire output looks like JavaScript
+    if (output.includes('function') && output.includes('return') && output.includes('{')) {
+      logger.info('Output appears to be JavaScript, using as-is');
+      return output.trim();
+    }
+
+    logger.error('Could not extract JavaScript from output');
+    logger.debug('Raw output:', output.substring(0, 500));
+    return '';
+  }
+
+  /**
+   * Parse generated steps from the agent output (legacy - for backwards compatibility)
+   * Kept for unit tests that test JSON parsing
+   */
+  parseGeneratedSteps(output: string): TestStep[] {
     try {
       // Try to find JSON array in the output
       let jsonStr = output;
@@ -919,10 +953,10 @@ class QAAgentMiniAppController implements MiniAppController {
       return;
     }
 
-    if (testCase.steps.length === 0) {
+    if (!testCase.generatedCode) {
       await this.bridge?.sendToSPA({
         action: 'notification',
-        payload: { message: 'Test case has no steps. Generate steps first.', type: 'warning' },
+        payload: { message: 'No test script generated. Generate a test script first.', type: 'warning' },
       });
       return;
     }
@@ -931,7 +965,7 @@ class QAAgentMiniAppController implements MiniAppController {
     this.abortController = new AbortController();
 
     // Create a new run
-    let run: StoredTestRun = {
+    const run: StoredTestRun = {
       id: crypto.randomUUID(),
       testCaseId: testCase.id,
       status: 'running',
@@ -948,40 +982,92 @@ class QAAgentMiniAppController implements MiniAppController {
     });
 
     try {
-      // Create the test executor
-      const executor = new TestExecutor();
+      // Get the target to execute the script on
+      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+      if (!target) {
+        throw new Error('No inspected page target available. Please open a web page first.');
+      }
 
-      // Execute the test with progress callbacks
-      const updatedRun = await executor.executeTestCase(testCase, {
-        abortSignal: this.abortController?.signal,
-        onStepComplete: async (stepResult, currentStep, totalSteps) => {
-          // Accumulate results in run object
-          run.results.push(stepResult);
+      const runtimeModel = target.model(SDK.RuntimeModel.RuntimeModel);
+      if (!runtimeModel) {
+        throw new Error('Runtime model not available');
+      }
 
-          // Send progress update to SPA with data it expects
-          await this.bridge?.sendToSPA({
-            action: 'test-progress',
-            payload: {
-              results: run.results,
-              testCase,
-              stepResult,
-              currentStep,
-              totalSteps,
-            },
-          });
+      // Get the default execution context
+      const executionContexts = runtimeModel.executionContexts();
+      const mainContext = executionContexts.find(ctx => ctx.isDefault);
+      if (!mainContext) {
+        throw new Error('No execution context available. Please ensure a page is loaded.');
+      }
+
+      logger.info('Executing test script in page context');
+
+      // Execute the JavaScript test script in the page context
+      const evalResult = await mainContext.evaluate(
+        {
+          expression: testCase.generatedCode,
+          objectGroup: 'qa-test',
+          includeCommandLineAPI: false,
+          silent: false,
+          returnByValue: true,
+          generatePreview: false,
+          throwOnSideEffect: false,
         },
-        onStatusChange: async (status) => {
-          run.status = status;
-          await this.storageManager.updateTestRun(run.id, run);
-        },
-      });
+        true,  // userGesture - allow user-gesture-gated APIs
+        true   // awaitPromise - wait for async script to complete
+      );
 
-      // Update run with results from executor
-      run = updatedRun;
+      // Handle the result
+      if ('error' in evalResult) {
+        throw new Error(`Script execution error: ${evalResult.error}`);
+      }
+
+      if (evalResult.exceptionDetails) {
+        const exceptionText = evalResult.exceptionDetails.text ||
+          evalResult.exceptionDetails.exception?.description ||
+          'Unknown error';
+        throw new Error(`Test script threw an error: ${exceptionText}`);
+      }
+
+      // Parse the results from the script
+      const scriptResult = evalResult.object?.value as {
+        steps?: Array<{ name: string; status: string; error?: string }>;
+        passed?: boolean;
+        error?: string | null;
+      } | undefined;
+
+      if (scriptResult) {
+        // Convert script results to our run format
+        run.status = scriptResult.passed ? 'passed' : 'failed';
+
+        if (scriptResult.steps) {
+          run.results = scriptResult.steps.map((step, index) => ({
+            stepId: `step-${index + 1}`,
+            status: step.status as 'passed' | 'failed' | 'skipped',
+            error: step.error,
+            duration: 0, // Script doesn't track individual step durations
+          }));
+        }
+
+        if (scriptResult.error) {
+          run.error = scriptResult.error;
+        }
+
+        logger.info(`Test completed: ${run.status}, ${run.results.length} steps`);
+      } else {
+        // No structured result returned - mark as passed if no error
+        run.status = 'passed';
+        logger.info('Test completed (no structured result returned)');
+      }
+
+      run.endTime = new Date().toISOString();
+      await this.storageManager.updateTestRun(run.id, run);
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('Test execution failed:', error);
       run.status = 'failed';
+      run.error = errorMsg;
       run.endTime = new Date().toISOString();
       await this.storageManager.updateTestRun(run.id, run);
 

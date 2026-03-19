@@ -52,7 +52,8 @@ const DEFAULT_ORCHESTRATOR_VERSION = '2025-09-17';
 export enum BaseOrchestratorAgentType {
   SEARCH = 'search',
   DEEP_RESEARCH = 'deep-research',
-  SHOPPING = 'shopping'
+  SHOPPING = 'shopping',
+  SKILL_LEARNING = 'skill-learning'
 }
 
 // System prompts for each agent type
@@ -288,6 +289,43 @@ Submit your recommendations using the 'finalize_with_critique' tool. If feedback
 ---
 
 **Tone:** Be friendly, concise, and objective. Always prioritize the user's needs and preferences.
+`,
+
+  [BaseOrchestratorAgentType.SKILL_LEARNING]: `You are a Skill Learning Agent that AUTOMATICALLY creates reusable automation skills for websites.
+
+## CRITICAL: You MUST Use Your Tools
+You have access to powerful skill creation tools. DO NOT tell users to manually create skills in Skill Studio.
+ALWAYS use skill_synthesis_agent or skill_discovery_agent to create skills automatically.
+
+## Your Tools
+- **skill_discovery_agent**: Call this to analyze the current page and discover automatable tasks
+- **skill_synthesis_agent**: Call this to generate JavaScript code for a specific skill. It has web interaction tools to understand the page and test the skill.
+- **search_skills**: Check if a skill already exists for this domain
+- **list_mini_apps / launch_mini_app**: ONLY use to show Skill Studio for viewing/managing existing skills (NOT for creating new skills)
+
+## Workflow
+
+### When user asks to "create a skill to [action]" (e.g., "search products on Amazon"):
+1. **IMMEDIATELY call skill_synthesis_agent** with:
+   - skill_name: snake_case name (e.g., "search_amazon_products")
+   - description: What the skill does
+   - domain: Current page domain (e.g., "amazon.com")
+2. The agent will use web interaction tools to understand the page, generate code, test it, and save it automatically
+3. Report the result to the user
+
+### When user asks to "learn skills for this site":
+1. Call skill_discovery_agent to analyze the page
+2. Present the proposed skills to the user
+3. For each approved skill, call skill_synthesis_agent
+
+### When user asks to "view my skills" or "manage skills":
+1. Launch Skill Studio mini app
+
+## Important
+- Skills are domain-scoped (work on the current site and subdomains)
+- Skills require 3 successful tests to be "verified"
+- You CAN and SHOULD create skills automatically - that's your primary purpose!
+- NEVER just tell users to use Skill Studio manually - USE YOUR TOOLS!
 `};
 
 // Define agent configuration
@@ -297,7 +335,8 @@ export interface AgentConfig {
   label: string;
   description?: string;
   systemPrompt: string;
-  availableTools: Array<Tool<any, any>>;
+  availableToolNames: string[];  // Tool names resolved lazily to avoid module init order issues
+  instantTools?: Array<Tool<any, any>>;  // Tools that can be instantiated directly (not from registry)
   version?: string;
 }
 // Agent configurations
@@ -309,10 +348,12 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
     description: 'Precision fact finding with structured output',
     systemPrompt: SYSTEM_PROMPTS[BaseOrchestratorAgentType.SEARCH],
     version: '2025-09-17',
-    availableTools: [
-      ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
-      ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
-      ToolRegistry.getToolInstance('research_agent') || (() => { throw new Error('research_agent tool not found'); })(),
+    availableToolNames: [
+      'search_agent',
+      'web_task_agent',
+      'research_agent',
+    ],
+    instantTools: [
       new FinalizeWithCritiqueTool(),
       new SearchVisitHistoryTool(),
       new RenderWebAppTool(),
@@ -334,12 +375,14 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
     description: 'In-depth research on a topic',
     systemPrompt: SYSTEM_PROMPTS[BaseOrchestratorAgentType.DEEP_RESEARCH],
     version: '2025-09-17',
-    availableTools: [
-      ToolRegistry.getToolInstance('research_agent') || (() => { throw new Error('research_agent tool not found'); })(),
-      ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
-      ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
-      ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
-      ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
+    availableToolNames: [
+      'research_agent',
+      'web_task_agent',
+      'document_search',
+      'bookmark_store',
+      'search_agent',
+    ],
+    instantTools: [
       new SaveResearchReportTool(),
       new RenderWebAppTool(),
       new GetWebAppDataTool(),
@@ -352,6 +395,21 @@ export const AGENT_CONFIGS: {[key: string]: AgentConfig} = {
       new SearchCustomAgentsTool(),
       new CallCustomAgentTool(),
     ]
+  },
+  [BaseOrchestratorAgentType.SKILL_LEARNING]: {
+    type: BaseOrchestratorAgentType.SKILL_LEARNING,
+    icon: '🧠',
+    label: 'Skill Learning',
+    description: 'Learn and save reusable automation skills',
+    systemPrompt: SYSTEM_PROMPTS[BaseOrchestratorAgentType.SKILL_LEARNING],
+    version: '2025-12-12',
+    availableToolNames: [
+      'skill_discovery_agent',
+      'skill_synthesis_agent',
+      'search_skills',
+      'list_mini_apps',
+      'launch_mini_app',
+    ],
   },
   // [BaseOrchestratorAgentType.SHOPPING]: {
   //   type: BaseOrchestratorAgentType.SHOPPING,
@@ -378,7 +436,10 @@ for (const config of Object.values(AGENT_CONFIGS)) {
     type: config.type,
     version: config.version ?? DEFAULT_ORCHESTRATOR_VERSION,
     promptProvider: () => config.systemPrompt,
-    toolNamesProvider: () => config.availableTools.map(tool => tool.name)
+    toolNamesProvider: () => [
+      ...config.availableToolNames,
+      ...(config.instantTools?.map(tool => tool.name) || [])
+    ]
   });
 }
 
@@ -525,15 +586,22 @@ After specialized agents complete their tasks:
 }
 
 /**
- * Get available tools for a specific agent type
+ * Get available tools for a specific agent type.
+ * Tools are resolved lazily from the registry to avoid module initialization order issues.
  */
 export function getAgentTools(agentType: string): Array<Tool<any, any>> {
-  return AGENT_CONFIGS[agentType]?.availableTools || [
-    ToolRegistry.getToolInstance('search_agent') || (() => { throw new Error('search_agent tool not found'); })(),
-    ToolRegistry.getToolInstance('web_task_agent') || (() => { throw new Error('web_task_agent tool not found'); })(),
-    ToolRegistry.getToolInstance('document_search') || (() => { throw new Error('document_search tool not found'); })(),
-    ToolRegistry.getToolInstance('bookmark_store') || (() => { throw new Error('bookmark_store tool not found'); })(),
-    ToolRegistry.getToolInstance('research_agent') || (() => { throw new Error('research_agent tool not found'); })(),
+  const config = AGENT_CONFIGS[agentType];
+
+  // Default tool names if no config found
+  const defaultToolNames = [
+    'search_agent',
+    'web_task_agent',
+    'document_search',
+    'bookmark_store',
+    'research_agent',
+  ];
+
+  const defaultInstantTools = [
     new FinalizeWithCritiqueTool(),
     new SearchVisitHistoryTool(),
     new RenderWebAppTool(),
@@ -547,6 +615,26 @@ export function getAgentTools(agentType: string): Array<Tool<any, any>> {
     new SearchCustomAgentsTool(),
     new CallCustomAgentTool(),
   ];
+
+  const toolNames = config?.availableToolNames || defaultToolNames;
+  const instantTools = config?.instantTools || defaultInstantTools;
+
+  // Resolve tool names to tool instances lazily
+  const resolvedTools: Array<Tool<any, any>> = [];
+
+  for (const name of toolNames) {
+    const tool = ToolRegistry.getToolInstance(name);
+    if (!tool) {
+      logger.warn(`Tool "${name}" not found in registry for agent type "${agentType}"`);
+      continue;
+    }
+    resolvedTools.push(tool);
+  }
+
+  // Add instant tools (already instantiated)
+  resolvedTools.push(...instantTools);
+
+  return resolvedTools;
 }
 
 // Custom event for agent type selection

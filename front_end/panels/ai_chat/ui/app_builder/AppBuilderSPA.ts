@@ -913,6 +913,7 @@ const state = {
   terminalOutput: [],
   editor: null,
   webContainer: null,
+  webContainerUnavailable: false,
   terminalVisible: false,
 };
 
@@ -1082,15 +1083,171 @@ async function loadCodeMirror() {
   }
 }
 
+// Check if WebContainer can run in this environment
+function canUseWebContainer() {
+  const isSecureContext = window.isSecureContext;
+  const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
+  const crossOriginIsolated = window.crossOriginIsolated;
+
+  return isSecureContext && hasSharedArrayBuffer && crossOriginIsolated;
+}
+
+// Show fallback preview when WebContainer is not available
+function showFallbackPreview(message) {
+  state.webContainerUnavailable = true;
+  updateStatus('unavailable', 'Preview unavailable');
+
+  const previewIframe = elements.previewIframe;
+  if (previewIframe) {
+    const fallbackHTML = \`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            padding: 20px;
+            box-sizing: border-box;
+          }
+          .container {
+            max-width: 600px;
+            text-align: center;
+          }
+          .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+          }
+          h2 {
+            color: #00a4fe;
+            margin-bottom: 16px;
+          }
+          p {
+            line-height: 1.6;
+            margin-bottom: 16px;
+          }
+          .info-box {
+            background: rgba(0, 164, 254, 0.1);
+            border: 1px solid rgba(0, 164, 254, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: left;
+            margin-top: 20px;
+          }
+          .info-box h3 {
+            color: #00a4fe;
+            margin: 0 0 12px 0;
+            font-size: 14px;
+          }
+          code {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+          }
+          .command {
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 12px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="icon">🔧</div>
+          <h2>Live Preview Unavailable</h2>
+          <p>\${message}</p>
+          <div class="info-box">
+            <h3>How to Enable Live Preview</h3>
+            <p>WebContainer requires <code>Cross-Origin-Isolation</code> headers. To enable:</p>
+            <p><strong>Option 1:</strong> Run Chrome with flags:</p>
+            <div class="command">chrome --enable-features=SharedArrayBuffer</div>
+            <p style="margin-top: 16px;"><strong>Option 2:</strong> Serve DevTools with headers:</p>
+            <div class="command">Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Opener-Policy: same-origin</div>
+          </div>
+          <p style="margin-top: 20px; font-size: 14px; opacity: 0.7;">
+            You can still edit files and they will be saved. The preview will work once cross-origin isolation is enabled.
+          </p>
+        </div>
+      </body>
+      </html>
+    \`;
+    previewIframe.srcdoc = fallbackHTML;
+  }
+}
+
 // Initialize WebContainer
 async function initWebContainer() {
-  if (state.webContainer) return;
+  if (state.webContainer) return state.webContainer;
+  if (state.webContainerUnavailable) return null;
 
   try {
+    updateStatus('booting', 'Checking environment...');
+    appendTerminal('info', '=== WebContainer Environment Check ===');
+
+    // Check environment requirements
+    const isSecureContext = window.isSecureContext;
+    const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
+    const crossOriginIsolated = window.crossOriginIsolated;
+
+    appendTerminal('info', 'isSecureContext: ' + isSecureContext);
+    appendTerminal('info', 'SharedArrayBuffer available: ' + hasSharedArrayBuffer);
+    appendTerminal('info', 'crossOriginIsolated: ' + crossOriginIsolated);
+    appendTerminal('info', 'location.origin: ' + window.location.origin);
+
+    // Early exit if cross-origin isolation is not available
+    if (!crossOriginIsolated) {
+      appendTerminal('stderr', '');
+      appendTerminal('stderr', '=== WebContainer Cannot Start ===');
+      appendTerminal('stderr', 'Cross-Origin Isolation is REQUIRED but not available.');
+      appendTerminal('stderr', '');
+      appendTerminal('stderr', 'WebContainer needs these HTTP headers:');
+      appendTerminal('stderr', '  Cross-Origin-Embedder-Policy: require-corp');
+      appendTerminal('stderr', '  Cross-Origin-Opener-Policy: same-origin');
+      appendTerminal('stderr', '');
+      appendTerminal('stderr', 'Without these headers, SharedArrayBuffer is disabled');
+      appendTerminal('stderr', 'and WebContainer cannot run.');
+      appendTerminal('stderr', '');
+      appendTerminal('info', 'File editing still works - files are saved to IndexedDB.');
+      appendTerminal('info', 'Live preview will be available once headers are configured.');
+
+      showFallbackPreview('Cross-Origin Isolation is required for live preview but is not available in this environment.');
+      return null;
+    }
+
+    if (!hasSharedArrayBuffer) {
+      appendTerminal('stderr', 'SharedArrayBuffer is not available.');
+      showFallbackPreview('SharedArrayBuffer is not available in this browser.');
+      return null;
+    }
+
+    appendTerminal('info', '');
+    appendTerminal('info', 'Environment OK! Starting WebContainer...');
     updateStatus('booting', 'Booting WebContainer...');
 
+    appendTerminal('info', 'Importing WebContainer from esm.sh...');
+
     const { WebContainer } = await import('https://esm.sh/@webcontainer/api@1.1.9');
+    appendTerminal('info', 'WebContainer imported successfully');
+
+    appendTerminal('info', 'Calling WebContainer.boot()...');
     state.webContainer = await WebContainer.boot();
+    appendTerminal('info', 'WebContainer.boot() completed!');
 
     state.webContainer.on('server-ready', (port, url) => {
       state.serverUrl = url;
@@ -1109,12 +1266,20 @@ async function initWebContainer() {
     console.error('Failed to boot WebContainer:', error);
     updateStatus('error', 'Failed to boot');
     appendTerminal('stderr', 'Failed to boot WebContainer: ' + error.message);
+    appendTerminal('stderr', 'Error stack: ' + (error.stack || 'no stack'));
+    showFallbackPreview('Failed to initialize WebContainer: ' + error.message);
     return null;
   }
 }
 
 // Mount project files to WebContainer
 async function mountProject(files) {
+  // Auto-show terminal for debugging
+  if (!state.terminalVisible) {
+    state.terminalVisible = true;
+    elements.terminalPanel.style.display = 'flex';
+  }
+
   if (!state.webContainer) {
     await initWebContainer();
   }

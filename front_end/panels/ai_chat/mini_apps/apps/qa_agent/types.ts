@@ -316,6 +316,7 @@ export interface StoredTestRun {
   startTime: string;
   endTime?: string;
   results: StepResult[];
+  error?: string;
   environment?: {
     url: string;
     userAgent: string;

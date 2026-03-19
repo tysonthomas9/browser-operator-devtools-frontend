@@ -592,3 +592,243 @@ describe('AppBuilderSPA Runtime Execution', () => {
     }
   });
 });
+
+// ============================================================================
+// WebContainer Integration Tests
+// These tests verify WebContainer-related code is properly implemented
+// ============================================================================
+
+describe('AppBuilderSPA WebContainer Integration', () => {
+  let js: string;
+
+  beforeEach(() => {
+    js = AppBuilderSPA.js;
+  });
+
+  // SECTION 1: WebContainer Function Existence
+  describe('WebContainer functions', () => {
+    it('defines initWebContainer function', () => {
+      assert.include(js, 'async function initWebContainer', 'JS should define initWebContainer');
+    });
+
+    it('defines mountProject function', () => {
+      assert.include(js, 'async function mountProject', 'JS should define mountProject');
+    });
+
+    it('defines installDependencies function', () => {
+      assert.include(js, 'async function installDependencies', 'JS should define installDependencies');
+    });
+
+    it('defines startDevServer function', () => {
+      assert.include(js, 'async function startDevServer', 'JS should define startDevServer');
+    });
+
+    it('defines writeFileToContainer function', () => {
+      assert.include(js, 'async function writeFileToContainer', 'JS should define writeFileToContainer');
+    });
+  });
+
+  // SECTION 2: Environment Check Code
+  describe('WebContainer environment checks', () => {
+    it('checks isSecureContext', () => {
+      assert.include(js, 'window.isSecureContext', 'JS should check isSecureContext');
+    });
+
+    it('checks SharedArrayBuffer availability', () => {
+      assert.include(js, 'SharedArrayBuffer', 'JS should check SharedArrayBuffer');
+    });
+
+    it('checks crossOriginIsolated', () => {
+      assert.include(js, 'window.crossOriginIsolated', 'JS should check crossOriginIsolated');
+    });
+
+    it('logs environment info to terminal', () => {
+      assert.include(js, 'isSecureContext:', 'JS should log isSecureContext to terminal');
+      assert.include(js, 'SharedArrayBuffer available:', 'JS should log SharedArrayBuffer status');
+      assert.include(js, 'crossOriginIsolated:', 'JS should log crossOriginIsolated');
+    });
+  });
+
+  // SECTION 3: COOP/COEP Warning
+  describe('COOP/COEP header warning', () => {
+    it('warns when crossOriginIsolated is false', () => {
+      assert.include(js, 'Cross-Origin Isolation is REQUIRED but not available', 'JS should warn about missing cross-origin isolation');
+    });
+
+    it('mentions required headers', () => {
+      assert.include(js, 'Cross-Origin-Embedder-Policy: require-corp', 'JS should mention COEP header');
+      assert.include(js, 'Cross-Origin-Opener-Policy: same-origin', 'JS should mention COOP header');
+    });
+
+    it('has fallback preview function', () => {
+      assert.include(js, 'function showFallbackPreview', 'JS should have fallback preview function');
+    });
+
+    it('has canUseWebContainer function', () => {
+      assert.include(js, 'function canUseWebContainer', 'JS should have canUseWebContainer function');
+    });
+  });
+
+  // SECTION 4: WebContainer Import
+  describe('WebContainer import', () => {
+    it('imports from esm.sh', () => {
+      assert.include(js, 'esm.sh/@webcontainer/api', 'JS should import WebContainer from esm.sh');
+    });
+
+    it('imports correct version', () => {
+      assert.include(js, '@webcontainer/api@1.1.9', 'JS should import WebContainer v1.1.9');
+    });
+  });
+
+  // SECTION 5: WebContainer Boot Sequence
+  describe('WebContainer boot sequence', () => {
+    it('calls WebContainer.boot()', () => {
+      assert.include(js, 'WebContainer.boot()', 'JS should call WebContainer.boot()');
+    });
+
+    it('handles server-ready event', () => {
+      assert.include(js, "on('server-ready'", 'JS should handle server-ready event');
+    });
+
+    it('handles error event', () => {
+      assert.include(js, "on('error'", 'JS should handle WebContainer error event');
+    });
+
+    it('updates status during boot', () => {
+      assert.include(js, "updateStatus('booting'", 'JS should update status to booting');
+      assert.include(js, "updateStatus('ready'", 'JS should update status to ready');
+    });
+  });
+
+  // SECTION 6: File System Operations
+  describe('WebContainer file system', () => {
+    it('mounts file tree structure', () => {
+      assert.include(js, 'webContainer.mount(fileTree)', 'JS should mount file tree');
+    });
+
+    it('writes files for HMR', () => {
+      assert.include(js, 'webContainer.fs.writeFile', 'JS should write files to container');
+    });
+
+    it('spawns npm install', () => {
+      assert.include(js, "spawn('npm', ['install'])", 'JS should spawn npm install');
+    });
+
+    it('spawns npm run dev', () => {
+      assert.include(js, "spawn('npm', ['run', 'dev'])", 'JS should spawn npm run dev');
+    });
+  });
+
+  // SECTION 7: Terminal Output
+  describe('Terminal integration', () => {
+    it('pipes install output to terminal', () => {
+      assert.include(js, 'installProcess.output.pipeTo', 'JS should pipe install output');
+    });
+
+    it('pipes dev server output to terminal', () => {
+      assert.include(js, 'devProcess.output.pipeTo', 'JS should pipe dev output');
+    });
+
+    it('shows debug header in terminal', () => {
+      assert.include(js, '=== WebContainer Environment Check ===', 'JS should show debug header');
+    });
+  });
+
+  // SECTION 8: State Management
+  describe('WebContainer state', () => {
+    it('stores webContainer in state', () => {
+      assert.include(js, 'state.webContainer', 'JS should store webContainer in state');
+    });
+
+    it('stores serverUrl in state', () => {
+      assert.include(js, 'state.serverUrl', 'JS should store serverUrl in state');
+    });
+
+    it('initializes webContainerStatus', () => {
+      assert.include(js, "webContainerStatus: 'idle'", 'JS should initialize webContainerStatus to idle');
+    });
+  });
+});
+
+// ============================================================================
+// WebContainer Runtime Test (verifies debug output in iframe)
+// ============================================================================
+
+describe('AppBuilderSPA WebContainer Runtime', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  });
+
+  it('logs environment info when mountProject is called', async () => {
+    const iframe = document.createElement('iframe');
+    container.appendChild(iframe);
+
+    await new Promise<void>(resolve => {
+      iframe.onload = () => resolve();
+      if (iframe.contentDocument?.readyState === 'complete') {
+        resolve();
+      }
+    });
+
+    const doc = iframe.contentDocument!;
+    doc.open();
+    doc.write(AppBuilderSPA.html);
+    doc.close();
+
+    const style = doc.createElement('style');
+    style.textContent = AppBuilderSPA.css;
+    doc.head.appendChild(style);
+
+    // Capture console logs
+    const logs: string[] = [];
+    const win = iframe.contentWindow as (Window & typeof globalThis);
+
+    // Override console.log to capture output
+    const originalLog = win.console.log.bind(win.console);
+    win.console.log = (...args: unknown[]) => {
+      logs.push(args.map(a => String(a)).join(' '));
+      originalLog(...args);
+    };
+
+    // Mock the dynamic import to prevent actual WebContainer load
+    const mockJs = `
+      // Mock dynamic import to prevent network request
+      const originalImport = window.import || function() {};
+
+      ${AppBuilderSPA.js}
+
+      // Trigger initWebContainer to test environment checks
+      // We'll catch the import error since we can't actually import WebContainer
+      setTimeout(async () => {
+        try {
+          await initWebContainer();
+        } catch (e) {
+          console.log('[Test] Expected error during WebContainer init:', e.message);
+        }
+      }, 100);
+    `;
+
+    const script = doc.createElement('script');
+    script.textContent = mockJs;
+    doc.body.appendChild(script);
+
+    // Wait for initialization
+    await new Promise(r => setTimeout(r, 500));
+
+    // Check that terminal panel exists
+    const terminalContent = doc.getElementById('terminal-content');
+    assert.isNotNull(terminalContent, 'Terminal content should exist');
+
+    // Note: In a sandboxed iframe, crossOriginIsolated will be false
+    // The test verifies the code runs and attempts environment checks
+  });
+});

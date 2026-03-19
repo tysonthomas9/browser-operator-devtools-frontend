@@ -14,6 +14,7 @@ import { DataStudioMiniApp } from './apps/data_studio/DataStudioMiniApp.js';
 import { FileManagerMiniApp } from './apps/file_manager/FileManagerMiniApp.js';
 import { QAAgentMiniApp } from './apps/qa_agent/QAAgentMiniApp.js';
 import { AppBuilderMiniApp } from './apps/app_builder/AppBuilderMiniApp.js';
+import { SkillStudioMiniApp } from './apps/skill_studio/SkillStudioMiniApp.js';
 
 // Import mini app tools
 import { ListMiniAppsTool } from '../tools/mini_app/ListMiniAppsTool.js';
@@ -80,6 +81,9 @@ function registerMiniApps(): void {
 
   // Register App Builder mini app
   MiniAppRegistry.register(new AppBuilderMiniApp());
+
+  // Register Skill Studio mini app
+  MiniAppRegistry.register(new SkillStudioMiniApp());
 
   logger.info(`Registered ${MiniAppRegistry.getAllApps().length} mini apps`);
 }

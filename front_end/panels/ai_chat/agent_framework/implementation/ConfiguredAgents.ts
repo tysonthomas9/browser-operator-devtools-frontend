@@ -11,6 +11,7 @@ import { DocumentSearchTool } from '../../tools/DocumentSearchTool.js';
 import { NavigateURLTool, PerformActionTool, GetAccessibilityTreeTool, SearchContentTool, NavigateBackTool, NodeIDsToURLsTool, TakeScreenshotTool, ScrollPageTool, WaitTool, RenderWebAppTool, GetWebAppDataTool, RemoveWebAppTool, CreateFileTool, UpdateFileTool, DeleteFileTool, ReadFileTool, ListFilesTool } from '../../tools/Tools.js';
 import { UpdateTodoTool } from '../../tools/UpdateTodoTool.js';
 import { ExecuteCodeTool } from '../../tools/ExecuteCodeTool.js';
+import { RunGeneratedTestTool } from '../../tools/RunGeneratedTestTool.js';
 import { HTMLToMarkdownTool } from '../../tools/HTMLToMarkdownTool.js';
 import { ReadabilityExtractorTool } from '../../tools/ReadabilityExtractorTool.js';
 import { ConfigurableAgentTool, ToolRegistry } from '../ConfigurableAgentTool.js';
@@ -33,9 +34,29 @@ import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
 import { createQATestGeneratorAgentConfig } from './agents/QATestGeneratorAgent.js';
+import { createSkillDiscoveryAgentConfig } from './agents/SkillDiscoveryAgent.js';
+import { createSkillSynthesisAgentConfig } from './agents/SkillSynthesisAgent.js';
 import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
 import { initializeMiniApps } from '../../mini_apps/MiniAppInitialization.js';
 import { TestCDPCommandTool } from '../../tools/TestCDPCommandTool.js';
+
+// Skill tools
+import { createSearchSkillsTool } from '../../tools/SearchSkillsTool.js';
+import { createTestSkillTool } from '../../tools/TestSkillTool.js';
+import { createProposeSkillTool } from '../../tools/ProposeSkillTool.js';
+import { createWriteSkillCodeTool } from '../../tools/WriteSkillCodeTool.js';
+import { createSaveSkillTool } from '../../tools/SaveSkillTool.js';
+import { createGetPendingProposalsTool } from '../../tools/GetPendingProposalsTool.js';
+
+// Skill registration
+import { SkillStorageManager } from '../../skills/SkillStorageManager.js';
+import { SkillToolAdapter } from '../../skills/SkillToolAdapter.js';
+import { createLogger } from '../../core/Logger.js';
+
+const logger = createLogger('ConfiguredAgents');
+
+// App Builder tools
+import { GenerateAppTool } from '../../tools/GenerateAppTool.js';
 
 /**
  * Initialize all configured agents
@@ -70,11 +91,15 @@ export async function initializeConfiguredAgents(): Promise<void> {
   ToolRegistry.registerToolFactory('list_files', () => new ListFilesTool());
   ToolRegistry.registerToolFactory('update_todo', () => new UpdateTodoTool());
   ToolRegistry.registerToolFactory('execute_code', () => new ExecuteCodeTool());
+  ToolRegistry.registerToolFactory('run_generated_test', () => new RunGeneratedTestTool());
 
   // Register webapp rendering tools
   ToolRegistry.registerToolFactory('render_webapp', () => new RenderWebAppTool());
   ToolRegistry.registerToolFactory('get_webapp_data', () => new GetWebAppDataTool());
   ToolRegistry.registerToolFactory('remove_webapp', () => new RemoveWebAppTool());
+
+  // Register App Builder tools
+  ToolRegistry.registerToolFactory('generate_app', () => new GenerateAppTool());
 
   // Register bookmark and document search tools
   ToolRegistry.registerToolFactory('bookmark_store', () => new BookmarkStoreTool());
@@ -156,6 +181,50 @@ export async function initializeConfiguredAgents(): Promise<void> {
   const qaTestGeneratorAgent = new ConfigurableAgentTool(qaTestGeneratorAgentConfig);
   ToolRegistry.registerToolFactory('qa_test_generator', () => qaTestGeneratorAgent);
 
+  // Register skill tools (for skill discovery and synthesis)
+  ToolRegistry.registerToolFactory('search_skills', () => createSearchSkillsTool());
+  ToolRegistry.registerToolFactory('test_skill', () => createTestSkillTool());
+  ToolRegistry.registerToolFactory('propose_skill', () => createProposeSkillTool());
+  ToolRegistry.registerToolFactory('write_skill_code', () => createWriteSkillCodeTool());
+  ToolRegistry.registerToolFactory('save_skill', () => createSaveSkillTool());
+  ToolRegistry.registerToolFactory('get_pending_proposals', () => createGetPendingProposalsTool());
+
+  // Register verified skills as callable tools
+  await registerVerifiedSkillsAsTools();
+
+  // Create and register Skill Discovery Agent
+  const skillDiscoveryAgentConfig = createSkillDiscoveryAgentConfig();
+  const skillDiscoveryAgent = new ConfigurableAgentTool(skillDiscoveryAgentConfig);
+  ToolRegistry.registerToolFactory('skill_discovery_agent', () => skillDiscoveryAgent);
+
+  // Create and register Skill Synthesis Agent
+  const skillSynthesisAgentConfig = createSkillSynthesisAgentConfig();
+  const skillSynthesisAgent = new ConfigurableAgentTool(skillSynthesisAgentConfig);
+  ToolRegistry.registerToolFactory('skill_synthesis_agent', () => skillSynthesisAgent);
+
   // Initialize custom agents from Agent Studio
   await AgentStudioIntegration.initialize();
+}
+
+/**
+ * Register verified skills from storage as callable tools.
+ * This allows agents to use learned skills like any other tool.
+ */
+async function registerVerifiedSkillsAsTools(): Promise<void> {
+  try {
+    const manager = SkillStorageManager.getInstance();
+    const verifiedSkills = await manager.getVerifiedSkills();
+
+    for (const skill of verifiedSkills) {
+      const toolName = `skill_${skill.name}`;
+      ToolRegistry.registerToolFactory(toolName, () => new SkillToolAdapter(skill));
+      logger.info(`Registered verified skill as tool: ${toolName}`);
+    }
+
+    if (verifiedSkills.length > 0) {
+      logger.info(`Registered ${verifiedSkills.length} verified skills as tools`);
+    }
+  } catch (e) {
+    logger.error('Failed to register verified skills as tools', e);
+  }
 }

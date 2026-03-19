@@ -118,81 +118,133 @@ export class GenericMiniAppBridge implements MiniAppBridge {
   }
 
   /**
-   * Send an action to the SPA
+   * Send an action to the SPA with retry logic
+   *
+   * The iframe may not be immediately available in the DOM after rendering,
+   * so we retry with exponential backoff if it's not found.
    */
-  async sendToSPA(action: DevToolsToSPAAction): Promise<void> {
+  async sendToSPA(action: DevToolsToSPAAction, maxRetries: number = 5): Promise<void> {
     if (!this.target || !this._webappId) {
       logger.error(`Bridge for "${this.appId}" not installed, cannot send to SPA`);
       return;
     }
 
-    try {
-      const runtimeAgent = this.target.runtimeAgent();
+    const runtimeAgent = this.target.runtimeAgent();
+    let lastError: string | null = null;
 
-      // Call window.miniApp.dispatch() in the iframe context
-      await runtimeAgent.invoke_evaluate({
-        expression: `
-          (() => {
-            const iframe = document.getElementById(${JSON.stringify(this._webappId)});
-            if (!iframe || !iframe.contentWindow) {
-              console.error('[MiniAppBridge] Iframe not found: ${this._webappId}');
-              return false;
-            }
-            if (typeof iframe.contentWindow.miniApp?.dispatch === 'function') {
-              iframe.contentWindow.miniApp.dispatch(${JSON.stringify(action)});
-              return true;
-            }
-            console.error('[MiniAppBridge] miniApp.dispatch not found');
-            return false;
-          })()
-        `,
-        returnByValue: true,
-      });
-    } catch (error) {
-      logger.error(`Failed to send to SPA for "${this.appId}":`, error);
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Call window.miniApp.dispatch() in the iframe context
+        const result = await runtimeAgent.invoke_evaluate({
+          expression: `
+            (() => {
+              const iframe = document.getElementById(${JSON.stringify(this._webappId)});
+              if (!iframe || !iframe.contentWindow) {
+                return { success: false, error: 'iframe_not_found' };
+              }
+              if (typeof iframe.contentWindow.miniApp?.dispatch === 'function') {
+                iframe.contentWindow.miniApp.dispatch(${JSON.stringify(action)});
+                return { success: true };
+              }
+              return { success: false, error: 'dispatch_not_found' };
+            })()
+          `,
+          returnByValue: true,
+        });
+
+        const value = result.result?.value as { success: boolean; error?: string } | undefined;
+
+        if (value?.success) {
+          if (attempt > 0) {
+            logger.info(`Successfully sent to SPA for "${this.appId}" on attempt ${attempt + 1}`);
+          }
+          return;
+        }
+
+        lastError = value?.error || 'unknown';
+
+        // If iframe not found, retry with backoff
+        if (lastError === 'iframe_not_found') {
+          const delay = Math.min(100 * Math.pow(2, attempt), 2000); // 100, 200, 400, 800, 1600ms
+          logger.info(`Iframe not found for "${this.appId}", retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // If dispatch not found, the SPA JS hasn't initialized yet - retry
+        if (lastError === 'dispatch_not_found') {
+          const delay = Math.min(100 * Math.pow(2, attempt), 2000);
+          logger.info(`miniApp.dispatch not found for "${this.appId}", retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+      } catch (error) {
+        logger.error(`Failed to send to SPA for "${this.appId}" (attempt ${attempt + 1}):`, error);
+        lastError = String(error);
+      }
     }
+
+    // All retries exhausted
+    logger.error(`Failed to send to SPA for "${this.appId}" after ${maxRetries} attempts. Last error: ${lastError}`);
   }
 
   /**
-   * Get the current state from the SPA
+   * Get the current state from the SPA with retry logic
    */
-  async getState(): Promise<MiniAppState> {
+  async getState(maxRetries: number = 3): Promise<MiniAppState> {
     if (!this.target || !this._webappId) {
       logger.error(`Bridge for "${this.appId}" not installed, cannot get state`);
       return {};
     }
 
-    try {
-      const runtimeAgent = this.target.runtimeAgent();
+    const runtimeAgent = this.target.runtimeAgent();
 
-      const result = await runtimeAgent.invoke_evaluate({
-        expression: `
-          (() => {
-            const iframe = document.getElementById(${JSON.stringify(this._webappId)});
-            if (!iframe || !iframe.contentWindow) {
-              console.error('[MiniAppBridge] Iframe not found: ${this._webappId}');
-              return null;
-            }
-            if (typeof iframe.contentWindow.miniApp?.getState === 'function') {
-              return iframe.contentWindow.miniApp.getState();
-            }
-            console.error('[MiniAppBridge] miniApp.getState not found');
-            return null;
-          })()
-        `,
-        returnByValue: true,
-      });
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const result = await runtimeAgent.invoke_evaluate({
+          expression: `
+            (() => {
+              const iframe = document.getElementById(${JSON.stringify(this._webappId)});
+              if (!iframe || !iframe.contentWindow) {
+                return { __error: 'iframe_not_found' };
+              }
+              if (typeof iframe.contentWindow.miniApp?.getState === 'function') {
+                return { __state: iframe.contentWindow.miniApp.getState() };
+              }
+              return { __error: 'getState_not_found' };
+            })()
+          `,
+          returnByValue: true,
+        });
 
-      if (result.exceptionDetails) {
-        logger.error(`Exception getting state for "${this.appId}":`, result.exceptionDetails.text);
+        if (result.exceptionDetails) {
+          logger.error(`Exception getting state for "${this.appId}":`, result.exceptionDetails.text);
+          return {};
+        }
+
+        const value = result.result?.value as { __state?: MiniAppState; __error?: string } | undefined;
+
+        if (value?.__state !== undefined) {
+          return value.__state;
+        }
+
+        // Retry on iframe not found
+        if (value?.__error === 'iframe_not_found' || value?.__error === 'getState_not_found') {
+          const delay = Math.min(100 * Math.pow(2, attempt), 1000);
+          logger.info(`${value.__error} for "${this.appId}", retrying getState in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
         return {};
+      } catch (error) {
+        logger.error(`Failed to get state for "${this.appId}" (attempt ${attempt + 1}):`, error);
       }
-
-      return (result.result.value as MiniAppState) || {};
-    } catch (error) {
-      logger.error(`Failed to get state for "${this.appId}":`, error);
-      return {};
     }
+
+    logger.error(`Failed to get state for "${this.appId}" after ${maxRetries} attempts`);
+    return {};
   }
 
   /**

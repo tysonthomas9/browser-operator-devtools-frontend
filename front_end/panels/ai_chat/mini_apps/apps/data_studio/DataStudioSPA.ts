@@ -28,7 +28,7 @@ function getHTML(): string {
   <title>Data Studio</title>
 </head>
 <body>
-  <div class="data-studio">
+  <div class="data-studio" data-testid="data-studio-shell">
     <!-- Header -->
     <header class="studio-header">
       <div class="header-left">
@@ -50,7 +50,7 @@ function getHTML(): string {
     </header>
 
     <!-- Selector View -->
-    <div class="selector-view" id="selector-view">
+    <div class="selector-view" id="selector-view" data-testid="selector-view">
       <div class="selector-content">
         <section class="selector-section">
           <div class="section-header">

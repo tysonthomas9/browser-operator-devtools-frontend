@@ -108,18 +108,22 @@ function getHTML(): string {
 
             <div class="form-group">
               <div class="steps-header">
-                <label>Generated Steps</label>
+                <label>Generated Test Script</label>
                 <button class="btn btn-secondary" id="generate-steps-btn">
-                  ✨ Generate Steps
+                  ✨ Generate Script
                 </button>
               </div>
               <div class="steps-container" id="steps-container">
                 <div class="steps-empty" id="steps-empty">
-                  <p>No steps generated yet.</p>
-                  <p class="hint">Enter a description above and click "Generate Steps" to create executable test steps.</p>
+                  <p>No test script generated yet.</p>
+                  <p class="hint">Enter a description above and click "Generate Script" to create an executable JavaScript test.</p>
                 </div>
-                <div class="steps-list" id="steps-list">
-                  <!-- Steps will be rendered here -->
+                <div class="code-viewer" id="code-viewer" style="display: none;">
+                  <div class="code-header">
+                    <span class="code-lang">JavaScript</span>
+                    <button class="btn btn-text btn-small" id="copy-code-btn">📋 Copy</button>
+                  </div>
+                  <pre class="code-block"><code id="code-content"></code></pre>
                 </div>
               </div>
             </div>
@@ -933,6 +937,60 @@ function getCSS(): string {
       text-align: center;
       color: var(--text-muted);
     }
+
+    /* Code Viewer */
+    .code-viewer {
+      background: #1e1e1e;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #2d2d2d;
+      border-bottom: 1px solid #3d3d3d;
+    }
+
+    .code-lang {
+      font-size: 11px;
+      font-weight: 600;
+      color: #9aa0a6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-small {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    .code-block {
+      margin: 0;
+      padding: 12px;
+      max-height: 400px;
+      overflow: auto;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #d4d4d4;
+      white-space: pre;
+      tab-size: 2;
+    }
+
+    .code-block code {
+      font-family: inherit;
+    }
+
+    /* Simple syntax highlighting classes */
+    .code-block .keyword { color: #569cd6; }
+    .code-block .string { color: #ce9178; }
+    .code-block .number { color: #b5cea8; }
+    .code-block .comment { color: #6a9955; }
+    .code-block .function { color: #dcdcaa; }
+    .code-block .operator { color: #d4d4d4; }
   `;
 }
 
@@ -980,7 +1038,9 @@ function getJS(): string {
         testDescription: document.getElementById('test-description'),
         stepsContainer: document.getElementById('steps-container'),
         stepsEmpty: document.getElementById('steps-empty'),
-        stepsList: document.getElementById('steps-list'),
+        codeViewer: document.getElementById('code-viewer'),
+        codeContent: document.getElementById('code-content'),
+        copyCodeBtn: document.getElementById('copy-code-btn'),
 
         // Test Buttons
         backToListBtn: document.getElementById('back-to-list-btn'),
@@ -1056,6 +1116,18 @@ function getJS(): string {
           sendToDevTools({ type: 'generate-steps', data });
         });
         elements.runTestBtn.addEventListener('click', () => sendToDevTools({ type: 'run-test' }));
+
+        // Copy code button
+        elements.copyCodeBtn.addEventListener('click', () => {
+          const code = state.selectedTest?.generatedCode || '';
+          if (code) {
+            navigator.clipboard.writeText(code).then(() => {
+              showToast('Code copied to clipboard!', 'success');
+            }).catch(() => {
+              showToast('Failed to copy code', 'error');
+            });
+          }
+        });
 
         // Suite editor
         elements.backToListSuiteBtn.addEventListener('click', backToList);
@@ -1141,32 +1213,38 @@ function getJS(): string {
         elements.testUrl.value = testCase.url || '';
         elements.testDescription.value = testCase.description || '';
 
-        renderSteps(testCase.steps || []);
+        renderCode(testCase.generatedCode);
 
         elements.deleteTestBtn.style.display = isNew ? 'none' : 'inline-flex';
       }
 
-      function renderSteps(steps) {
-        if (!steps || steps.length === 0) {
+      function renderCode(code) {
+        if (!code) {
           elements.stepsEmpty.style.display = 'flex';
-          elements.stepsList.style.display = 'none';
+          elements.codeViewer.style.display = 'none';
           return;
         }
 
         elements.stepsEmpty.style.display = 'none';
-        elements.stepsList.style.display = 'block';
+        elements.codeViewer.style.display = 'block';
 
-        const html = steps.map((step, index) => \`
-          <div class="step-item">
-            <div class="step-number">\${index + 1}</div>
-            <div class="step-content">
-              <span class="step-type">\${step.type}</span>
-              <div class="step-description">\${escapeHtml(step.description)}</div>
-            </div>
-          </div>
-        \`).join('');
+        // Apply simple syntax highlighting
+        const highlighted = highlightJS(escapeHtml(code));
+        elements.codeContent.innerHTML = highlighted;
+      }
 
-        elements.stepsList.innerHTML = html;
+      // Simple JavaScript syntax highlighting
+      function highlightJS(code) {
+        // Keywords
+        code = code.replace(/\\b(async|await|function|const|let|var|return|if|else|for|while|try|catch|throw|new|typeof|instanceof)\\b/g, '<span class="keyword">$1</span>');
+        // Strings (double and single quotes)
+        code = code.replace(/("(?:[^"\\\\\\\\]|\\\\\\\\.)*"|'(?:[^'\\\\\\\\]|\\\\\\\\.)*'|\`(?:[^\`\\\\\\\\]|\\\\\\\\.)*\`)/g, '<span class="string">$1</span>');
+        // Numbers
+        code = code.replace(/\\b(\\d+(\\.\\d+)?)\\b/g, '<span class="number">$1</span>');
+        // Comments
+        code = code.replace(/(\\/\\/.*$)/gm, '<span class="comment">$1</span>');
+        code = code.replace(/(\\/\\*[\\s\\S]*?\\*\\/)/g, '<span class="comment">$1</span>');
+        return code;
       }
 
       function renderSuiteEditor(testSuite, testCases, isNew) {
@@ -1220,7 +1298,7 @@ function getJS(): string {
         elements.runTitle.textContent = 'Running: ' + testCase.name;
 
         updateRunStatus(run);
-        renderRunSteps(testCase.steps, run.results || []);
+        renderRunResults(run.results || [], run.status, run.error);
       }
 
       function updateRunStatus(run) {
@@ -1241,47 +1319,67 @@ function getJS(): string {
         elements.closeRunBtn.style.display = run.status !== 'running' ? 'inline-flex' : 'none';
       }
 
-      function renderRunSteps(steps, results) {
-        if (!steps) {
-          elements.runSteps.innerHTML = '<div class="suite-tests-empty">No steps</div>';
+      function renderRunResults(results, runStatus, runError) {
+        // Show running state while script executes
+        if (runStatus === 'running') {
+          elements.progressFill.style.width = '50%';
+          elements.progressText.textContent = 'Executing test script...';
+          elements.runSteps.innerHTML = \`
+            <div class="run-step running">
+              <div class="run-step-icon">◉</div>
+              <div class="run-step-content">Executing JavaScript test in browser...</div>
+            </div>
+          \`;
           return;
         }
 
-        const completedCount = results.length;
-        const totalCount = steps.length;
-        const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+        // Show results when complete
+        if (!results || results.length === 0) {
+          const passedCount = 0;
+          const totalCount = 0;
+          elements.progressFill.style.width = '100%';
+          elements.progressText.textContent = runStatus === 'passed' ? 'Test passed!' : 'Test completed';
+
+          if (runError) {
+            elements.runSteps.innerHTML = \`
+              <div class="run-step failed">
+                <div class="run-step-icon">✗</div>
+                <div class="run-step-content">\${escapeHtml(runError)}</div>
+              </div>
+            \`;
+          } else {
+            elements.runSteps.innerHTML = '<div class="suite-tests-empty">No step details available</div>';
+          }
+          return;
+        }
+
+        const passedCount = results.filter(r => r.status === 'passed').length;
+        const totalCount = results.length;
+        const progress = totalCount > 0 ? (passedCount / totalCount) * 100 : 100;
 
         elements.progressFill.style.width = progress + '%';
-        elements.progressText.textContent = 'Step ' + completedCount + ' of ' + totalCount;
+        elements.progressText.textContent = passedCount + ' of ' + totalCount + ' steps passed';
 
-        const html = steps.map((step, index) => {
-          const result = results[index];
-          let statusClass = 'pending';
+        const html = results.map((result, index) => {
+          let statusClass = result.status || 'pending';
           let icon = '○';
-          let duration = '';
 
-          if (result) {
-            statusClass = result.status;
-            if (result.status === 'passed') {
-              icon = '✓';
-            } else if (result.status === 'failed') {
-              icon = '✗';
-            } else if (result.status === 'skipped') {
-              icon = '−';
-            }
-            if (result.duration) {
-              duration = (result.duration / 1000).toFixed(1) + 's';
-            }
-          } else if (index === completedCount) {
-            statusClass = 'running';
-            icon = '◉';
+          if (result.status === 'passed') {
+            icon = '✓';
+          } else if (result.status === 'failed') {
+            icon = '✗';
+          } else if (result.status === 'skipped') {
+            icon = '−';
           }
+
+          // Get step name from result (script returns step names)
+          const stepName = result.name || result.stepId || ('Step ' + (index + 1));
+          const errorText = result.error ? ' - ' + result.error : '';
 
           return \`
             <div class="run-step \${statusClass}">
               <div class="run-step-icon">\${icon}</div>
-              <div class="run-step-content">\${escapeHtml(step.description)}</div>
-              <div class="run-step-duration">\${duration}</div>
+              <div class="run-step-content">\${escapeHtml(stepName + errorText)}</div>
             </div>
           \`;
         }).join('');
@@ -1448,13 +1546,14 @@ function getJS(): string {
             elements.generateStepsBtn.disabled = state.isGeneratingSteps;
             elements.generateStepsBtn.textContent = state.isGeneratingSteps
               ? 'Generating...'
-              : '✨ Generate Steps';
+              : '✨ Generate Script';
             break;
 
           case 'steps-generated':
             if (state.selectedTest) {
-              state.selectedTest.steps = action.payload.steps;
-              renderSteps(action.payload.steps);
+              state.selectedTest.generatedCode = action.payload.generatedCode;
+              state.selectedTest = action.payload.testCase;
+              renderCode(action.payload.generatedCode);
             }
             break;
 
@@ -1467,7 +1566,7 @@ function getJS(): string {
           case 'test-progress':
             if (state.currentRun) {
               state.currentRun.results = action.payload.results;
-              renderRunSteps(action.payload.testCase.steps, action.payload.results);
+              renderRunResults(action.payload.results, 'running', null);
             }
             break;
 
@@ -1475,6 +1574,11 @@ function getJS(): string {
             state.isRunningTest = false;
             state.currentRun = action.payload.run;
             updateRunStatus(action.payload.run);
+            renderRunResults(
+              action.payload.run.results || [],
+              action.payload.run.status,
+              action.payload.run.error
+            );
 
             // After a brief delay to show final status, navigate back to test detail
             setTimeout(() => {
