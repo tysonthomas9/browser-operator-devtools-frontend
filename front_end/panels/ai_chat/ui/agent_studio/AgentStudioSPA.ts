@@ -38,10 +38,22 @@ function getHTML(): string {
       <button class="close-btn" id="close-btn" title="Close Agent Studio"></button>
     </header>
 
+    <!-- Tab Bar -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="agents" id="tab-agents">
+        <span class="tab-icon" id="tab-agents-icon"></span>
+        Agents
+      </button>
+      <button class="tab-btn" data-tab="tools" id="tab-tools">
+        <span class="tab-icon" id="tab-tools-icon"></span>
+        Tools
+      </button>
+    </nav>
+
     <!-- Main Content -->
     <div class="studio-content">
-      <!-- Left Panel: Agent List -->
-      <aside class="agent-list-panel">
+      <!-- Left Panel: Agent List (Agents Tab) -->
+      <aside class="agent-list-panel tab-content" data-tab="agents">
         <button class="new-agent-btn" id="new-agent-btn">
           <span class="btn-icon-inline" id="new-agent-icon"></span>
           New Agent
@@ -62,7 +74,22 @@ function getHTML(): string {
         </div>
       </aside>
 
-      <!-- Right Panel: Agent Details -->
+      <!-- Left Panel: Tool List (Tools Tab) -->
+      <aside class="agent-list-panel tab-content" data-tab="tools" style="display: none;">
+        <button class="new-agent-btn" id="new-tool-btn">
+          <span class="btn-icon-inline" id="new-tool-icon"></span>
+          New Tool
+        </button>
+
+        <div class="agent-list-section">
+          <h3 class="section-title">Custom Tools</h3>
+          <div class="agent-list" id="custom-tools">
+            <div class="empty-message">No custom tools yet</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Panel: Agent/Tool Details -->
       <main class="agent-detail-panel" id="agent-detail-panel">
         <div class="empty-detail">
           <div class="empty-icon" id="empty-detail-icon"></div>
@@ -163,7 +190,7 @@ body {
   width: 100vw;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   background: var(--surface);
 }
 
@@ -232,6 +259,51 @@ body {
 .close-btn svg {
   width: 18px;
   height: 18px;
+}
+
+/* Tab Bar */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.tab-btn:hover {
+  background: var(--surface-variant);
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Main Content */
@@ -609,6 +681,55 @@ body {
   flex: 1;
 }
 
+.tool-badge.custom-tool {
+  background: var(--primary);
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.tools-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.btn-link:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
+.edit-tool-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.5;
+  margin-left: auto;
+  font-size: 14px;
+}
+
+.edit-tool-btn:hover {
+  opacity: 1;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -912,6 +1033,296 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
 }
+
+/* Tool Code Editor */
+#tool-code {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 250px;
+}
+
+/* Schema Builder */
+.schema-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schema-props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schema-property {
+  background: var(--surface-variant);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.schema-prop-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.schema-prop-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.schema-prop-type {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: var(--radius-full);
+  font-weight: 500;
+}
+
+.required-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--warning-light);
+  color: var(--warning);
+  border-radius: var(--radius-xs);
+  font-weight: 500;
+}
+
+.schema-prop-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Dependencies Builder */
+.dependencies-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preset-libs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px;
+  background: var(--surface-variant);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.preset-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.preset-lib-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-primary);
+}
+
+.preset-lib-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.dependencies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dependency-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--surface-variant);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.dependency-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dependency-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.dependency-global {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: ui-monospace, monospace;
+}
+
+/* Icon-only button */
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.btn-icon:hover {
+  background: var(--error-light);
+  color: var(--error);
+}
+
+.btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Tool Test Panel */
+.tool-test-panel {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--surface-variant);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.tool-test-panel h4 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.test-inputs-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.test-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.test-input-row label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.test-input-row .input-type {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.test-input-row input,
+.test-input-row textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.test-input-row textarea {
+  font-family: ui-monospace, monospace;
+  min-height: 60px;
+  resize: vertical;
+}
+
+.test-input-row input:focus,
+.test-input-row textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.no-params-message {
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.tool-test-results {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+  display: none;
+}
+
+.tool-test-results.visible {
+  display: block;
+}
+
+.tool-test-results.success {
+  border-left: 3px solid var(--success);
+}
+
+.tool-test-results.error {
+  border-left: 3px solid var(--error);
+}
+
+.test-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.test-result-header.success {
+  color: var(--success);
+}
+
+.test-result-header.error {
+  color: var(--error);
+}
+
+.test-result-duration {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.test-result-value {
+  color: var(--text-primary);
+}
   `.trim();
 }
 
@@ -922,6 +1333,7 @@ function getJS(): string {
 // Lucide Icons as SVG strings
 const Icons = {
   bot: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>',
+  code: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
   plus: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   x: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
   save: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
@@ -940,82 +1352,133 @@ const Icons = {
 // State
 let state = {
   agents: [],
-  tools: [],
+  tools: [],           // Available tools for agent selection
   selectedAgent: null,
   isCreatingNew: false,
+  // Tool Studio state
+  activeTab: 'agents', // 'agents' | 'tools'
+  customTools: [],     // Custom tools list
+  selectedTool: null,
+  isCreatingNewTool: false,
+  presetLibraries: [], // Preset CDN libraries
+  // Navigation state for returning to agent after tool creation/edit
+  returnToAgent: null, // { agentId: string } if navigating from agent form
 };
 
 // Track last pushed history state to prevent duplicates
-let lastHistoryAgentName = null;
+let lastHistoryAgentId = null;
 let lastHistoryIsNew = false;
+let lastHistoryToolId = null;
+let lastHistoryIsNewTool = false;
 
 // ==========================================
 // Browser History API Integration
 // ==========================================
 
 /**
- * Push a new history state when selecting/deselecting agents.
- * Uses pushState so browser back/forward buttons work.
+ * Push a new history state when selecting/deselecting agents or tools.
+ * Uses the injected miniAppRouter for navigation.
  */
 function pushHistoryState() {
-  const currentAgentName = state.selectedAgent?.name || null;
-  const currentIsNew = state.isCreatingNew;
+  // Handle Tools tab
+  if (state.activeTab === 'tools') {
+    const currentToolId = state.selectedTool?.id || null;
+    const currentIsNewTool = state.isCreatingNewTool;
 
-  // Don't push duplicate states
-  if (currentAgentName === lastHistoryAgentName && currentIsNew === lastHistoryIsNew) {
+    // Don't push duplicate states
+    if (currentToolId === lastHistoryToolId && currentIsNewTool === lastHistoryIsNewTool) {
+      return;
+    }
+
+    if (window.miniAppRouter) {
+      if (currentIsNewTool) {
+        window.miniAppRouter.navigate('new-tool');
+      } else if (currentToolId) {
+        window.miniAppRouter.navigate('tool', { id: currentToolId });
+      } else {
+        window.miniAppRouter.navigate('list');
+      }
+    }
+
+    lastHistoryToolId = currentToolId;
+    lastHistoryIsNewTool = currentIsNewTool;
+
+    console.log('[AgentStudio] Pushed tool history state via router:', { toolId: currentToolId, isNewTool: currentIsNewTool });
     return;
   }
 
-  const stateObj = {
-    selectedAgent: currentAgentName,
-    isCreatingNew: currentIsNew,
-    timestamp: Date.now()
-  };
+  // Handle Agents tab
+  const currentAgentId = state.selectedAgent?.id || null;
+  const currentIsNew = state.isCreatingNew;
 
-  let hash = '#agent-studio';
-  if (currentIsNew) {
-    hash = '#agent-studio/new';
-  } else if (currentAgentName) {
-    hash = '#agent-studio/agent/' + encodeURIComponent(currentAgentName);
+  // Don't push duplicate states
+  if (currentAgentId === lastHistoryAgentId && currentIsNew === lastHistoryIsNew) {
+    return;
   }
 
-  // Use PARENT page's history so URL changes in browser address bar
-  window.parent.history.pushState(stateObj, '', hash);
+  // Use the injected router API for navigation
+  if (window.miniAppRouter) {
+    if (currentIsNew) {
+      window.miniAppRouter.navigate('new');
+    } else if (currentAgentId) {
+      window.miniAppRouter.navigate('agent', { id: currentAgentId });
+    } else {
+      window.miniAppRouter.navigate('list');
+    }
+  }
 
-  lastHistoryAgentName = currentAgentName;
+  lastHistoryAgentId = currentAgentId;
   lastHistoryIsNew = currentIsNew;
 
-  console.log('[AgentStudio] Pushed history state:', stateObj);
+  console.log('[AgentStudio] Pushed history state via router:', { agentId: currentAgentId, isNew: currentIsNew });
 }
 
 /**
  * Replace current history state (used for initial load).
- * Doesn't create a new history entry.
+ * Uses the injected miniAppRouter for navigation without creating a new history entry.
  */
 function replaceHistoryState() {
-  const currentAgentName = state.selectedAgent?.name || null;
-  const currentIsNew = state.isCreatingNew;
+  // Handle Tools tab
+  if (state.activeTab === 'tools') {
+    const currentToolId = state.selectedTool?.id || null;
+    const currentIsNewTool = state.isCreatingNewTool;
 
-  const stateObj = {
-    selectedAgent: currentAgentName,
-    isCreatingNew: currentIsNew,
-    timestamp: Date.now()
-  };
+    if (window.miniAppRouter) {
+      if (currentIsNewTool) {
+        window.miniAppRouter.replace('new-tool');
+      } else if (currentToolId) {
+        window.miniAppRouter.replace('tool', { id: currentToolId });
+      } else {
+        window.miniAppRouter.replace('list');
+      }
+    }
 
-  let hash = '#agent-studio';
-  if (currentIsNew) {
-    hash = '#agent-studio/new';
-  } else if (currentAgentName) {
-    hash = '#agent-studio/agent/' + encodeURIComponent(currentAgentName);
+    lastHistoryToolId = currentToolId;
+    lastHistoryIsNewTool = currentIsNewTool;
+
+    console.log('[AgentStudio] Replaced tool history state via router:', { toolId: currentToolId, isNewTool: currentIsNewTool });
+    return;
   }
 
-  // Use PARENT page's history so URL changes in browser address bar
-  window.parent.history.replaceState(stateObj, '', hash);
+  // Handle Agents tab
+  const currentAgentId = state.selectedAgent?.id || null;
+  const currentIsNew = state.isCreatingNew;
 
-  lastHistoryAgentName = currentAgentName;
+  // Use the injected router API for navigation
+  if (window.miniAppRouter) {
+    if (currentIsNew) {
+      window.miniAppRouter.replace('new');
+    } else if (currentAgentId) {
+      window.miniAppRouter.replace('agent', { id: currentAgentId });
+    } else {
+      window.miniAppRouter.replace('list');
+    }
+  }
+
+  lastHistoryAgentId = currentAgentId;
   lastHistoryIsNew = currentIsNew;
 
-  console.log('[AgentStudio] Replaced history state:', stateObj);
+  console.log('[AgentStudio] Replaced history state via router:', { agentId: currentAgentId, isNew: currentIsNew });
 }
 
 /**
@@ -1025,25 +1488,47 @@ function replaceHistoryState() {
 function restoreFromHistoryState(historyState) {
   console.log('[AgentStudio] Restoring from history state:', historyState);
 
-  // Update tracking to prevent re-pushing this state
-  lastHistoryAgentName = historyState.selectedAgent;
-  lastHistoryIsNew = historyState.isCreatingNew;
+  // Router state uses: routeName ('agent', 'new', 'list', 'tool', 'new-tool') and params ({ id: ... })
+  const routeName = historyState.routeName;
+  const id = historyState.params?.id || null;
 
-  if (historyState.isCreatingNew) {
-    // Creating a new agent
-    sendToDevTools({ type: 'new-agent' });
-  } else if (historyState.selectedAgent) {
-    // Select the agent
-    sendToDevTools({
-      type: 'select-agent',
-      name: historyState.selectedAgent
-    });
-  } else {
-    // Return to list (no agent selected)
-    state.selectedAgent = null;
-    state.isCreatingNew = false;
-    renderEmptyState();
-    updateListSelection(null);
+  // Update tracking to prevent re-pushing this state
+  if (routeName === 'agent' || routeName === 'new' || routeName === 'list') {
+    lastHistoryAgentId = id;
+    lastHistoryIsNew = routeName === 'new';
+  }
+  if (routeName === 'tool' || routeName === 'new-tool') {
+    lastHistoryToolId = id;
+    lastHistoryIsNewTool = routeName === 'new-tool';
+  }
+
+  switch (routeName) {
+    case 'new':
+      sendToDevTools({ type: 'new-agent' });
+      break;
+    case 'agent':
+      if (id) {
+        sendToDevTools({ type: 'select-agent-by-id', id: id });
+      }
+      break;
+    case 'new-tool':
+      switchTab('tools');
+      sendToDevTools({ type: 'new-tool' });
+      break;
+    case 'tool':
+      if (id) {
+        switchTab('tools');
+        sendToDevTools({ type: 'select-tool-by-id', id: id });
+      }
+      break;
+    case 'list':
+    default:
+      // Return to list (no agent selected)
+      state.selectedAgent = null;
+      state.isCreatingNew = false;
+      renderEmptyState();
+      updateListSelection(null);
+      break;
   }
 }
 
@@ -1075,8 +1560,11 @@ function injectIcons() {
   const iconMappings = {
     'header-icon': Icons.bot,
     'new-agent-icon': Icons.plus,
+    'new-tool-icon': Icons.plus,
     'empty-detail-icon': Icons.bot,
-    'run-test-icon': Icons.play
+    'run-test-icon': Icons.play,
+    'tab-agents-icon': Icons.bot,
+    'tab-tools-icon': Icons.code
   };
 
   for (const [id, icon] of Object.entries(iconMappings)) {
@@ -1107,99 +1595,89 @@ function sendToDevTools(action) {
   }
 }
 
-// Mini App interface - Receive actions from DevTools
-window.miniApp = {
-  // Dispatch action from DevTools to SPA
-  dispatch: function(message) {
-    // Handle both string and object messages
-    if (typeof message === 'string') {
-      try {
-        message = JSON.parse(message);
-      } catch (e) {
-        console.error('[MiniApp] Failed to parse message:', e);
-        return;
-      }
-    }
+// Mini App interface - Uses wrapper's callback hooks
+// The wrapper (from MiniAppRegistry.wrapSPAJavaScript) defines window.miniApp
+// and calls these callbacks when actions are dispatched
 
-    const { action, payload } = message;
-    console.log('[MiniApp] Received from DevTools:', action);
-
-    switch (action) {
-      case 'init':
-        handleInit(payload);
-        break;
-      case 'agents-updated':
-        handleAgentsUpdated(payload);
-        break;
-      case 'agent-selected':
-        handleAgentSelected(payload);
-        break;
-      case 'notification':
-        showNotification(payload.message, payload.type);
-        break;
-      case 'test-result':
-        handleTestResult(payload);
-        break;
-      // Standard mini app protocol actions
-      case 'get-state':
-        // State is returned via getState() method
-        break;
-      case 'set-state':
-        state = payload || {};
-        renderAgentLists();
-        if (state.selectedAgent) {
-          renderAgentForm(state.selectedAgent);
-        }
-        break;
-      case 'update-state':
-        state = { ...state, ...(payload || {}) };
-        renderAgentLists();
-        if (state.selectedAgent) {
-          renderAgentForm(state.selectedAgent);
-        }
-        break;
-      case 'restore-state':
-        // Restore from page refresh - request agent selection from DevTools
-        console.log('[AgentStudio] Restoring state from page refresh:', payload);
-        if (payload?.selectedAgentName) {
-          sendToDevTools({
-            type: 'select-agent',
-            name: payload.selectedAgentName
-          });
-        } else if (payload?.isCreatingNew) {
-          sendToDevTools({ type: 'new-agent' });
-        }
-        // Otherwise just show list (default state)
-        break;
-    }
-  },
-
-  // Get current state (called by DevTools)
-  getState: function() {
-    return state;
-  },
-
-  // Set entire state
-  setState: function(newState) {
-    state = newState;
-    sendToDevTools({ type: 'state-changed', state: state });
-  },
-
-  // Update state partially
-  updateState: function(updates) {
-    state = { ...state, ...updates };
-    sendToDevTools({ type: 'state-changed', state: state });
-  },
-
-  // Send action to DevTools
-  sendAction: function(type, payload) {
-    sendToDevTools({ type, payload });
-  },
-
-  // Close the mini app
-  close: function() {
-    sendToDevTools({ type: 'close' });
+// Called by wrapper when 'set-state' or 'update-state' action is received
+window.onMiniAppStateChange = function(newState) {
+  console.log('[AgentStudio] State changed via callback:', Object.keys(newState));
+  state = { ...state, ...newState };
+  renderAgentLists();
+  if (state.selectedAgent) {
+    renderAgentForm(state.selectedAgent);
   }
+  pushHistoryState();
+};
+
+// Called by wrapper for actions not handled internally
+window.onMiniAppDispatch = function(message) {
+  // Handle both string and object messages
+  if (typeof message === 'string') {
+    try {
+      message = JSON.parse(message);
+    } catch (e) {
+      console.error('[AgentStudio] Failed to parse message:', e);
+      return;
+    }
+  }
+
+  const action = message.action;
+  const payload = message.payload;
+  console.log('[AgentStudio] Received custom action:', action);
+
+  switch (action) {
+    case 'init':
+      handleInit(payload);
+      break;
+    case 'agents-updated':
+      console.log('[AgentStudio] Dispatch: agents-updated');
+      handleAgentsUpdated(payload);
+      break;
+    case 'agent-selected':
+      handleAgentSelected(payload);
+      break;
+    case 'tools-updated':
+      console.log('[AgentStudio] Dispatch: tools-updated');
+      handleToolsUpdated(payload);
+      break;
+    case 'tool-saved':
+      console.log('[AgentStudio] Dispatch: tool-saved');
+      handleToolSaved(payload);
+      break;
+    case 'tool-selected':
+      handleToolSelected(payload);
+      break;
+    case 'notification':
+      showNotification(payload.message, payload.type);
+      break;
+    case 'test-result':
+      handleTestResult(payload);
+      break;
+    case 'tool-test-result':
+      displayToolTestResult(payload);
+      break;
+    case 'restore-state':
+      // Restore from page refresh - request agent selection from DevTools
+      console.log('[AgentStudio] Restoring state from page refresh:', payload);
+      if (payload?.selectedAgentName) {
+        sendToDevTools({
+          type: 'select-agent',
+          name: payload.selectedAgentName
+        });
+      } else if (payload?.isCreatingNew) {
+        sendToDevTools({ type: 'new-agent' });
+      }
+      // Otherwise just show list (default state)
+      break;
+    default:
+      console.warn('[AgentStudio] Unknown action:', action);
+  }
+};
+
+// Called by wrapper to get current state
+window.getMiniAppState = function() {
+  return state;
 };
 
 // ==========================================
@@ -1210,14 +1688,18 @@ function handleInit(payload) {
   state.agents = payload.agents || [];
   state.tools = payload.tools || [];
   state.selectedAgent = payload.selectedAgent || null;
+  state.customTools = payload.customTools || [];
+  state.presetLibraries = payload.presetLibraries || [];
 
   renderAgentLists();
+  renderToolList();
   if (state.selectedAgent) {
     renderAgentForm(state.selectedAgent);
   }
 }
 
 function handleAgentsUpdated(payload) {
+  console.log('[AgentStudio] agents-updated received:', payload.agents?.length, payload.agents?.map(a => ({name: a.name, isBuiltIn: a.isBuiltIn})));
   state.agents = payload.agents || [];
   renderAgentLists();
 }
@@ -1239,6 +1721,49 @@ function handleAgentSelected(payload) {
   pushHistoryState();
 }
 
+function handleToolsUpdated(payload) {
+  console.log('[AgentStudio] tools-updated received:', payload.customTools?.length);
+  state.customTools = payload.customTools || [];
+  renderToolList();
+}
+
+function handleToolSaved(payload) {
+  // Update custom tools list
+  state.customTools = payload.customTools || state.customTools;
+  renderToolList();
+
+  // Return to agent if we came from agent form
+  if (state.returnToAgent) {
+    const agentId = state.returnToAgent.agentId;
+    state.returnToAgent = null;
+
+    // Switch back to agents tab
+    switchTab('agents');
+
+    // Re-select the agent to refresh the form with updated tools
+    if (agentId) {
+      sendToDevTools({ type: 'select-agent-by-id', id: agentId });
+    }
+  }
+}
+
+function handleToolSelected(payload) {
+  state.selectedTool = payload.tool;
+  state.isCreatingNewTool = !payload.tool || !payload.tool.name;
+
+  if (payload.tool) {
+    renderToolForm(payload.tool);
+  } else {
+    renderEmptyState();
+  }
+
+  // Update list selection
+  updateToolListSelection(payload.tool?.name);
+
+  // Update browser history for back/forward navigation
+  pushHistoryState();
+}
+
 function handleTestResult(payload) {
   document.getElementById('test-results').innerHTML = payload.html;
 }
@@ -1250,6 +1775,7 @@ function handleTestResult(payload) {
 function renderAgentLists() {
   const builtIn = state.agents.filter(a => a.isBuiltIn);
   const custom = state.agents.filter(a => !a.isBuiltIn);
+  console.log('[AgentStudio] Rendering lists - builtIn:', builtIn.length, 'custom:', custom.length);
 
   const builtInContainer = document.getElementById('built-in-agents');
   const customContainer = document.getElementById('custom-agents');
@@ -1299,13 +1825,57 @@ function updateListSelection(selectedName) {
   });
 }
 
+// ==========================================
+// Tab Switching
+// ==========================================
+
+function switchTab(tab) {
+  if (tab === state.activeTab) return;
+
+  state.activeTab = tab;
+
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Update content panels
+  document.querySelectorAll('.tab-content').forEach(panel => {
+    panel.style.display = panel.dataset.tab === tab ? '' : 'none';
+  });
+
+  // Update detail panel
+  if (tab === 'tools') {
+    if (state.selectedTool) {
+      renderToolForm(state.selectedTool);
+    } else {
+      renderEmptyState();
+    }
+  } else {
+    if (state.selectedAgent) {
+      renderAgentForm(state.selectedAgent);
+    } else {
+      renderEmptyState();
+    }
+  }
+
+  sendToDevTools({ type: 'select-tab', tab: tab });
+
+  // Update browser history for back/forward navigation
+  pushHistoryState();
+}
+
 function renderEmptyState() {
   const panel = document.getElementById('agent-detail-panel');
+  const isToolsTab = state.activeTab === 'tools';
+
   panel.innerHTML = \`
     <div class="empty-detail">
-      <div class="empty-icon">\${Icons.bot}</div>
-      <h2>Select an Agent</h2>
-      <p>Choose an agent from the list to view or edit, or create a new one.</p>
+      <div class="empty-icon">\${isToolsTab ? Icons.code : Icons.bot}</div>
+      <h2>Select \${isToolsTab ? 'a Tool' : 'an Agent'}</h2>
+      <p>\${isToolsTab
+        ? 'Choose a custom tool from the list to view or edit, or create a new one.'
+        : 'Choose an agent from the list to view or edit, or create a new one.'}</p>
     </div>
   \`;
 }
@@ -1315,14 +1885,27 @@ function renderAgentForm(agent) {
   const isNew = !agent.name;
   const panel = document.getElementById('agent-detail-panel');
 
-  const toolsHTML = state.tools.map(tool => {
+  // Merge built-in tools with custom tools for selection
+  const allTools = [
+    ...state.tools.map(t => ({ ...t, isCustom: false })),
+    ...state.customTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      isCustom: true
+    }))
+  ];
+
+  const toolsHTML = allTools.map(tool => {
     const isSelected = agent.tools?.includes(tool.name) || false;
+    const customBadge = tool.isCustom ? '<span class="tool-badge custom-tool">Custom</span>' : '';
+    const editButton = tool.isCustom ? \`<button type="button" class="edit-tool-btn" data-tool-name="\${escapeHTML(tool.name)}" title="Edit tool">&#9998;</button>\` : '';
     return \`
       <label class="tool-item \${isSelected ? 'selected' : ''}">
         <input type="checkbox" name="tools" value="\${escapeHTML(tool.name)}"
                \${isSelected ? 'checked' : ''} \${isBuiltIn ? 'disabled' : ''}>
-        <span class="tool-name">\${escapeHTML(tool.name)}</span>
+        <span class="tool-name">\${escapeHTML(tool.name)}\${customBadge}</span>
         <span class="tool-description">\${escapeHTML(tool.description)}</span>
+        \${editButton}
       </label>
     \`;
   }).join('');
@@ -1392,7 +1975,10 @@ function renderAgentForm(agent) {
 
       <!-- Tools Section -->
       <div class="form-section">
-        <h3 class="section-title">\${Icons.wrench} Available Tools</h3>
+        <div class="tools-section-header">
+          <h3 class="section-title">\${Icons.wrench} Available Tools</h3>
+          <button type="button" class="btn-link new-tool-from-agent" \${isBuiltIn ? 'disabled' : ''}>+ New Tool</button>
+        </div>
         <div class="tools-search">
           <input type="text" id="tools-search" placeholder="Search tools..." \${isBuiltIn ? 'disabled' : ''}>
         </div>
@@ -1496,6 +2082,24 @@ function attachFormHandlers(agent) {
       e.target.closest('.tool-item').classList.toggle('selected', e.target.checked);
     });
   });
+
+  // New Tool button (navigate to Tool Studio)
+  document.querySelector('.new-tool-from-agent')?.addEventListener('click', () => {
+    state.returnToAgent = { agentId: state.selectedAgent?.id };
+    switchTab('tools');
+    sendToDevTools({ type: 'new-tool' });
+  });
+
+  // Edit tool buttons (navigate to Tool Studio with selected tool)
+  document.querySelectorAll('.edit-tool-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      state.returnToAgent = { agentId: state.selectedAgent?.id };
+      switchTab('tools');
+      sendToDevTools({ type: 'select-tool', name: btn.dataset.toolName });
+    });
+  });
 }
 
 function handleSave() {
@@ -1525,6 +2129,526 @@ function handleSave() {
     type: 'save-agent',
     data: agentData,
   });
+}
+
+// ==========================================
+// Tool Studio - Custom Tools
+// ==========================================
+
+function renderToolList() {
+  const container = document.getElementById('custom-tools');
+  if (!container) return;
+
+  if (!state.customTools || state.customTools.length === 0) {
+    container.innerHTML = '<div class="empty-message">No custom tools yet</div>';
+    return;
+  }
+
+  container.innerHTML = state.customTools.map(tool => renderToolListItem(tool)).join('');
+
+  // Attach click handlers
+  container.querySelectorAll('.agent-list-item').forEach(item => {
+    item.addEventListener('click', () => {
+      sendToDevTools({
+        type: 'select-tool',
+        name: item.dataset.toolName,
+        id: item.dataset.toolId
+      });
+    });
+  });
+}
+
+function renderToolListItem(tool) {
+  const isSelected = state.selectedTool?.name === tool.name;
+  const icon = tool.icon || Icons.code;
+  const isEmoji = tool.icon && !tool.icon.includes('<svg');
+
+  return \`
+    <div class="agent-list-item \${isSelected ? 'selected' : ''}"
+         data-tool-name="\${escapeHTML(tool.name)}"
+         data-tool-id="\${tool.id || ''}">
+      <span class="agent-avatar">\${isEmoji ? tool.icon : Icons.code}</span>
+      <span class="agent-display-name">\${escapeHTML(tool.displayName || tool.name)}</span>
+    </div>
+  \`;
+}
+
+function updateToolListSelection(selectedName) {
+  const container = document.getElementById('custom-tools');
+  if (!container) return;
+
+  container.querySelectorAll('.agent-list-item').forEach(item => {
+    item.classList.toggle('selected', item.dataset.toolName === selectedName);
+  });
+}
+
+function renderToolForm(tool) {
+  const isNew = !tool.name;
+  const panel = document.getElementById('agent-detail-panel');
+
+  // Build dependencies list HTML
+  const dependenciesHTML = (tool.dependencies || []).map((dep, idx) => \`
+    <div class="dependency-item" data-index="\${idx}">
+      <div class="dependency-info">
+        <span class="dependency-name">\${escapeHTML(dep.name)}</span>
+        <span class="dependency-global">Global: \${escapeHTML(dep.globalName)}</span>
+      </div>
+      <button type="button" class="btn-icon remove-dep-btn" data-index="\${idx}">\${Icons.trash}</button>
+    </div>
+  \`).join('');
+
+  // Build preset library buttons
+  const presetButtonsHTML = (state.presetLibraries || []).map(lib => \`
+    <button type="button" class="preset-lib-btn" data-name="\${escapeHTML(lib.name)}"
+            data-url="\${escapeHTML(lib.url)}" data-global="\${escapeHTML(lib.globalName)}">
+      \${escapeHTML(lib.name)}
+    </button>
+  \`).join('');
+
+  // Build schema properties HTML
+  const schemaPropsHTML = Object.entries(tool.schema?.properties || {}).map(([propName, prop]) => \`
+    <div class="schema-property" data-prop-name="\${escapeHTML(propName)}">
+      <div class="schema-prop-header">
+        <span class="schema-prop-name">\${escapeHTML(propName)}</span>
+        <span class="schema-prop-type">\${escapeHTML(prop.type || 'string')}</span>
+        \${(tool.schema?.required || []).includes(propName) ? '<span class="required-badge">Required</span>' : ''}
+        <button type="button" class="btn-icon remove-prop-btn" data-prop="\${escapeHTML(propName)}">\${Icons.trash}</button>
+      </div>
+      <div class="schema-prop-desc">\${escapeHTML(prop.description || '')}</div>
+    </div>
+  \`).join('') || '<div class="empty-message">No parameters defined</div>';
+
+  panel.innerHTML = \`
+    <form id="tool-form" class="agent-form">
+      <!-- Basic Info Section -->
+      <div class="form-section">
+        <h3 class="section-title">\${Icons.info} Basic Information</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tool-name">Name</label>
+            <input type="text" id="tool-name" name="name"
+                   value="\${escapeHTML(tool.name || '')}"
+                   placeholder="my_custom_tool"
+                   pattern="[a-z][-a-z0-9_]*"
+                   required>
+            <span class="field-hint">Lowercase letters, numbers, underscores, and hyphens</span>
+          </div>
+          <div class="form-group">
+            <label for="tool-display-name">Display Name</label>
+            <input type="text" id="tool-display-name" name="displayName"
+                   value="\${escapeHTML(tool.displayName || '')}"
+                   placeholder="My Custom Tool"
+                   required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group avatar-group">
+            <label for="tool-icon">Icon</label>
+            <input type="text" id="tool-icon" name="icon"
+                   value="\${tool.icon || ''}"
+                   maxlength="4"
+                   placeholder="🔧">
+          </div>
+          <div class="form-group color-group">
+            <label for="tool-color">Color</label>
+            <input type="color" id="tool-color" name="color"
+                   value="\${tool.color || '#00a4fe'}">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="tool-description">Description</label>
+          <textarea id="tool-description" name="description" rows="2"
+                    placeholder="Brief description of what this tool does"
+                    required>\${escapeHTML(tool.description || '')}</textarea>
+          <span class="field-hint">This description helps the AI understand when to use this tool</span>
+        </div>
+      </div>
+
+      <!-- JavaScript Code Section -->
+      <div class="form-section">
+        <h3 class="section-title">\${Icons.code} JavaScript Code</h3>
+        <div class="form-group">
+          <textarea id="tool-code" name="code" rows="15"
+                    placeholder="// Your code here
+// Available variables:
+// - args: The input arguments
+// - ctx: Execution context { provider, model }
+//
+// Return a JSON-serializable value
+
+return { message: 'Hello!' };"
+                    required>\${escapeHTML(tool.code || '')}</textarea>
+          <span class="field-hint">Code runs in page context with access to DOM, fetch, etc.</span>
+        </div>
+      </div>
+
+      <!-- Input Schema Section -->
+      <div class="form-section">
+        <h3 class="section-title">\${Icons.wrench} Input Parameters</h3>
+        <div class="schema-builder" id="schema-builder">
+          <div class="schema-props-list" id="schema-props-list">
+            \${schemaPropsHTML}
+          </div>
+          <button type="button" class="btn btn-secondary" id="add-param-btn">
+            \${Icons.plus} Add Parameter
+          </button>
+        </div>
+      </div>
+
+      <!-- Dependencies Section -->
+      <div class="form-section">
+        <h3 class="section-title">\${Icons.fileText} External Libraries</h3>
+        <div class="dependencies-builder">
+          <div class="preset-libs">
+            <span class="preset-label">Quick Add:</span>
+            \${presetButtonsHTML}
+          </div>
+          <div class="dependencies-list" id="dependencies-list">
+            \${dependenciesHTML || '<div class="empty-message">No libraries added</div>'}
+          </div>
+          <button type="button" class="btn btn-secondary" id="add-dep-btn">
+            \${Icons.plus} Add Custom Library
+          </button>
+        </div>
+      </div>
+
+      <!-- Advanced Settings -->
+      <div class="form-section">
+        <h3 class="section-title">\${Icons.settings} Advanced Settings</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tool-timeout">Timeout (ms)</label>
+            <input type="number" id="tool-timeout" name="timeout"
+                   value="\${tool.timeout || 10000}"
+                   min="1000" max="30000" step="1000">
+            <span class="field-hint">1000-30000 ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="save-tool-btn">
+          <span class="btn-icon-inline">\${Icons.save}</span>
+          \${isNew ? 'Create Tool' : 'Save Changes'}
+        </button>
+        <button type="button" class="btn btn-secondary" id="test-tool-btn">
+          <span class="btn-icon-inline">\${Icons.play}</span>
+          Test Tool
+        </button>
+        \${!isNew ? \`
+          <button type="button" class="btn btn-danger" id="delete-tool-btn">
+            <span class="btn-icon-inline">\${Icons.trash}</span>
+            Delete Tool
+          </button>
+        \` : ''}
+      </div>
+    </form>
+
+    <!-- Test Panel -->
+    <div class="tool-test-panel" id="tool-test-panel">
+      <h4>\${Icons.play} Test Tool</h4>
+      <div class="test-inputs-container" id="test-inputs-container">
+        \${renderTestInputs(tool.schema)}
+      </div>
+      <button type="button" class="btn btn-secondary" id="run-tool-test-btn">
+        <span class="btn-icon-inline">\${Icons.play}</span>
+        Run Test
+      </button>
+      <div class="tool-test-results" id="tool-test-results"></div>
+    </div>
+  \`;
+
+  // Attach form event handlers
+  attachToolFormHandlers(tool);
+}
+
+function attachToolFormHandlers(tool) {
+  const form = document.getElementById('tool-form');
+
+  // Form submission
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    handleSaveTool();
+  });
+
+  // Delete button
+  document.getElementById('delete-tool-btn')?.addEventListener('click', () => {
+    if (confirm('Are you sure you want to delete this tool? This action cannot be undone.')) {
+      sendToDevTools({ type: 'delete-tool' });
+    }
+  });
+
+  // Test button (scrolls to test panel)
+  document.getElementById('test-tool-btn')?.addEventListener('click', () => {
+    const testPanel = document.getElementById('tool-test-panel');
+    if (testPanel) {
+      testPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
+  // Run tool test button
+  document.getElementById('run-tool-test-btn')?.addEventListener('click', () => {
+    const testInput = collectTestInputs();
+    const toolConfig = collectCurrentToolConfig();
+
+    if (!toolConfig.code || !toolConfig.code.trim()) {
+      showNotification('Please add tool code before testing', 'warning');
+      return;
+    }
+
+    // Show loading state
+    const resultsDiv = document.getElementById('tool-test-results');
+    if (resultsDiv) {
+      resultsDiv.innerHTML = '<div class="test-loading">Running test...</div>';
+      resultsDiv.className = 'tool-test-results';
+    }
+
+    sendToDevTools({
+      type: 'run-tool-test',
+      toolConfig: toolConfig,
+      testInput: testInput
+    });
+  });
+
+  // Preset library buttons
+  document.querySelectorAll('.preset-lib-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addDependency({
+        name: btn.dataset.name,
+        url: btn.dataset.url,
+        globalName: btn.dataset.global
+      });
+    });
+  });
+
+  // Add parameter button
+  document.getElementById('add-param-btn')?.addEventListener('click', () => {
+    const propName = prompt('Parameter name (lowercase, underscores):');
+    if (!propName) return;
+    if (!/^[a-z][a-z0-9_]*$/.test(propName)) {
+      showNotification('Invalid parameter name', 'error');
+      return;
+    }
+    addSchemaProperty(propName, { type: 'string', description: '' });
+  });
+
+  // Remove property buttons
+  document.querySelectorAll('.remove-prop-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      removeSchemaProperty(btn.dataset.prop);
+    });
+  });
+
+  // Remove dependency buttons
+  document.querySelectorAll('.remove-dep-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      removeDependency(parseInt(btn.dataset.index, 10));
+    });
+  });
+
+  // Add custom library button
+  document.getElementById('add-dep-btn')?.addEventListener('click', () => {
+    const name = prompt('Library name (e.g., "Lodash"):');
+    if (!name) return;
+    const url = prompt('CDN URL (must be https):');
+    if (!url || !url.startsWith('https://')) {
+      showNotification('URL must start with https://', 'error');
+      return;
+    }
+    const globalName = prompt('Global variable name (e.g., "_" for Lodash):');
+    if (!globalName) return;
+    addDependency({ name, url, globalName });
+  });
+}
+
+function handleSaveTool() {
+  const form = document.getElementById('tool-form');
+  const formData = new FormData(form);
+
+  const toolData = {
+    name: formData.get('name'),
+    displayName: formData.get('displayName'),
+    description: formData.get('description'),
+    icon: formData.get('icon') || '🔧',
+    color: formData.get('color') || '#00a4fe',
+    code: formData.get('code'),
+    timeout: parseInt(formData.get('timeout') || '10000', 10),
+    schema: state.selectedTool?.schema || { type: 'object', properties: {}, required: [] },
+    dependencies: state.selectedTool?.dependencies || [],
+  };
+
+  sendToDevTools({
+    type: 'save-tool',
+    data: toolData,
+  });
+}
+
+// Tool testing helpers
+function renderTestInputs(schema) {
+  if (!schema || !schema.properties || Object.keys(schema.properties).length === 0) {
+    return '<div class="no-params-message">This tool has no input parameters. Click Run Test to execute.</div>';
+  }
+
+  const props = schema.properties;
+  const required = schema.required || [];
+
+  return Object.entries(props).map(([name, prop]) => {
+    const isRequired = required.includes(name);
+    const propType = prop.type || 'string';
+    const description = prop.description || '';
+
+    let inputHtml = '';
+    if (propType === 'boolean') {
+      inputHtml = \`
+        <select id="test-input-\${name}" data-param="\${name}" data-type="\${propType}">
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      \`;
+    } else if (propType === 'number') {
+      inputHtml = \`<input type="number" id="test-input-\${name}" data-param="\${name}" data-type="\${propType}" placeholder="\${description || 'Enter a number'}">\`;
+    } else if (propType === 'array' || propType === 'object') {
+      inputHtml = \`<textarea id="test-input-\${name}" data-param="\${name}" data-type="\${propType}" placeholder='\${propType === 'array' ? '["item1", "item2"]' : '{"key": "value"}'}'></textarea>\`;
+    } else {
+      inputHtml = \`<input type="text" id="test-input-\${name}" data-param="\${name}" data-type="\${propType}" placeholder="\${description || 'Enter value'}">\`;
+    }
+
+    return \`
+      <div class="test-input-row">
+        <label for="test-input-\${name}">
+          \${name}\${isRequired ? ' *' : ''}
+          <span class="input-type">(\${propType})</span>
+        </label>
+        \${inputHtml}
+      </div>
+    \`;
+  }).join('');
+}
+
+function collectTestInputs() {
+  const inputs = {};
+  const inputElements = document.querySelectorAll('[data-param]');
+
+  inputElements.forEach(el => {
+    const paramName = el.dataset.param;
+    const paramType = el.dataset.type;
+    let value = el.value;
+
+    if (!value && paramType !== 'boolean') return;
+
+    try {
+      if (paramType === 'number') {
+        value = Number(value);
+      } else if (paramType === 'boolean') {
+        value = value === 'true';
+      } else if (paramType === 'array' || paramType === 'object') {
+        value = JSON.parse(value);
+      }
+    } catch (e) {
+      // Keep as string if parsing fails
+    }
+
+    inputs[paramName] = value;
+  });
+
+  return inputs;
+}
+
+function collectCurrentToolConfig() {
+  const form = document.getElementById('tool-form');
+  const formData = new FormData(form);
+
+  return {
+    name: formData.get('name') || 'test_tool',
+    displayName: formData.get('displayName') || '',
+    description: formData.get('description') || 'Test tool',
+    icon: formData.get('icon') || '🔧',
+    color: formData.get('color') || '#00a4fe',
+    code: formData.get('code') || '',
+    timeout: parseInt(formData.get('timeout') || '10000', 10),
+    schema: state.selectedTool?.schema || { type: 'object', properties: {}, required: [] },
+    dependencies: state.selectedTool?.dependencies || [],
+  };
+}
+
+function displayToolTestResult(payload) {
+  const resultsEl = document.getElementById('tool-test-results');
+  if (!resultsEl) return;
+
+  resultsEl.classList.add('visible');
+  resultsEl.classList.remove('success', 'error');
+
+  if (payload.success) {
+    resultsEl.classList.add('success');
+    const resultStr = typeof payload.result === 'object'
+      ? JSON.stringify(payload.result, null, 2)
+      : String(payload.result);
+    resultsEl.innerHTML = \`
+      <div class="test-result-header success">
+        ✓ Success
+        <span class="test-result-duration">(took \${payload.duration}ms)</span>
+      </div>
+      <div class="test-result-value">\${escapeHtml(resultStr)}</div>
+    \`;
+  } else {
+    resultsEl.classList.add('error');
+    resultsEl.innerHTML = \`
+      <div class="test-result-header error">
+        ✕ Error
+        <span class="test-result-duration">(took \${payload.duration}ms)</span>
+      </div>
+      <div class="test-result-value">\${escapeHtml(payload.error || 'Unknown error')}</div>
+    \`;
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Schema builder helpers
+function addSchemaProperty(name, propDef) {
+  if (!state.selectedTool) return;
+  if (!state.selectedTool.schema) {
+    state.selectedTool.schema = { type: 'object', properties: {}, required: [] };
+  }
+  state.selectedTool.schema.properties[name] = propDef;
+  renderToolForm(state.selectedTool);
+}
+
+function removeSchemaProperty(name) {
+  if (!state.selectedTool?.schema?.properties) return;
+  delete state.selectedTool.schema.properties[name];
+  if (state.selectedTool.schema.required) {
+    state.selectedTool.schema.required = state.selectedTool.schema.required.filter(r => r !== name);
+  }
+  renderToolForm(state.selectedTool);
+}
+
+// Dependencies helpers
+function addDependency(dep) {
+  if (!state.selectedTool) return;
+  if (!state.selectedTool.dependencies) {
+    state.selectedTool.dependencies = [];
+  }
+  // Check for duplicates
+  if (state.selectedTool.dependencies.some(d => d.name === dep.name)) {
+    showNotification(\`\${dep.name} already added\`, 'warning');
+    return;
+  }
+  state.selectedTool.dependencies.push(dep);
+  renderToolForm(state.selectedTool);
+}
+
+function removeDependency(index) {
+  if (!state.selectedTool?.dependencies) return;
+  state.selectedTool.dependencies.splice(index, 1);
+  renderToolForm(state.selectedTool);
 }
 
 // ==========================================
@@ -1583,6 +2707,19 @@ function init() {
   // New agent button
   document.getElementById('new-agent-btn')?.addEventListener('click', () => {
     sendToDevTools({ type: 'new-agent' });
+  });
+
+  // New tool button
+  document.getElementById('new-tool-btn')?.addEventListener('click', () => {
+    sendToDevTools({ type: 'new-tool' });
+  });
+
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const tab = e.currentTarget.dataset.tab;
+      switchTab(tab);
+    });
   });
 
   // Test panel close

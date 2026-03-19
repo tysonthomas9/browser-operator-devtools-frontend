@@ -60,3 +60,5 @@ test/perf/.generated
 # Dependencies
 node_modules/
 **/.idea/
+
+front_end/third_party/browser-operator-sdk/*

@@ -32,8 +32,10 @@ import { createScrollActionAgentConfig } from './agents/ScrollActionAgent.js';
 import { createWebTaskAgentConfig } from './agents/WebTaskAgent.js';
 import { createEcommerceProductInfoAgentConfig } from './agents/EcommerceProductInfoAgent.js';
 import { createSearchAgentConfig } from './agents/SearchAgent.js';
+import { createQATestGeneratorAgentConfig } from './agents/QATestGeneratorAgent.js';
 import { AgentStudioIntegration } from '../../core/AgentStudioIntegration.js';
 import { initializeMiniApps } from '../../mini_apps/MiniAppInitialization.js';
+import { TestCDPCommandTool } from '../../tools/TestCDPCommandTool.js';
 
 /**
  * Initialize all configured agents
@@ -145,6 +147,14 @@ export async function initializeConfiguredAgents(): Promise<void> {
   const ecommerceProductInfoAgentConfig = createEcommerceProductInfoAgentConfig();
   const ecommerceProductInfoAgent = new ConfigurableAgentTool(ecommerceProductInfoAgentConfig);
   ToolRegistry.registerToolFactory('ecommerce_product_info_fetcher_tool', () => ecommerceProductInfoAgent);
+
+  // Register QA Test CDP Command Tool (used by QA Test Generator Agent for feedback loop)
+  ToolRegistry.registerToolFactory('test_cdp_command', () => new TestCDPCommandTool());
+
+  // Create and register QA Test Generator Agent
+  const qaTestGeneratorAgentConfig = createQATestGeneratorAgentConfig();
+  const qaTestGeneratorAgent = new ConfigurableAgentTool(qaTestGeneratorAgentConfig);
+  ToolRegistry.registerToolFactory('qa_test_generator', () => qaTestGeneratorAgent);
 
   // Initialize custom agents from Agent Studio
   await AgentStudioIntegration.initialize();

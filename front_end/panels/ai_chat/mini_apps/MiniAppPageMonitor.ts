@@ -6,6 +6,7 @@ import * as Common from '../../../core/common/common.js';
 import * as SDK from '../../../core/sdk/sdk.js';
 import { createLogger } from '../core/Logger.js';
 import { MiniAppRegistry } from './MiniAppRegistry.js';
+import { MiniAppRouter } from './routing/MiniAppRouter.js';
 
 const logger = createLogger('MiniAppPageMonitor');
 
@@ -252,61 +253,22 @@ export class MiniAppPageMonitor {
   /**
    * Parse a URL hash into app ID and initial state
    *
-   * Supported formats:
-   * - #data-studio → Data Studio in selector view
-   * - #data-studio/table/123 → Data Studio showing table with ID 123
-   * - #agent-studio → Agent Studio with no selection
-   * - #agent-studio/agent/my_agent → Agent Studio with agent selected
-   * - #agent-studio/new → Agent Studio creating new agent
+   * Uses the central MiniAppRouter to parse hashes based on registered routes.
+   * Each mini app defines its own routes in its definition, making this method
+   * route-agnostic and scalable.
    */
   private parseHash(hash: string): ParsedHash | null {
-    // Data Studio patterns
-    if (hash.startsWith('#data-studio')) {
-      const tableMatch = hash.match(/^#data-studio\/table\/(.+)$/);
-      if (tableMatch) {
-        return {
-          appId: 'data_studio',
-          initialState: {
-            view: 'table',
-            tableId: decodeURIComponent(tableMatch[1]),
-          },
-        };
-      }
-      // Just #data-studio - show selector view
-      return {
-        appId: 'data_studio',
-        initialState: { view: 'selector' },
-      };
-    }
+    const router = MiniAppRouter.getInstance();
+    const parsed = router.parseHash(hash);
 
-    // Agent Studio patterns
-    if (hash.startsWith('#agent-studio')) {
-      const agentMatch = hash.match(/^#agent-studio\/agent\/(.+)$/);
-      if (agentMatch) {
-        return {
-          appId: 'agent_studio',
-          initialState: {
-            selectedAgentName: decodeURIComponent(agentMatch[1]),
-          },
-        };
-      }
-      if (hash === '#agent-studio/new') {
-        return {
-          appId: 'agent_studio',
-          initialState: { isCreatingNew: true },
-        };
-      }
-      // Just #agent-studio - show list
-      return { appId: 'agent_studio' };
-    }
-
-    // Mini Apps Launcher
-    if (hash === '#mini-apps') {
-      // Could trigger launcher here if needed
+    if (!parsed) {
       return null;
     }
 
-    return null;
+    return {
+      appId: parsed.appId,
+      initialState: parsed.params,
+    };
   }
 
   /**

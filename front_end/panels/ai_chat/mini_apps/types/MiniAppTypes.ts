@@ -9,6 +9,9 @@
  * as full-screen iframes with full AI read/write control over their state.
  */
 
+// Re-export routing types for convenience
+export type { RouteDefinition, ParsedRoute } from '../routing/MiniAppRouter.js';
+
 // ============================================================================
 // SPA Content Types
 // ============================================================================
@@ -193,6 +196,13 @@ export interface MiniApp {
 
   /** Icon for the app (emoji or icon class) */
   icon: string;
+
+  /**
+   * Route definitions for this app's URL-based navigation
+   * Each route maps a name to a URL pattern with optional parameters
+   * Example: { name: 'table', pattern: '#data-studio/table/:tableId' }
+   */
+  routes?: import('../routing/MiniAppRouter.js').RouteDefinition[];
 
   /** Get the SPA content (HTML, CSS, JS) */
   getSPA(): MiniAppSPA;

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as SDK from '../../../../../core/sdk/sdk.js';
 import { createLogger } from '../../../core/Logger.js';
 import { AgentStorageManager } from '../../../core/AgentStorageManager.js';
 import { AgentStudioIntegration } from '../../../core/AgentStudioIntegration.js';
@@ -177,6 +176,12 @@ export class DataStudioMiniApp implements MiniApp {
   name = 'Data Studio';
   description = 'Run AI agents against lists of entities in a table format. Create analysis tables for competitors, products, leads, or any custom entity type.';
   icon = '📊';
+
+  // Route definitions for URL-based navigation
+  routes = [
+    { name: 'selector', pattern: '#data-studio' },
+    { name: 'table', pattern: '#data-studio/table/:tableId' },
+  ];
 
   getSPA(): MiniAppSPA {
     return {
@@ -1251,44 +1256,22 @@ class DataStudioController implements MiniAppController {
 
   /**
    * Re-render the Data Studio UI after agent execution completes.
-   * Navigates to blank page and renders the SPA with current state.
+   * Uses MiniAppRegistry.forceRelaunch() to ensure proper wrapper and router injection.
    */
   private async reRenderDataStudio(): Promise<void> {
     logger.info('Re-rendering Data Studio after agent execution');
 
-    // Navigate to blank page first for clean canvas
-    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
-    if (target) {
-      try {
-        await target.pageAgent().invoke_navigate({ url: 'about:blank' });
-        // Wait for navigation to complete
-        await new Promise(resolve => setTimeout(resolve, 300));
-      } catch (error) {
-        logger.error('Failed to navigate to blank page:', error);
-      }
-    }
-
-    // Re-render the SPA
     try {
-      const { RenderWebAppTool } = await import('../../../tools/RenderWebAppTool.js');
-      const { DataStudioSPA } = await import('./DataStudioSPA.js');
+      // Use MiniAppRegistry to properly re-launch with all wrapper code
+      // This ensures window.miniApp and window.miniAppRouter are properly injected
+      const { MiniAppRegistry } = await import('../../MiniAppRegistry.js');
+      const instance = await MiniAppRegistry.forceRelaunch('data_studio');
 
-      const renderTool = new RenderWebAppTool();
-      const result = await renderTool.execute({
-        html: DataStudioSPA.html,
-        css: DataStudioSPA.css,
-        js: DataStudioSPA.js,
-        reasoning: 'Re-rendering Data Studio after agent execution',
-      });
+      // Update our bridge reference to the new instance
+      this.bridge = instance.bridge;
 
-      if ('error' in result) {
-        throw new Error(result.error);
-      }
-
-      // Re-install bridge with new webapp ID
-      if (this.bridge) {
-        await this.bridge.install(result.webappId);
-      }
+      // Re-register our action handler with the new bridge
+      instance.bridge.onAction(this.handleAction.bind(this));
 
       // Wait for SPA to initialize (it sends 'ready' after 100ms, add buffer)
       await new Promise(resolve => setTimeout(resolve, 200));

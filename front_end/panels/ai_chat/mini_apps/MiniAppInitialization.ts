@@ -6,10 +6,14 @@ import { createLogger } from '../core/Logger.js';
 import { ToolRegistry } from '../agent_framework/ConfigurableAgentTool.js';
 import { MiniAppRegistry } from './MiniAppRegistry.js';
 import { MiniAppPageMonitor } from './MiniAppPageMonitor.js';
+import { ToolStudioIntegration } from '../core/ToolStudioIntegration.js';
 
 // Import mini apps
 import { AgentStudioMiniApp } from './apps/agent_studio/AgentStudioMiniApp.js';
 import { DataStudioMiniApp } from './apps/data_studio/DataStudioMiniApp.js';
+import { FileManagerMiniApp } from './apps/file_manager/FileManagerMiniApp.js';
+import { QAAgentMiniApp } from './apps/qa_agent/QAAgentMiniApp.js';
+import { AppBuilderMiniApp } from './apps/app_builder/AppBuilderMiniApp.js';
 
 // Import mini app tools
 import { ListMiniAppsTool } from '../tools/mini_app/ListMiniAppsTool.js';
@@ -46,6 +50,11 @@ export function initializeMiniApps(): void {
   // Register mini app tools
   registerMiniAppTools();
 
+  // Initialize custom tools from Tool Studio (async, non-blocking)
+  ToolStudioIntegration.initialize().catch(error => {
+    logger.error('Failed to initialize Tool Studio custom tools:', error);
+  });
+
   // Initialize page refresh monitor (handles URL hash restoration)
   MiniAppPageMonitor.getInstance().initialize();
 
@@ -62,6 +71,15 @@ function registerMiniApps(): void {
 
   // Register Data Studio mini app
   MiniAppRegistry.register(new DataStudioMiniApp());
+
+  // Register File Manager mini app
+  MiniAppRegistry.register(new FileManagerMiniApp());
+
+  // Register QA Agent mini app
+  MiniAppRegistry.register(new QAAgentMiniApp());
+
+  // Register App Builder mini app
+  MiniAppRegistry.register(new AppBuilderMiniApp());
 
   logger.info(`Registered ${MiniAppRegistry.getAllApps().length} mini apps`);
 }

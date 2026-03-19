@@ -13,6 +13,8 @@ import { GenericMiniAppBridge } from './GenericMiniAppBridge.js';
 import { MiniAppEventBus } from './MiniAppEventBus.js';
 import { RenderWebAppTool } from '../tools/RenderWebAppTool.js';
 import { RemoveWebAppTool } from '../tools/RemoveWebAppTool.js';
+import { MiniAppRouter } from './routing/MiniAppRouter.js';
+import { generateSPARouterCode } from './routing/MiniAppRouterSPA.js';
 
 const logger = createLogger('MiniAppRegistry');
 
@@ -37,6 +39,12 @@ export class MiniAppRegistry {
       logger.warn(`Mini app "${app.id}" is already registered, replacing...`);
     }
     this.apps.set(app.id, app);
+
+    // Register routes with central router if the app defines them
+    if (app.routes && app.routes.length > 0) {
+      MiniAppRouter.getInstance().registerRoutes(app.id, app.routes);
+    }
+
     logger.info(`Registered mini app: ${app.id}`);
   }
 
@@ -266,9 +274,19 @@ export class MiniAppRegistry {
    * This adds the window.miniApp interface that all SPAs must implement:
    * - window.miniApp.dispatch(action) - receive actions from DevTools
    * - window.miniApp.getState() - return current state to DevTools
+   *
+   * Also injects the router if the app defines routes.
    */
   private static wrapSPAJavaScript(appId: string, originalJs: string): string {
     const bindingName = `__miniAppBridge_${appId}`;
+
+    // Get routes for this app and generate router code if available
+    const app = this.apps.get(appId);
+    const routerCode = (app?.routes && app.routes.length > 0)
+      ? generateSPARouterCode(appId, app.routes)
+      : '';
+
+    logger.info(`Wrapping SPA JS for ${appId}, routes: ${JSON.stringify(app?.routes)}, router code length: ${routerCode.length}`);
 
     const wrapper = `
 // ============================================================================
@@ -388,6 +406,6 @@ export class MiniAppRegistry {
 
 `;
 
-    return wrapper + '\n' + originalJs;
+    return wrapper + '\n' + routerCode + '\n' + originalJs;
   }
 }

@@ -1163,63 +1163,53 @@ function getJS(): string {
 
   /**
    * Push a new history state when navigating between views.
-   * Uses pushState so browser back/forward buttons work.
+   * Uses the injected miniAppRouter for navigation.
    */
   function pushHistoryState() {
     const currentView = state.currentTable ? 'table' : 'selector';
-    const currentTableId = state.currentTable?.id || null;
+    const currentTableId = state.currentTable?.tableId || null;
 
     // Don't push duplicate states
     if (currentView === lastHistoryView && currentTableId === lastHistoryTableId) {
       return;
     }
 
-    const stateObj = {
-      view: currentView,
-      tableId: currentTableId,
-      tableName: state.currentTable?.tableName || null,
-      timestamp: Date.now()
-    };
-
-    const hash = currentView === 'table' && currentTableId
-      ? '#data-studio/table/' + encodeURIComponent(currentTableId)
-      : '#data-studio';
-
-    // Use PARENT page's history so URL changes in browser address bar
-    window.parent.history.pushState(stateObj, '', hash);
+    // Use the injected router API for navigation
+    if (window.miniAppRouter) {
+      if (currentView === 'table' && currentTableId) {
+        window.miniAppRouter.navigate('table', { tableId: currentTableId });
+      } else {
+        window.miniAppRouter.navigate('selector');
+      }
+    }
 
     lastHistoryView = currentView;
     lastHistoryTableId = currentTableId;
 
-    console.log('[DataStudio] Pushed history state:', stateObj);
+    console.log('[DataStudio] Pushed history state via router:', { view: currentView, tableId: currentTableId });
   }
 
   /**
    * Replace current history state (used for initial load).
-   * Doesn't create a new history entry.
+   * Uses the injected miniAppRouter for navigation without creating a new history entry.
    */
   function replaceHistoryState() {
     const currentView = state.currentTable ? 'table' : 'selector';
-    const currentTableId = state.currentTable?.id || null;
+    const currentTableId = state.currentTable?.tableId || null;
 
-    const stateObj = {
-      view: currentView,
-      tableId: currentTableId,
-      tableName: state.currentTable?.tableName || null,
-      timestamp: Date.now()
-    };
-
-    const hash = currentView === 'table' && currentTableId
-      ? '#data-studio/table/' + encodeURIComponent(currentTableId)
-      : '#data-studio';
-
-    // Use PARENT page's history so URL changes in browser address bar
-    window.parent.history.replaceState(stateObj, '', hash);
+    // Use the injected router API for navigation
+    if (window.miniAppRouter) {
+      if (currentView === 'table' && currentTableId) {
+        window.miniAppRouter.replace('table', { tableId: currentTableId });
+      } else {
+        window.miniAppRouter.replace('selector');
+      }
+    }
 
     lastHistoryView = currentView;
     lastHistoryTableId = currentTableId;
 
-    console.log('[DataStudio] Replaced history state:', stateObj);
+    console.log('[DataStudio] Replaced history state via router:', { view: currentView, tableId: currentTableId });
   }
 
   /**
@@ -1323,39 +1313,43 @@ function getJS(): string {
   }
 
   // Bridge interface for DevTools communication
-  // GenericMiniAppBridge calls: iframe.contentWindow.miniApp.dispatch(action)
-  window.miniApp = {
-    dispatch: function(action) {
-      console.log('[DataStudio] Received from DevTools:', action);
+  // Uses wrapper's callback hooks instead of overwriting window.miniApp
+  // The wrapper (from MiniAppRegistry.wrapSPAJavaScript) defines window.miniApp
+  // and calls these callbacks when actions are dispatched
 
-      switch (action.action) {
-        case 'set-state':
-          // Merge new state and re-render
-          state = { ...state, ...action.payload };
+  // Called by wrapper when 'set-state' action is received
+  window.onMiniAppStateChange = function(newState) {
+    console.log('[DataStudio] State changed via callback:', Object.keys(newState));
+    state = { ...state, ...newState };
+    render();
+  };
+
+  // Called by wrapper for actions not handled internally (like 'restore-state')
+  window.onMiniAppDispatch = function(action) {
+    console.log('[DataStudio] Received custom action:', action);
+
+    switch (action.action) {
+      case 'restore-state':
+        // Restore from page refresh - request table load from DevTools
+        console.log('[DataStudio] Restoring state from page refresh:', action.payload);
+        if (action.payload?.view === 'table' && action.payload?.tableId) {
+          sendToDevTools({ type: 'load-table', tableId: action.payload.tableId });
+        } else {
+          // Just show selector
+          state.view = 'selector';
+          state.currentTable = null;
           render();
-          break;
+        }
+        break;
 
-        case 'restore-state':
-          // Restore from page refresh - request table load from DevTools
-          console.log('[DataStudio] Restoring state from page refresh:', action.payload);
-          if (action.payload?.view === 'table' && action.payload?.tableId) {
-            sendToDevTools({ type: 'load-table', tableId: action.payload.tableId });
-          } else {
-            // Just show selector
-            state.view = 'selector';
-            state.currentTable = null;
-            render();
-          }
-          break;
-
-        default:
-          console.warn('[DataStudio] Unknown action:', action.action);
-      }
-    },
-
-    getState: function() {
-      return state;
+      default:
+        console.warn('[DataStudio] Unknown action:', action.action);
     }
+  };
+
+  // Called by wrapper to get current state
+  window.getMiniAppState = function() {
+    return state;
   };
 
   // ============================================================================

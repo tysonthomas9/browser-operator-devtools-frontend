@@ -130,6 +130,7 @@ export class AgentStudioIntegration {
       if (tool && tool instanceof ConfigurableAgentTool) {
         const config = tool.config;
         agents.push({
+          id: `builtin:${config.name}`,  // Synthetic ID for URL routing
           name: config.name,
           displayName: config.ui?.displayName || this.formatAgentName(config.name),
           description: config.description,
