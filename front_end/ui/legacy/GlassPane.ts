@@ -26,7 +26,7 @@ export class GlassPane {
   #ignoreLeftMargin = false;
 
   constructor(jslog?: string) {
-    this.#widget = new Widget({jslog, useShadowDom: true});
+    this.#widget = new Widget({jslog, useShadowDom: false});
     this.#widget.markAsRoot();
     this.#widget.onDetach = this.#onDetach.bind(this);
     this.element = this.#widget.element;

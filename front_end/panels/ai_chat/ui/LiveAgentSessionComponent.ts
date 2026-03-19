@@ -16,7 +16,9 @@ const {customElement} = Decorators;
 @customElement('live-agent-session')
 export class LiveAgentSessionComponent extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`live-agent-session`;
-  private readonly shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // private readonly shadow = this.attachShadow({mode: 'open'});
+  private readonly shadow = this;
   
   private _session: AgentSession | null = null;
   private _variant: 'full'|'nested' = 'full';
@@ -122,7 +124,8 @@ export class LiveAgentSessionComponent extends HTMLElement {
     this.shadow.innerHTML = `
       <style>
         /* Import timeline styles from chatView.css */
-        :host {
+        live-agent-session {
+          display: block;
           --sys-color-surface-variant-rgb: 128, 128, 128;
         }
         .agent-execution-timeline {

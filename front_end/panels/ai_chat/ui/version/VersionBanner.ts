@@ -12,7 +12,9 @@ export interface VersionInfo { latestVersion: string; releaseUrl: string; isUpda
 @customElement('ai-version-banner')
 export class VersionBanner extends HTMLElement {
   static readonly litTagName = Lit.StaticHtml.literal`ai-version-banner`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
+  // Use Light DOM
+  // readonly #shadow = this.attachShadow({mode: 'open'});
+  readonly #shadow = this;
 
   // Manual properties
   #info: VersionInfo | null = null;
@@ -32,7 +34,7 @@ export class VersionBanner extends HTMLElement {
     const info = this.#info;
     Lit.render(html`
       <style>
-        :host { position: relative; z-index: 9999; }
+        ai-version-banner { position: relative; z-index: 9999; display: block; }
         .banner { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; background: var(--sys-color-surface-variant); color: var(--sys-color-on-surface); margin: 8px 0; position: relative; z-index: 9999; }
         .link { color: var(--sys-color-primary); text-decoration: none; margin-left: 8px; }
         button.dismiss { border: none; background: transparent; color: var(--sys-color-on-surface); cursor: pointer; font-size: 14px; }

@@ -109,6 +109,9 @@ export class PromptEditDialog {
         background-color: var(--color-background);
         max-width: 90vw;
         max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
       
       .prompt-edit-content {
@@ -118,6 +121,16 @@ export class PromptEditDialog {
         height: 100%;
         min-width: 600px;
         min-height: 500px;
+        overflow: hidden;
+      }
+
+      .prompt-edit-body {
+        flex: 1 1 auto;
+        height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        position: relative;
       }
       
       .prompt-edit-header {
@@ -127,6 +140,9 @@ export class PromptEditDialog {
         padding: 16px 20px;
         border-bottom: 1px solid var(--color-details-hairline);
         flex-shrink: 0;
+        background-color: var(--color-background);
+        position: relative;
+        z-index: 10;
       }
       
       .prompt-edit-title {
@@ -160,6 +176,15 @@ export class PromptEditDialog {
       .prompt-edit-section {
         padding: 16px 20px;
         border-bottom: 1px solid var(--color-details-hairline);
+        flex-shrink: 0;
+      }
+
+      .prompt-edit-section-main {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
       
       .prompt-edit-label {
@@ -167,12 +192,14 @@ export class PromptEditDialog {
         font-weight: 500;
         margin-bottom: 6px;
         color: var(--color-text-primary);
+        flex-shrink: 0;
       }
       
       .prompt-edit-hint {
         font-size: 12px;
         color: var(--color-text-secondary);
         margin-bottom: 8px;
+        flex-shrink: 0;
       }
       
       .prompt-edit-agent-value {
@@ -209,9 +236,10 @@ export class PromptEditDialog {
         font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
         font-size: 13px;
         line-height: 1.4;
-        resize: vertical;
+        resize: none;
         box-sizing: border-box;
-        min-height: 300px;
+        flex: 1;
+        min-height: 0;
       }
       
       .prompt-edit-textarea:focus {
@@ -250,6 +278,9 @@ export class PromptEditDialog {
         padding: 16px 20px;
         border-top: 1px solid var(--color-details-hairline);
         flex-shrink: 0;
+        background-color: var(--color-background);
+        position: relative;
+        z-index: 10;
       }
       
       .prompt-edit-button {
@@ -333,10 +364,15 @@ export class PromptEditDialog {
     
     headerDiv.appendChild(closeButton);
 
+    // Body container
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'prompt-edit-body';
+    contentDiv.appendChild(bodyDiv);
+
     // Agent type display
     const agentSection = document.createElement('div');
     agentSection.className = 'prompt-edit-section';
-    contentDiv.appendChild(agentSection);
+    bodyDiv.appendChild(agentSection);
 
     const agentLabel = document.createElement('div');
     agentLabel.className = 'prompt-edit-label';
@@ -358,8 +394,8 @@ export class PromptEditDialog {
 
     // Prompt editing section
     const promptSection = document.createElement('div');
-    promptSection.className = 'prompt-edit-section';
-    contentDiv.appendChild(promptSection);
+    promptSection.className = 'prompt-edit-section prompt-edit-section-main';
+    bodyDiv.appendChild(promptSection);
 
     const promptLabel = document.createElement('div');
     promptLabel.className = 'prompt-edit-label';
@@ -374,8 +410,9 @@ export class PromptEditDialog {
     const promptTextarea = document.createElement('textarea');
     promptTextarea.className = 'prompt-edit-textarea';
     promptTextarea.value = options.currentPrompt;
-    promptTextarea.rows = DIALOG_CONSTANTS.TEXTAREA_ROWS;
-    promptTextarea.cols = DIALOG_CONSTANTS.TEXTAREA_COLS;
+    // Let CSS handle sizing
+    // promptTextarea.rows = DIALOG_CONSTANTS.TEXTAREA_ROWS;
+    // promptTextarea.cols = DIALOG_CONSTANTS.TEXTAREA_COLS;
     promptTextarea.setAttribute('aria-label', i18nString(UIStrings.promptLabel));
     promptTextarea.setAttribute('aria-describedby', 'prompt-hint');
     promptHint.id = 'prompt-hint';
@@ -386,7 +423,7 @@ export class PromptEditDialog {
     statusMessage.className = 'prompt-edit-status-message';
     statusMessage.setAttribute('role', 'status');
     statusMessage.setAttribute('aria-live', 'polite');
-    contentDiv.appendChild(statusMessage);
+    bodyDiv.appendChild(statusMessage);
 
     let statusTimeout: number | null = null;
     const showStatus = (message: string, type: 'success' | 'error'): void => {
